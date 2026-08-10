@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> 도구 무관 공통 규약은 [AGENTS.md](AGENTS.md)에 있습니다. 특히 **이미 만들어진 공용 자산(엔티티 20개·에러코드·공통 응답·인증 컨텍스트)을 중복 생성하지 않도록** 해당 절을 먼저 확인하세요.
+>
 > 도메인별 상세 로직·불변식·테스트 작성 규칙은 [docs/domain-guide.md](docs/domain-guide.md)를 먼저 확인하세요.
 >
 > 데이터 모델은 [docs/ERD.md](docs/ERD.md), DDL은 [docs/schema.sql](docs/schema.sql), 개발 일정과 담당 배분은 [docs/schedule-backend.md](docs/schedule-backend.md)를 참조하세요.

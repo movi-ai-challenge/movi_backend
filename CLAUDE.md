@@ -108,6 +108,18 @@ HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보
 throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
 ```
 
+### 6. 응답은 `ApiResponse`로 통일한다
+
+성공·실패 응답의 구조가 같습니다. 컨트롤러는 `ApiResponse.success(...)`를 반환하고, 에러는 던지기만 하면 `GlobalExceptionHandler`가 같은 형식으로 변환합니다. 목록은 `PageResponse<T>`를 씁니다.
+
+사용자에게 결과를 알려야 하는 응답에는 `voiceMessage`를 채웁니다. **금액·숫자는 한국어 표기로 변환해서 넣으세요** — TTS가 `53000원`을 어떻게 읽을지 보장할 수 없습니다.
+
+```java
+return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어요.");
+```
+
+자세한 규약은 [docs/api-response.md](docs/api-response.md) 참조.
+
 ## 외부 연동
 
 | 대상 | 용도 | 비고 |

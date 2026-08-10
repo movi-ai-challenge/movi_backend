@@ -87,11 +87,14 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 
 ## 설정 · 외부 연동
 
-- **Profile**: `application.yaml`에 그룹(local/dev/test) 정의, 관심사별 `application-*.yaml` 분리 권장
-- **인증정보는 전부 환경변수**. `application.yaml`에 하드코딩 금지 — `.gitignore`에 로컬 설정 파일을 이미 등록해두었다
+- **설정 파일은 `.yml` 확장자를 쓴다.** `application.yml`(공통) / `application-local.yml`(로컬 MySQL) / `application-test.yml`(H2). 기본 프로파일은 `local`
+- **인증정보는 전부 환경변수**. `application-local.yml`은 `${DB_PASSWORD:}` 형태로 환경변수만 참조하므로 커밋한다. 실제 값은 셸 환경변수나 `application-secret.yml`(gitignore)로 주입한다
+- **`ddl-auto`**: local은 `validate`, test는 `create-drop`.
+  엔티티를 바꿨다면 [schema.sql](schema.sql)도 함께 고치고 DB에 반영해야 기동된다. `update`를 쓰지 않는 이유는 각자 엔티티를 고칠 때마다 로컬 DB가 조용히 달라져 "내 로컬에선 되는데"가 생기기 때문이다
 - **외부 연동**: 오픈뱅킹 API, 카카오 OAuth, Google Cloud STT/TTS(AI 파트), FDS 추론 서비스(AI 파트), SMS
 - **SMS 주의** — Twilio는 국내 발신 제약이 있다. 국내 서비스(NHN Toast, 알리고) 대안을 Week 1에 검증한다
-- **엔티티**: `BaseTimeEntity`로 `createdAt`/`updatedAt` 자동화. 테스트는 H2 in-memory
+- **엔티티**: `created_at`/`updated_at`을 가진 엔티티는 `BaseTimeEntity`를 상속한다 (`@EnableJpaAuditing`은 `JpaConfig`에 선언됨)
+- **보안 설정**: 현재 `SecurityConfig`는 모든 요청을 `permitAll`로 열어 둔 상태다. 의존성만 넣고 설정을 두지 않으면 전 엔드포인트가 기본 인증으로 잠겨 다른 파트가 막히기 때문이다. **인증 담당자가 JWT 필터와 함께 실제 인가 규칙으로 교체하며, 그 전까지 배포하지 않는다**
 
 ## 백엔드 코딩 주의사항
 
@@ -109,7 +112,7 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 
 ## 테스트 작성 규칙
 
-**프레임워크**: JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`), H2 in-memory (`application-test.yaml`).
+**프레임워크**: JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`), H2 in-memory (`application-test.yml`).
 
 1. **DAMP > DRY** — `@BeforeEach`로 상태 공유 금지. 반복 객체 생성은 Fixture 클래스로 분리해 각 테스트를 독립적으로 유지한다
 2. **결과를 검증한다** — `verify(...)` 같은 구현 호출이 아니라 상태 변화를 검증한다 (`assertEquals(TransferStatus.BLOCKED, transfer.getStatus())`)

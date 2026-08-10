@@ -45,7 +45,9 @@ out/
 .Rapp.history
 
 ### 환경 변수 ###
+# application-local.yaml 은 환경변수만 참조하므로 커밋한다.
+# 실제 인증정보는 아래 파일이나 셸 환경변수로 주입할 것.
 .env
 *.env.local
-src/main/resources/application-local.yaml
-src/main/resources/application-prod.yaml
+src/main/resources/application-secret.yml
+src/main/resources/application-prod.yml

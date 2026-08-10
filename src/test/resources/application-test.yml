@@ -1,0 +1,22 @@
+# 테스트 환경 — H2 in-memory
+#
+# MySQL 모드로 동작시켜 운영 DB와 문법 차이를 줄인다.
+# 테스트마다 스키마를 새로 만들므로 schema.sql 적용은 필요 없다.
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:movi;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+logging:
+  level:
+    org.hibernate.SQL: debug

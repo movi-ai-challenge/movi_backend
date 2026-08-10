@@ -1,0 +1,29 @@
+# 로컬 개발 환경
+#
+# 접속 정보는 환경변수로 주입한다. 아래 기본값은 로컬 MySQL 기준이며,
+# 다르면 환경변수를 설정한다. 이 파일에 비밀번호를 직접 적지 않는다.
+#
+#   export DB_PASSWORD=본인_로컬_비밀번호
+#
+# DB 준비:
+#   CREATE DATABASE movi CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+#   mysql -u root -p movi < docs/schema.sql
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/movi?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    # validate: 엔티티와 schema.sql이 어긋나면 기동 시점에 잡아낸다.
+    # 엔티티를 바꿨다면 docs/schema.sql도 함께 고치고 DB에 반영할 것.
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.hibernate.orm.jdbc.bind: trace

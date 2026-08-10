@@ -129,7 +129,7 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 | FDS 서비스 | 위험도 평가 | AI 파트 제공. 요청/응답 스키마를 문서로 합의 후 Mock으로 선개발 |
 | SMS | 보호자 알림 | Twilio는 국내 발신 제약 있음 — 국내 서비스(NHN Toast, 알리고) 대안 검토 |
 
-모든 외부 인증정보는 **환경변수로 분리**합니다. 코드나 `application.yaml`에 하드코딩 금지.
+모든 외부 인증정보는 **환경변수로 분리**합니다. 코드나 `application.yml`에 하드코딩 금지.
 
 ## 코드 작성 원칙
 
@@ -151,5 +151,15 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 
 ## 브랜치 · 커밋
 
-- 브랜치: `feat/`, `fix/`, `docs/`, `refactor/` + 작업 내용
-- 메인 브랜치는 `main`
+```
+main     — 배포 가능 상태
+develop  — 통합 브랜치. 기능 브랜치는 여기서 따고 여기로 병합한다
+feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
+```
+
+작업 브랜치는 **`develop`에서 생성**하고 PR도 `develop`을 대상으로 올립니다. `main`에 직접 커밋하지 않습니다.
+
+```bash
+git checkout develop && git pull
+git checkout -b feat/transfer-api
+```

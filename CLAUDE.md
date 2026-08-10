@@ -27,9 +27,20 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 ./gradlew clean build                                     # 클린 빌드
 ```
 
-DB 스키마 반영:
+### 최초 세팅
+
+`*.yml`은 gitignore 대상이라 clone 직후에는 설정 파일이 없습니다. 템플릿을 복사해서 만듭니다.
 
 ```bash
+cp src/main/resources/application.yml.example       src/main/resources/application.yml
+cp src/main/resources/application-local.yml.example  src/main/resources/application-local.yml
+cp src/test/resources/application-test.yml.example   src/test/resources/application-test.yml
+```
+
+그다음 `application-local.yml`의 `password`를 본인 로컬 MySQL 비밀번호로 채우고, DB를 준비합니다.
+
+```bash
+mysql -u root -p -e "CREATE DATABASE movi CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 mysql -u root -p movi < docs/schema.sql
 ```
 
@@ -129,7 +140,9 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 | FDS 서비스 | 위험도 평가 | AI 파트 제공. 요청/응답 스키마를 문서로 합의 후 Mock으로 선개발 |
 | SMS | 보호자 알림 | Twilio는 국내 발신 제약 있음 — 국내 서비스(NHN Toast, 알리고) 대안 검토 |
 
-모든 외부 인증정보는 **환경변수로 분리**합니다. 코드나 `application.yml`에 하드코딩 금지.
+외부 인증정보는 `application-local.yml`에 직접 적습니다. **이 파일들(`*.yml`)은 gitignore 대상이라 커밋되지 않습니다.** 팀 공유는 `*.yml.example` 템플릿으로 하고, 템플릿에는 실제 값 대신 플레이스홀더만 둡니다.
+
+**Java 코드에는 어떤 인증정보도 하드코딩하지 않습니다.** `@Value`나 `@ConfigurationProperties`로 설정에서 주입받으세요.
 
 ## 코드 작성 원칙
 

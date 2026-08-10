@@ -88,7 +88,10 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 ## 설정 · 외부 연동
 
 - **설정 파일은 `.yml` 확장자를 쓴다.** `application.yml`(공통) / `application-local.yml`(로컬 MySQL) / `application-test.yml`(H2). 기본 프로파일은 `local`
-- **인증정보는 전부 환경변수**. `application-local.yml`은 `${DB_PASSWORD:}` 형태로 환경변수만 참조하므로 커밋한다. 실제 값은 셸 환경변수나 `application-secret.yml`(gitignore)로 주입한다
+- **`*.yml`은 전부 gitignore 대상이다.** 인증정보를 파일에 직접 적기 때문이다. 팀 공유는 `*.yml.example` 템플릿으로 하며, 템플릿에는 플레이스홀더만 둔다
+  - clone 직후에는 설정 파일이 없다. `.example`을 복사해서 만들어야 기동된다
+  - 설정 항목을 추가·변경했다면 **`.example`도 함께 갱신**한다. 안 그러면 다른 팀원이 기동에 실패한다
+  - Java 코드에는 인증정보를 하드코딩하지 않는다. `@Value` / `@ConfigurationProperties`로 주입받는다
 - **`ddl-auto`**: local은 `validate`, test는 `create-drop`.
   엔티티를 바꿨다면 [schema.sql](schema.sql)도 함께 고치고 DB에 반영해야 기동된다. `update`를 쓰지 않는 이유는 각자 엔티티를 고칠 때마다 로컬 DB가 조용히 달라져 "내 로컬에선 되는데"가 생기기 때문이다
 - **외부 연동**: 오픈뱅킹 API, 카카오 OAuth, Google Cloud STT/TTS(AI 파트), FDS 추론 서비스(AI 파트), SMS

@@ -45,9 +45,13 @@ out/
 .Rapp.history
 
 ### 환경 변수 ###
-# application-local.yaml 은 환경변수만 참조하므로 커밋한다.
-# 실제 인증정보는 아래 파일이나 셸 환경변수로 주입할 것.
 .env
 *.env.local
-src/main/resources/application-secret.yml
-src/main/resources/application-prod.yml
+
+### 설정 파일 ###
+# yml 에 DB 비밀번호·API 키를 직접 적으므로 커밋하지 않는다.
+# 팀 공유는 *.yml.example 템플릿으로 하고, 각자 복사해서 값을 채운다.
+*.yml
+!*.yml.example
+# CI 워크플로는 인증정보가 없으므로 커밋 대상
+!.github/**/*.yml

@@ -22,6 +22,27 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
   - PIN 연속 실패 시 `failed_attempts` 증가, 임계치 초과 시 `locked_until` 설정. **잠금 중에는 검증 자체를 건너뛰고 즉시 거부한다**
 - `devices.is_trusted`는 FDS 피처로 쓰이므로, 신규 기기 로그인 시 반드시 기록
 
+#### 인증 컨텍스트 — `@CurrentUser`
+
+컨트롤러에서 현재 사용자는 `@CurrentUser`로 받는다. 각자 `HttpServletRequest`에서 꺼내거나 파라미터로 `userId`를 받지 않는다.
+
+```java
+@GetMapping("/accounts")
+public ApiResponse<List<AccountResponse>> getAccounts(@CurrentUser AuthUser authUser) {
+    return ApiResponse.success(accountService.findAll(authUser.userId()));
+}
+```
+
+**JWT 구현 전에도 개발할 수 있다.** `movi.auth.dev-mode=true`이면 인증 없이 헤더로 사용자를 지정한다.
+
+```bash
+curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
+```
+
+헤더가 없으면 `movi.auth.dev-user-id`(기본 1)를 쓴다. 인증 정보가 있으면 항상 그쪽이 우선한다.
+
+> **인증 담당자에게** — JWT 필터에서 `AuthUser`를 `Authentication`의 principal로 넣으면 리졸버가 그대로 동작한다. 별도 수정이 필요 없다. 필터가 완성되면 `dev-mode`를 끄고, **운영 환경에서는 반드시 false여야 한다.**
+
 ### `account` — 계좌·오픈뱅킹
 
 - 오픈뱅킹 API 연동으로 계좌 등록·잔액 조회

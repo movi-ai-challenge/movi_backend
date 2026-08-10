@@ -100,7 +100,13 @@ HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보
 
 ### 5. 오류도 음성으로 안내된다
 
-예외 메시지는 화면에 찍히고 끝나는 게 아니라 **TTS로 읽힙니다**. 스택 트레이스나 영문 기술 용어가 그대로 나가면 안 됩니다. 에러 코드마다 사용자가 들었을 때 이해할 수 있는 한국어 안내 문구를 함께 정의합니다.
+예외 메시지는 화면에 찍히고 끝나는 게 아니라 **TTS로 읽힙니다**. 스택 트레이스나 영문 기술 용어가 그대로 나가면 안 됩니다.
+
+`ErrorCode`는 `message`(화면·로그용)와 `voiceMessage`(TTS용)를 분리해 갖습니다. 새 에러 코드를 추가할 때 **둘 다 채우고**, [docs/error-codes.md](docs/error-codes.md)를 함께 갱신하세요.
+
+```java
+throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
+```
 
 ## 외부 연동
 

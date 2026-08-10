@@ -35,3 +35,17 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### macOS ###
+.DS_Store
+**/.DS_Store
+
+### R ###
+.Rhistory
+.Rapp.history
+
+### 환경 변수 ###
+.env
+*.env.local
+src/main/resources/application-local.yaml
+src/main/resources/application-prod.yaml

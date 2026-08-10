@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> 도메인별 상세 로직·불변식·테스트 작성 규칙은 [docs/domain-guide.md](docs/domain-guide.md)를 먼저 확인하세요.
+>
 > 데이터 모델은 [docs/ERD.md](docs/ERD.md), DDL은 [docs/schema.sql](docs/schema.sql), 개발 일정과 담당 배분은 [docs/schedule-backend.md](docs/schedule-backend.md)를 참조하세요.
 
 ## Project Overview

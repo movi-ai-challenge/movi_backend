@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-보이스뱅크는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 업무를 볼 수 있게 하는 Voice-First 뱅킹 플랫폼입니다.
+Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 업무를 볼 수 있게 하는 Voice-First 뱅킹 플랫폼입니다.
 오픈뱅킹 API로 잔액조회·이체를 처리하고, Isolation Forest 기반 FDS로 이상 거래를 탐지해 보호자에게 알립니다.
 
 시중 서비스 대부분이 "터치 앱 + 음성 부가기능"인 것과 달리, 이 프로젝트는 **화면 조작 없이 완결되는 흐름**을 목표로 합니다. 접근성은 부가 기능이 아니라 제품의 존재 이유입니다.

@@ -1,4 +1,4 @@
-# 보이스뱅크 ERD
+# Movi ERD
 
 Voice-First Inclusive Banking · MVP 데이터 모델
 기준 문서: `MVP 기능명세서`, User Flow & Mockup

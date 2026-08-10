@@ -1,4 +1,4 @@
--- 보이스뱅크 (Voice-First Inclusive Banking) MVP 스키마
+-- Movi (Voice-First Inclusive Banking) MVP 스키마
 -- MySQL 8.0 / utf8mb4
 
 SET NAMES utf8mb4;

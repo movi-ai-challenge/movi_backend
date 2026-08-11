@@ -1,0 +1,109 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: movi-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      movi-blue:
+        condition: service_healthy
+      movi-green:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - movi-prod
+
+  movi-blue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: movi-backend:latest
+    container_name: movi-blue
+    expose:
+      - "8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - movi-prod
+
+  movi-green:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: movi-backend:latest
+    container_name: movi-green
+    expose:
+      - "8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      DB_URL: ${DB_URL}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - movi-prod
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: movi-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    depends_on:
+      movi-blue:
+        condition: service_healthy
+      movi-green:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - movi-prod
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: movi-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - movi-prod
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  movi-prod:
+    driver: bridge

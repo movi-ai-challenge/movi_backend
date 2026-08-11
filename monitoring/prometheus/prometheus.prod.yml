@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: movi-blue
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - movi-blue:8080
+
+  - job_name: movi-green
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - movi-green:8080

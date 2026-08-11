@@ -55,3 +55,5 @@ out/
 !*.yml.example
 # CI 워크플로는 인증정보가 없으므로 커밋 대상
 !.github/**/*.yml
+src/main/resources/application-secret.yml
+config/

@@ -15,7 +15,8 @@ LABEL authors="juhyuk"
 
 WORKDIR /app
 
-RUN addgroup -S movi && adduser -S movi -G movi
+RUN addgroup -S -g 10001 movi \
+    && adduser -S -D -H -u 10001 -G movi movi
 
 COPY --from=build --chown=movi:movi /workspace/build/libs/*.jar /app/app.jar
 

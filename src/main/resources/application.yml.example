@@ -32,3 +32,22 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+movi:
+  auth:
+    dev-mode: ${AUTH_DEV_MODE:false}
+    dev-user-id: ${AUTH_DEV_USER_ID:1}
+  kakao:
+    rest-api-key: ${KAKAO_REST_API_KEY}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+    redirect-uri: ${KAKAO_REDIRECT_URI}
+    secure-cookie: true
+  jwt:
+    issuer: movi-backend
+    secret: ${JWT_SECRET}
+    access-token-expiration: 30m
+    refresh-token-expiration: 14d
+    oauth-state-expiration: 5m
+  crypto:
+    encryption-key: ${DATA_ENCRYPTION_KEY}
+    hash-key: ${DATA_HASH_KEY}

@@ -11,13 +11,15 @@ CREATE TABLE users (
     user_id      BIGINT       NOT NULL AUTO_INCREMENT,
     name         VARCHAR(50)  NOT NULL,
     phone        VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
+    phone_hash   VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date   DATE         NULL,
     user_type    VARCHAR(30)  NOT NULL DEFAULT 'GENERAL' COMMENT 'SENIOR/VISUALLY_IMPAIRED/GENERAL',
     status       VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'  COMMENT 'ACTIVE/DORMANT/WITHDRAWN',
+    token_version BIGINT      NOT NULL DEFAULT 0 COMMENT '로그아웃 시 JWT 일괄 무효화 버전',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_users_phone (phone)
+    UNIQUE KEY uk_users_phone_hash (phone_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE oauth_accounts (

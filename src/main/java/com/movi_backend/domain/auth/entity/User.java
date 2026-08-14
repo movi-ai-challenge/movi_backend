@@ -39,6 +39,9 @@ public class User extends BaseTimeEntity {
     @Column(name = "phone", nullable = false, length = 255)
     private String phone;
 
+    @Column(name = "phone_hash", length = 64, unique = true)
+    private String phoneHash;
+
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
@@ -50,18 +53,24 @@ public class User extends BaseTimeEntity {
     @Column(name = "status", nullable = false, length = 20)
     private UserStatus status;
 
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion;
+
     @Builder
     private User(
             final String name,
             final String phone,
+            final String phoneHash,
             final LocalDate birthDate,
             final UserType userType
     ) {
         this.name = name;
         this.phone = phone;
+        this.phoneHash = phoneHash;
         this.birthDate = birthDate;
         this.userType = userType;
         this.status = UserStatus.ACTIVE;
+        this.tokenVersion = 0L;
     }
 
     public void changeUserType(final UserType userType) {
@@ -74,5 +83,9 @@ public class User extends BaseTimeEntity {
 
     public boolean isActive() {
         return this.status == UserStatus.ACTIVE;
+    }
+
+    public void invalidateTokens() {
+        this.tokenVersion++;
     }
 }

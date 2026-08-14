@@ -3,6 +3,8 @@ package com.movi_backend.domain.voice.entity;
 import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.voice.type.VoiceChannel;
+import com.movi_backend.domain.voice.type.VoiceIntent;
+import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,17 +21,40 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * 음성 대화 세션.
  *
- * <p>재질문으로 이어지는 멀티턴 대화의 단위다. 앞선 발화에서 추출한 슬롯을 이 세션에 보관한다.
+ * <p><b>백엔드가 슬롯의 단일 소유자다.</b> 앞선 발화에서 추출한 값을 여기에 보관하고,
+ * 만료·병합·폐기를 모두 이 엔티티가 책임진다. 프론트와 AI는 슬롯을 보관하지 않는다.
+ *
+ * <p>만료 정책 (docs/integration-spec.md 6.2절)
+ * <ul>
+ *   <li>일반 세션: 마지막 활동 후 5분</li>
+ *   <li>누락 슬롯 재질문: 마지막 재질문 후 60초</li>
+ *   <li>확인 대기: 확인 문장 생성 후 60초</li>
+ *   <li>같은 슬롯 재질문: 최대 3회</li>
+ * </ul>
+ *
+ * <p>만료된 슬롯은 <b>일부만 살리지 않고 전부 폐기</b>한다. 오래된 슬롯이 남아 있으면
+ * 엉뚱한 이체가 나가기 때문이다.
  */
 @Getter
 @Entity
 @Table(name = "voice_sessions")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class VoiceSession {
+
+    /** 마지막 활동 후 세션 유효시간(분) */
+    public static final int SESSION_TIMEOUT_MINUTES = 5;
+
+    /** 재질문·확인 대기 유효시간(초) */
+    public static final int PENDING_TIMEOUT_SECONDS = 60;
+
+    /** 같은 슬롯 재질문 허용 횟수 */
+    public static final int MAX_RETRY_COUNT = 3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -48,6 +73,27 @@ public class VoiceSession {
     @Column(name = "channel", nullable = false, length = 20)
     private VoiceChannel channel;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private VoiceSessionStatus status;
+
+    /** 재질문·확인 대기 중인 의도 */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pending_intent", length = 40)
+    private VoiceIntent pendingIntent;
+
+    /** 지금까지 채워진 슬롯. 예: {"recipient":"엄마","amount":null} */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "pending_slots")
+    private String pendingSlots;
+
+    /** 같은 슬롯을 다시 물어본 횟수 */
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount;
+
+    @Column(name = "expires_at", nullable = false)
+    private LocalDateTime expiresAt;
+
     @Column(name = "started_at", nullable = false)
     private LocalDateTime startedAt;
 
@@ -56,17 +102,81 @@ public class VoiceSession {
 
     @Builder
     private VoiceSession(final User user, final Device device, final VoiceChannel channel) {
+        final LocalDateTime now = LocalDateTime.now();
         this.user = user;
         this.device = device;
         this.channel = channel;
-        this.startedAt = LocalDateTime.now();
+        this.status = VoiceSessionStatus.ACTIVE;
+        this.retryCount = 0;
+        this.startedAt = now;
+        this.expiresAt = now.plusMinutes(SESSION_TIMEOUT_MINUTES);
     }
 
-    public void end(final LocalDateTime now) {
+    public boolean isExpired(final LocalDateTime now) {
+        return now.isAfter(this.expiresAt);
+    }
+
+    public boolean isClosed() {
+        return this.status.isClosed();
+    }
+
+    /** 재질문 횟수가 허용치를 넘었는지 여부 */
+    public boolean isRetryExceeded() {
+        return this.retryCount >= MAX_RETRY_COUNT;
+    }
+
+    /**
+     * 필수 슬롯이 비어 재질문한다. 채워진 슬롯을 보관하고 유효시간을 60초로 잡는다.
+     * 같은 슬롯을 다시 물어보는 것이므로 재질문 횟수를 올린다.
+     */
+    public void clarify(
+            final VoiceIntent intent,
+            final String pendingSlots,
+            final LocalDateTime now
+    ) {
+        this.status = VoiceSessionStatus.CLARIFYING;
+        this.pendingIntent = intent;
+        this.pendingSlots = pendingSlots;
+        this.retryCount++;
+        this.expiresAt = now.plusSeconds(PENDING_TIMEOUT_SECONDS);
+    }
+
+    /** 확인 문장을 읽어 주고 사용자 응답을 기다린다. */
+    public void awaitConfirmation(final String pendingSlots, final LocalDateTime now) {
+        this.status = VoiceSessionStatus.AWAITING_CONFIRMATION;
+        this.pendingSlots = pendingSlots;
+        this.retryCount = 0;
+        this.expiresAt = now.plusSeconds(PENDING_TIMEOUT_SECONDS);
+    }
+
+    /** 확인을 받아 이체 처리를 시작한다. 이 상태에서는 확인 발화를 다시 받지 않는다. */
+    public void startProcessing(final LocalDateTime now) {
+        this.status = VoiceSessionStatus.PROCESSING;
+        this.expiresAt = now.plusMinutes(SESSION_TIMEOUT_MINUTES);
+    }
+
+    public void complete(final LocalDateTime now) {
+        this.status = VoiceSessionStatus.COMPLETED;
+        clearSlots();
         this.endedAt = now;
     }
 
-    public boolean isEnded() {
-        return this.endedAt != null;
+    public void cancel(final LocalDateTime now) {
+        this.status = VoiceSessionStatus.CANCELED;
+        clearSlots();
+        this.endedAt = now;
+    }
+
+    public void expire(final LocalDateTime now) {
+        this.status = VoiceSessionStatus.EXPIRED;
+        clearSlots();
+        this.endedAt = now;
+    }
+
+    /** 슬롯을 전부 폐기한다. 일부만 살리지 않는다. */
+    private void clearSlots() {
+        this.pendingIntent = null;
+        this.pendingSlots = null;
+        this.retryCount = 0;
     }
 }

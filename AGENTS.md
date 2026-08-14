@@ -19,6 +19,9 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 
 | 문서 | 언제 |
 |---|---|
+| **[docs/integration-spec.md](docs/integration-spec.md)** | **파트 간 계약 — 충돌 시 최우선 기준** |
+| [docs/ai-api-contract.md](docs/ai-api-contract.md) | AI Voice·FDS 내부 API를 호출할 때 |
+| [docs/execution-plan.md](docs/execution-plan.md) | 오늘 무엇을 해야 하는지 |
 | [docs/ERD.md](docs/ERD.md) · [docs/schema.sql](docs/schema.sql) | 테이블·컬럼을 다룰 때 |
 | [docs/domain-guide.md](docs/domain-guide.md) | 도메인 로직·불변식·테스트를 쓸 때 |
 | [docs/error-codes.md](docs/error-codes.md) | 예외를 던질 때 |
@@ -49,9 +52,9 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 
 **돈이 움직이고, 사용자가 화면을 볼 수 없습니다.**
 
-1. **AI 추출 결과를 신뢰하지 않는다** — 음성 intent·entity는 AI 파트가 추출하지만 **필수값 검증과 실행 판단은 백엔드 책임**입니다. AI가 금액을 환각으로 채우거나 놓쳐도 이체 API에서 막혀야 합니다.
+1. **AI 추출 결과를 신뢰하지 않는다** — 음성 intent·entity는 AI 파트가 추출하지만 **필수값 검증과 실행 판단은 백엔드 책임**입니다. AI가 금액을 환각으로 채우거나 놓쳐도 이체 API에서 막혀야 합니다. **슬롯·확인 문장·세션은 백엔드가 단일 소유자**이며, AI와 프론트는 보관하지 않습니다.
 2. **이체는 멱등성이 필수** — 음성은 오인식·중복 발화가 잦습니다. `idempotency_key`로 중복을 차단합니다.
-3. **FDS 분기는 세 갈래** — `LOW→ALLOW` / `MEDIUM→ALLOW_WITH_ALERT` / `HIGH→BLOCK`. 보호자 승인 기능은 MVP에서 제외했고 알림만 받습니다. **FDS 평가에 실패하면 이체를 통과시키지 않습니다.**
+3. **FDS 분기는 세 갈래** — `LOW→ALLOW` / `MEDIUM→ALLOW_WITH_ALERT` / `HIGH→BLOCK`. 보호자 승인 기능은 MVP에서 제외했고 알림만 받습니다. **FDS 평가에 실패하면 이체를 통과시키지 않습니다**(타임아웃 3초, 자동 재시도 없음). 임계값은 AI가 정하며 백엔드가 재계산하지 않습니다.
 4. **민감정보는 암호화·마스킹** — 계좌번호·전화번호·토큰을 로그에 원문으로 남기지 않습니다. `toString()`에도 넣지 않습니다.
 5. **오류도 음성으로 안내된다** — 예외 메시지가 TTS로 읽힙니다. 스택 트레이스나 영문 기술 용어가 그대로 나가면 안 됩니다.
 
@@ -172,13 +175,30 @@ JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`), H2 in-memory (`applic
 
 ## Git
 
+### 이슈부터 판다
+
+**작업은 GitHub 이슈 생성으로 시작합니다.** 코드를 먼저 건드리지 않습니다.
+
+```
+이슈 생성 → develop에서 브랜치 → 작업 → PR(develop 대상) → 리뷰 → 머지 → 이슈 close
+```
+
+```bash
+gh issue create --title "feat: 잔액조회 API" --body "..."   # 1. 이슈
+git checkout develop && git pull
+git checkout -b feat/12-balance-api                          # 2. 이슈 번호 접두
+# 3. 작업 후 PR 본문에 "Closes #12"
+```
+
+이슈 본문에는 **무엇을·왜·완료 조건**을 적습니다. 완료 조건은 "무엇이 되면 done"인지 검증 가능한 기준이어야 합니다.
+
 ```
 main     — 배포 가능 상태
 develop  — 통합 브랜치
 feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
 ```
 
-- 작업 브랜치는 **`develop`에서 생성**하고 PR도 `develop` 대상으로 올립니다. `main`에 직접 커밋하지 않습니다.
+- PR은 `develop` 대상으로 올립니다. `main`에 직접 커밋하지 않습니다.
 - 커밋 메시지는 한국어로, 제목은 `<type>: <요약>` 형식입니다. 본문에는 **무엇을 했는지보다 왜 그렇게 했는지**를 씁니다.
 - **커밋 메시지에 AI 도구 co-author 트레일러를 넣지 않습니다.** (`Co-Authored-By: Claude`, `Co-Authored-By: Codex` 등)
 - 커밋 전 `git status`로 포함될 파일을 확인합니다. 설정 파일이나 시크릿이 섞이지 않았는지 봅니다.

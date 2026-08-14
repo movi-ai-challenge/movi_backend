@@ -139,11 +139,18 @@ CREATE TABLE voice_sessions (
     session_id BIGINT      NOT NULL AUTO_INCREMENT,
     user_id    BIGINT      NOT NULL,
     device_id  BIGINT      NULL,
-    channel    VARCHAR(20) NOT NULL DEFAULT 'APP' COMMENT 'APP/PHONE',
-    started_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ended_at   DATETIME    NULL,
+    channel        VARCHAR(20) NOT NULL DEFAULT 'APP' COMMENT 'APP/PHONE',
+    status         VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
+                   COMMENT 'ACTIVE/CLARIFYING/AWAITING_CONFIRMATION/PROCESSING/COMPLETED/CANCELED/EXPIRED',
+    pending_intent VARCHAR(40) NULL COMMENT '재질문·확인 대기 중인 의도',
+    pending_slots  JSON        NULL COMMENT '{"recipient":"엄마","amount":null}',
+    retry_count    INT         NOT NULL DEFAULT 0 COMMENT '같은 슬롯 재질문 횟수 (최대 3)',
+    expires_at     DATETIME    NOT NULL COMMENT '슬롯 만료 시각',
+    started_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at       DATETIME    NULL,
     PRIMARY KEY (session_id),
     KEY idx_vsession_user (user_id, started_at DESC),
+    KEY idx_vsession_status_exp (status, expires_at),
     CONSTRAINT fk_vsession_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_vsession_device FOREIGN KEY (device_id) REFERENCES devices (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

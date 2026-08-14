@@ -38,3 +38,14 @@ movi:
   auth:
     dev-mode: true
     dev-user-id: 1
+  kakao:
+    rest-api-key: 카카오_REST_API_키
+    client-secret: 카카오_Client_Secret_사용_시_입력
+    redirect-uri: http://localhost:8080/api/v1/auth/kakao/callback
+    secure-cookie: false
+  jwt:
+    secret: 32바이트_이상의_로컬_JWT_서명_키를_입력하세요
+  crypto:
+    # openssl rand -base64 32 로 각각 생성한다.
+    encryption-key: Base64_AES_키
+    hash-key: Base64_HMAC_키

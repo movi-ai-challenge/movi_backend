@@ -100,7 +100,7 @@ AI가 금액을 환각으로 채워 넣거나 놓쳐도 이체 API에서 막혀�
 
 ### 3. FDS 분기는 세 갈래
 
-```
+```text
 LOW    → ALLOW             → 이체 완료
 MEDIUM → ALLOW_WITH_ALERT  → 이체 완료 + 보호자 SMS 통보
 HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보
@@ -170,7 +170,7 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 
 **모든 작업은 GitHub 이슈 생성으로 시작합니다.** 브랜치를 먼저 만들지 않습니다.
 
-```
+```text
 이슈 생성 → develop에서 브랜치 → 작업 → PR(develop 대상) → 리뷰 → 머지 → 이슈 close
 ```
 
@@ -185,7 +185,7 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
    ```
 3. **PR 본문에 이슈 연결** — `Closes #12`를 적으면 머지 시 이슈가 자동으로 닫힙니다
 
-```
+```text
 main     — 배포 가능 상태
 develop  — 통합 브랜치. 기능 브랜치는 여기서 따고 여기로 병합한다
 feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
@@ -201,7 +201,7 @@ feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
 
   아래 형태는 모두 금지입니다.
 
-  ```
+  ```text
   Co-Authored-By: Claude <noreply@anthropic.com>
   Co-Authored-By: Codex <codex@openai.com>
   🤖 Generated with Claude Code

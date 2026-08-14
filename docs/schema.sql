@@ -163,7 +163,7 @@ CREATE TABLE voice_commands (
     stt_text       TEXT         NULL,
     stt_confidence DECIMAL(5,4) NULL,
     intent         VARCHAR(40)  NOT NULL DEFAULT 'UNKNOWN'
-                   COMMENT 'BALANCE/TRANSFER/HISTORY/GUARDIAN/SETTING/UNKNOWN',
+                   COMMENT 'BALANCE/TRANSFER/HISTORY/CONFIRM/CANCEL/UNKNOWN (GUARDIAN·SETTING은 예약값)',
     entities       JSON         NULL COMMENT '{"recipient":"엄마","amount":50000}',
     nlu_confidence DECIMAL(5,4) NULL,
     response_text  TEXT         NULL,

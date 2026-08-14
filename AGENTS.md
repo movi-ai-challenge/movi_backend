@@ -179,7 +179,7 @@ JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`), H2 in-memory (`applic
 
 **작업은 GitHub 이슈 생성으로 시작합니다.** 코드를 먼저 건드리지 않습니다.
 
-```
+```text
 이슈 생성 → develop에서 브랜치 → 작업 → PR(develop 대상) → 리뷰 → 머지 → 이슈 close
 ```
 
@@ -192,7 +192,7 @@ git checkout -b feat/12-balance-api                          # 2. 이슈 번호 
 
 이슈 본문에는 **무엇을·왜·완료 조건**을 적습니다. 완료 조건은 "무엇이 되면 done"인지 검증 가능한 기준이어야 합니다.
 
-```
+```text
 main     — 배포 가능 상태
 develop  — 통합 브랜치
 feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
@@ -206,7 +206,7 @@ feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
 
 커밋의 저자는 사람입니다. 아래 형태는 **모두 금지**입니다.
 
-```
+```text
 Co-Authored-By: Claude <noreply@anthropic.com>
 Co-Authored-By: Codex <codex@openai.com>
 🤖 Generated with Claude Code

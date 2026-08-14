@@ -303,21 +303,21 @@ erDiagram
 ## 3. 핵심 플로우 ↔ 테이블 매핑
 
 ### ① 인증 플로우
-```
+```text
 앱 시작 → 카카오 로그인      → oauth_accounts (provider_user_id 조회/생성) + users
         → PIN/생체인증       → user_credentials (pin_hash 검증, failed_attempts++)
         → (신규) 오픈뱅킹 연결 → openbanking_connections + accounts 벌크 등록
 ```
 
 ### ③④ 음성 명령 → 이체
-```
+```text
 홈(음성 대기)  → voice_sessions 생성
 발화           → voice_commands (stt_text, intent=TRANSFER, entities={수취인,금액})
 이체 정보 확인 → transfers INSERT (status=PENDING, idempotency_key)
 ```
 
 ### ⑤ FDS 위험도 분기
-```
+```text
 transfers.status = RISK_REVIEW
   → fds_assessments (Isolation Forest anomaly_score 산출)
      · 피처 소스: user_transfer_profiles + transactions + devices + voice_commands
@@ -335,7 +335,7 @@ transfers.status = RISK_REVIEW
 > `guardian_approvals` 테이블과 `transfers.status`의 `GUARDIAN_PENDING`은 삭제했습니다.
 
 ### 보호자 연결
-```
+```text
 연결 요청 → guardian_links (status=REQUESTED, invite_token 발급)
 SMS 발송  → notifications (channel=SMS, template_code=GUARDIAN_INVITE)
 수락      → guardian_links.status=ACTIVE, guardian_user_id 바인딩

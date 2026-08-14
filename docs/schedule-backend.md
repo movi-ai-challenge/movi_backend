@@ -1,5 +1,7 @@
 # 백엔드 개발 일정 (2026.08.10 ~ 08.31)
 
+> **상세 실행 기준**: 이 문서는 최초 담당 배분과 상위 마일스톤을 보존한다. 2026.08.14 이후의 파트 간 책임·API·정책은 [integration-spec.md](integration-spec.md), AI 내부 API는 [ai-api-contract.md](ai-api-contract.md), 일자별 완료 조건은 [execution-plan.md](execution-plan.md)를 우선한다.
+
 기준: MVP 기능명세서 / 백엔드 3인 (Jun · jjh · HANEUL MUN)
 총 3주 + 마감 버퍼 1일
 

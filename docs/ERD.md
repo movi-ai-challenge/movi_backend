@@ -189,6 +189,11 @@ erDiagram
         bigint user_id FK
         bigint device_id FK
         varchar channel "APP/PHONE"
+        varchar status "ACTIVE/CLARIFYING/AWAITING_CONFIRMATION/PROCESSING/COMPLETED/CANCELED/EXPIRED"
+        varchar pending_intent "대기 중인 의도"
+        json pending_slots "보관 슬롯"
+        int retry_count "재질문 횟수 (최대 3)"
+        datetime expires_at "슬롯 만료 시각"
         datetime started_at
         datetime ended_at
     }
@@ -200,7 +205,7 @@ erDiagram
         varchar audio_uri
         text stt_text
         decimal stt_confidence
-        varchar intent "BALANCE/TRANSFER/HISTORY/GUARDIAN/SETTING/UNKNOWN"
+        varchar intent "BALANCE/TRANSFER/HISTORY/CONFIRM/CANCEL/UNKNOWN"
         json entities
         decimal nlu_confidence
         text response_text

@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **파트 간 통합 계약은 [docs/integration-spec.md](docs/integration-spec.md)가 최우선 기준입니다.** 다른 문서와 충돌하면 이 문서를 따르세요. AI 내부 API 규격은 [docs/ai-api-contract.md](docs/ai-api-contract.md), 일자별 실행계획은 [docs/execution-plan.md](docs/execution-plan.md)에 있습니다.
+>
 > 도구 무관 공통 규약은 [AGENTS.md](AGENTS.md)에 있습니다. 특히 **이미 만들어진 공용 자산(엔티티 20개·에러코드·공통 응답·인증 컨텍스트)을 중복 생성하지 않도록** 해당 절을 먼저 확인하세요.
 >
 > 도메인별 상세 로직·불변식·테스트 작성 규칙은 [docs/domain-guide.md](docs/domain-guide.md)를 먼저 확인하세요.
@@ -164,7 +166,24 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 4. 테스트 — `./gradlew test`
 5. 스키마 변경 시 [docs/schema.sql](docs/schema.sql)과 [docs/ERD.md](docs/ERD.md)를 함께 갱신 (ERDCloud 임포트용 SQL도 같이)
 
-## 브랜치 · 커밋
+## 작업 흐름 — 이슈부터 판다
+
+**모든 작업은 GitHub 이슈 생성으로 시작합니다.** 브랜치를 먼저 만들지 않습니다.
+
+```
+이슈 생성 → develop에서 브랜치 → 작업 → PR(develop 대상) → 리뷰 → 머지 → 이슈 close
+```
+
+1. **이슈 생성** — 무엇을·왜·완료 조건을 적습니다. 완료 조건은 검증 가능해야 합니다
+   ```bash
+   gh issue create --title "feat: 잔액조회 API" --body "..."
+   ```
+2. **브랜치 생성** — 이슈 번호를 접두로 붙여 추적이 되게 합니다
+   ```bash
+   git checkout develop && git pull
+   git checkout -b feat/12-balance-api      # 12 = 이슈 번호
+   ```
+3. **PR 본문에 이슈 연결** — `Closes #12`를 적으면 머지 시 이슈가 자동으로 닫힙니다
 
 ```
 main     — 배포 가능 상태
@@ -172,9 +191,4 @@ develop  — 통합 브랜치. 기능 브랜치는 여기서 따고 여기로 �
 feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
 ```
 
-작업 브랜치는 **`develop`에서 생성**하고 PR도 `develop`을 대상으로 올립니다. `main`에 직접 커밋하지 않습니다.
-
-```bash
-git checkout develop && git pull
-git checkout -b feat/transfer-api
-```
+`main`에 직접 커밋하지 않습니다.

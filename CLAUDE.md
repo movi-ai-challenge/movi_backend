@@ -192,3 +192,20 @@ feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
 ```
 
 `main`에 직접 커밋하지 않습니다.
+
+### 커밋 메시지
+
+- 한국어로 쓰고, 제목은 `<type>: <요약>` 형식입니다
+- 본문에는 **무엇을 했는지보다 왜 그렇게 했는지**를 씁니다
+- **AI가 작성했다는 표시를 남기지 않습니다.** 커밋의 저자는 사람입니다
+
+  아래 형태는 모두 금지입니다.
+
+  ```
+  Co-Authored-By: Claude <noreply@anthropic.com>
+  Co-Authored-By: Codex <codex@openai.com>
+  🤖 Generated with Claude Code
+  ```
+
+  PR 본문·이슈·코드 주석에도 마찬가지로 남기지 않습니다.
+- 커밋 전 `git status`로 포함될 파일을 확인합니다. 설정 파일이나 시크릿이 섞이지 않았는지 봅니다

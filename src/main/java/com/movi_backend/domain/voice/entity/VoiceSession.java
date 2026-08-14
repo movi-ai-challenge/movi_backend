@@ -5,6 +5,8 @@ import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.voice.type.VoiceChannel;
 import com.movi_backend.domain.voice.type.VoiceIntent;
 import com.movi_backend.domain.voice.type.VoiceSessionStatus;
+import com.movi_backend.global.error.BusinessException;
+import com.movi_backend.global.error.ErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -112,8 +114,12 @@ public class VoiceSession {
         this.expiresAt = now.plusMinutes(SESSION_TIMEOUT_MINUTES);
     }
 
+    /**
+     * 만료 여부. 만료 시각과 <b>같은 순간도 만료로 본다</b> — 경계에서 슬롯이 살아남아
+     * 다음 발화에 섞이는 것을 막기 위해 보수적으로 판정한다.
+     */
     public boolean isExpired(final LocalDateTime now) {
-        return now.isAfter(this.expiresAt);
+        return !now.isBefore(this.expiresAt);
     }
 
     public boolean isClosed() {
@@ -134,43 +140,66 @@ public class VoiceSession {
             final String pendingSlots,
             final LocalDateTime now
     ) {
-        this.status = VoiceSessionStatus.CLARIFYING;
+        transitionTo(VoiceSessionStatus.CLARIFYING);
         this.pendingIntent = intent;
         this.pendingSlots = pendingSlots;
         this.retryCount++;
         this.expiresAt = now.plusSeconds(PENDING_TIMEOUT_SECONDS);
     }
 
-    /** 확인 문장을 읽어 주고 사용자 응답을 기다린다. */
-    public void awaitConfirmation(final String pendingSlots, final LocalDateTime now) {
-        this.status = VoiceSessionStatus.AWAITING_CONFIRMATION;
+    /**
+     * 확인 문장을 읽어 주고 사용자 응답을 기다린다.
+     *
+     * <p>{@code intent}를 함께 보관한다. 이어지는 발화는 {@code CONFIRM}/{@code CANCEL}이라
+     * 그 자체로는 무엇을 확정하는지 알 수 없기 때문이다.
+     */
+    public void awaitConfirmation(
+            final VoiceIntent intent,
+            final String pendingSlots,
+            final LocalDateTime now
+    ) {
+        transitionTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+        this.pendingIntent = intent;
         this.pendingSlots = pendingSlots;
         this.retryCount = 0;
         this.expiresAt = now.plusSeconds(PENDING_TIMEOUT_SECONDS);
     }
 
-    /** 확인을 받아 이체 처리를 시작한다. 이 상태에서는 확인 발화를 다시 받지 않는다. */
+    /**
+     * 확인을 받아 이체 처리를 시작한다. 확인 대기 상태에서만 진입할 수 있고,
+     * 이 상태에서는 확인 발화를 다시 받지 않는다.
+     */
     public void startProcessing(final LocalDateTime now) {
-        this.status = VoiceSessionStatus.PROCESSING;
+        transitionTo(VoiceSessionStatus.PROCESSING);
         this.expiresAt = now.plusMinutes(SESSION_TIMEOUT_MINUTES);
     }
 
     public void complete(final LocalDateTime now) {
-        this.status = VoiceSessionStatus.COMPLETED;
+        transitionTo(VoiceSessionStatus.COMPLETED);
         clearSlots();
         this.endedAt = now;
     }
 
     public void cancel(final LocalDateTime now) {
-        this.status = VoiceSessionStatus.CANCELED;
+        transitionTo(VoiceSessionStatus.CANCELED);
         clearSlots();
         this.endedAt = now;
     }
 
     public void expire(final LocalDateTime now) {
-        this.status = VoiceSessionStatus.EXPIRED;
+        transitionTo(VoiceSessionStatus.EXPIRED);
         clearSlots();
         this.endedAt = now;
+    }
+
+    private void transitionTo(final VoiceSessionStatus next) {
+        if (!this.status.canTransitionTo(next)) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_SESSION_STATE,
+                    "%s -> %s".formatted(this.status, next)
+            );
+        }
+        this.status = next;
     }
 
     /** 슬롯을 전부 폐기한다. 일부만 살리지 않는다. */

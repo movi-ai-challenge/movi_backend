@@ -105,6 +105,8 @@ public enum ErrorCode {
             "시간이 좀 지났어요. 처음부터 다시 말씀해 주세요."),
     RETRY_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "VOICE_4006", "음성 인식 재시도 횟수를 초과했습니다.",
             "음성 인식이 잘 안 되네요. 잠시 후 다시 시도해 주세요."),
+    INVALID_SESSION_STATE(HttpStatus.BAD_REQUEST, "VOICE_4007", "처리할 수 없는 음성 세션 상태입니다.",
+            "지금은 처리할 수 없어요. 처음부터 다시 말씀해 주세요."),
     VOICE_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "VOICE_4040", "음성 세션을 찾을 수 없습니다.",
             "처음부터 다시 말씀해 주세요."),
     STT_FAILED(HttpStatus.BAD_GATEWAY, "VOICE_5000", "음성 인식에 실패했습니다.",

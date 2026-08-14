@@ -57,7 +57,7 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
 ### `transfer` — 이체·거래내역
 
 - **상태 전이** (역방향 금지)
-  ```
+  ```text
   PENDING → RISK_REVIEW → COMPLETED
                         → BLOCKED
             → FAILED / CANCELED
@@ -89,7 +89,7 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   만료 시 **슬롯을 전부 폐기한다. 일부만 살리지 않는다.** 3회를 넘기면 세션을 종료하고 `VOICE_4006`을 반환한다.
 
 - **세션 상태 전이** (`VoiceSessionStatus`)
-  ```
+  ```text
   ACTIVE ─┬─ CLARIFYING
           ├─ AWAITING_CONFIRMATION ─┬─ PROCESSING → COMPLETED
           │                         └─ CANCELED
@@ -99,13 +99,22 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
 
 - **확인 정보 불변성** — `AWAITING_CONFIRMATION` 이후 금액·출금계좌·수취인이 바뀌면 기존 `confirmationId`와 `idempotencyKey`를 폐기하고 확인 문장을 새로 만든다
 - `stt_confidence`는 FDS 피처로 전달된다 — 인식 신뢰도가 낮은 이체는 위험 신호
-- **신뢰도 기준** — `0.80` 이상만 진행, `0.60~0.80`은 전체 발화 재요청, `0.60` 미만은 `VOICE_4004`. 개별 슬롯 confidence가 `0.80` 미만이면 그 슬롯을 누락으로 처리한다
+- **신뢰도 기준** — 구간은 서로 겹치지 않는다
+
+  | 구간 | 처리 |
+  |---|---|
+  | `0.80` 이상 | 다음 백엔드 검증으로 진행 |
+  | `0.60` 이상 `0.80` 미만 | 자동 실행하지 않고 전체 발화 재요청 |
+  | `0.60` 미만 또는 null | `VOICE_4004`로 재발화 요청 |
+
+  `sttConfidence`와 `nluConfidence` 중 하나라도 기준 미만이면 더 낮은 구간을 따른다.
+  개별 슬롯 confidence가 `0.80` 미만이면 그 슬롯을 누락으로 처리한다.
 
 ### `fds` — 이상거래 탐지
 
 - Isolation Forest 기반. 모델·추론 API는 AI 파트 제공, 백엔드는 호출과 판정 반영을 담당
 - **분기**
-  ```
+  ```text
   LOW    → ALLOW             → 이체 완료
   MEDIUM → ALLOW_WITH_ALERT  → 이체 완료 + 보호자 SMS 통보
   HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보

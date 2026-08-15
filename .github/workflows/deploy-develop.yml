@@ -17,8 +17,8 @@ env:
   DOCKER_IMAGE_NAME: ${{ secrets.DEV_DOCKER_IMAGE_NAME }}
   CONTAINER_NAME: ${{ secrets.DEV_CONTAINER_NAME }}
   EC2_HOST: ${{ secrets.EC2_HOST }}
-  EC2_SSH_USER: ec2-user
-  EC2_DEPLOY_PATH: /home/ec2-user/movi
+  EC2_SSH_USER: ubuntu
+  EC2_DEPLOY_PATH: /home/ubuntu/movi
   HOST_PORT: "8080"
   CONTAINER_PORT: "8080"
 

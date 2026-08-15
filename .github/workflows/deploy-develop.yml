@@ -76,27 +76,21 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Prepare production configuration
+      - name: Encode production configuration
         env:
           APPLICATION_PROD_YML: ${{ secrets.DEV_APPLICATION }}
         run: |
-          install -d -m 700 deploy
-          printf '%s' "$APPLICATION_PROD_YML" > deploy/application-prod.yml
-          chmod 600 deploy/application-prod.yml
-          test -s deploy/application-prod.yml
-
-      - name: Copy production configuration to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ env.EC2_HOST }}
-          username: ${{ env.EC2_SSH_USER }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: deploy/application-prod.yml
-          target: ${{ env.EC2_DEPLOY_PATH }}
+          if [ -z "$APPLICATION_PROD_YML" ]; then
+            echo "DEV_APPLICATION 시크릿이 비어 있습니다." >&2
+            exit 1
+          fi
+          echo "CONFIG_B64=$(printf '%s' "$APPLICATION_PROD_YML" | base64 -w0)" \
+            >> "$GITHUB_ENV"
 
       - name: Deploy Docker container to EC2
         uses: appleboy/ssh-action@v1.2.0
         env:
+          CONFIG_B64: ${{ env.CONFIG_B64 }}
           CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
           CONTAINER_PORT: ${{ env.CONTAINER_PORT }}
           DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
@@ -109,23 +103,22 @@ jobs:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_SSH_USER }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          envs: CONTAINER_NAME,CONTAINER_PORT,DOCKER_HUB_TOKEN,DOCKER_IMAGE_NAME,DOCKER_USERNAME,EC2_DEPLOY_PATH,GIT_COMMIT_SHA,HOST_PORT
+          envs: CONFIG_B64,CONTAINER_NAME,CONTAINER_PORT,DOCKER_HUB_TOKEN,DOCKER_IMAGE_NAME,DOCKER_USERNAME,EC2_DEPLOY_PATH,GIT_COMMIT_SHA,HOST_PORT
           command_timeout: 10m
           script: |
             set -eu
 
             IMAGE_REFERENCE="${DOCKER_IMAGE_NAME}:${GIT_COMMIT_SHA}"
-            UPLOADED_CONFIG_PATH="${EC2_DEPLOY_PATH}/deploy/application-prod.yml"
             CONFIG_DIRECTORY="${EC2_DEPLOY_PATH}/config"
             CONFIG_PATH="${CONFIG_DIRECTORY}/application-prod.yml"
             BACKUP_CONTAINER_NAME="${CONTAINER_NAME}-rollback"
 
-            test -s "$UPLOADED_CONFIG_PATH"
             sudo install --directory --mode 700 --owner 10001 --group 10001 \
               "$CONFIG_DIRECTORY"
-            sudo install --mode 400 --owner 10001 --group 10001 \
-              "$UPLOADED_CONFIG_PATH" "$CONFIG_PATH"
-            rm --force "$UPLOADED_CONFIG_PATH"
+            printf '%s' "$CONFIG_B64" | base64 -d | sudo tee "$CONFIG_PATH" > /dev/null
+            sudo chown 10001:10001 "$CONFIG_PATH"
+            sudo chmod 400 "$CONFIG_PATH"
+            sudo test -s "$CONFIG_PATH"
 
             echo "$DOCKER_HUB_TOKEN" | sudo docker login \
               --username "$DOCKER_USERNAME" \

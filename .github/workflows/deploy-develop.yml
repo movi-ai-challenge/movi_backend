@@ -80,10 +80,10 @@ jobs:
         env:
           APPLICATION_PROD_YML: ${{ secrets.DEV_APPLICATION }}
         run: |
-          install -d -m 700 .deploy
-          printf '%s' "$APPLICATION_PROD_YML" > .deploy/application-prod.yml
-          chmod 600 .deploy/application-prod.yml
-          test -s .deploy/application-prod.yml
+          install -d -m 700 deploy
+          printf '%s' "$APPLICATION_PROD_YML" > deploy/application-prod.yml
+          chmod 600 deploy/application-prod.yml
+          test -s deploy/application-prod.yml
 
       - name: Copy production configuration to EC2
         uses: appleboy/scp-action@v0.1.7
@@ -91,7 +91,7 @@ jobs:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_SSH_USER }}
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          source: .deploy/application-prod.yml
+          source: deploy/application-prod.yml
           target: ${{ env.EC2_DEPLOY_PATH }}
 
       - name: Deploy Docker container to EC2
@@ -115,7 +115,7 @@ jobs:
             set -eu
 
             IMAGE_REFERENCE="${DOCKER_IMAGE_NAME}:${GIT_COMMIT_SHA}"
-            UPLOADED_CONFIG_PATH="${EC2_DEPLOY_PATH}/.deploy/application-prod.yml"
+            UPLOADED_CONFIG_PATH="${EC2_DEPLOY_PATH}/deploy/application-prod.yml"
             CONFIG_DIRECTORY="${EC2_DEPLOY_PATH}/config"
             CONFIG_PATH="${CONFIG_DIRECTORY}/application-prod.yml"
             BACKUP_CONTAINER_NAME="${CONTAINER_NAME}-rollback"

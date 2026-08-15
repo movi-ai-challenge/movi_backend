@@ -19,7 +19,7 @@ env:
   EC2_HOST: ${{ secrets.EC2_HOST }}
   EC2_SSH_USER: ec2-user
   EC2_DEPLOY_PATH: /home/ec2-user/movi
-  HOST_PORT: "8089"
+  HOST_PORT: "8080"
   CONTAINER_PORT: "8080"
 
 jobs:

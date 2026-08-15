@@ -113,8 +113,11 @@ jobs:
             CONFIG_PATH="${CONFIG_DIRECTORY}/application-prod.yml"
             BACKUP_CONTAINER_NAME="${CONTAINER_NAME}-rollback"
 
-            sudo install --directory --mode 700 --owner 10001 --group 10001 \
-              "$CONFIG_DIRECTORY"
+            # install --owner 는 시스템에 등록된 사용자만 받는다.
+            # uid 10001 은 컨테이너 내부 계정이라 호스트에 없으므로 chown 을 쓴다.
+            sudo mkdir -p "$CONFIG_DIRECTORY"
+            sudo chown 10001:10001 "$CONFIG_DIRECTORY"
+            sudo chmod 700 "$CONFIG_DIRECTORY"
             printf '%s' "$CONFIG_B64" | base64 -d | sudo tee "$CONFIG_PATH" > /dev/null
             sudo chown 10001:10001 "$CONFIG_PATH"
             sudo chmod 400 "$CONFIG_PATH"

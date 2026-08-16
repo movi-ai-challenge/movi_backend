@@ -27,14 +27,19 @@ public class BalanceInquiryService {
     @Transactional
     public BalanceResponse inquire(final Long userId, final String accountAlias) {
         final Account account = findAccount(userId, accountAlias);
+        final BalanceSnapshot balanceSnapshot = refresh(userId, account);
+        return BalanceResponse.of(account, balanceSnapshot);
+    }
+
+    @Transactional
+    public BalanceSnapshot refresh(final Long userId, final Account account) {
         validateAccount(account, userId);
 
         final OpenbankingConnection connection = account.getConnection();
         validateConnection(connection, userId);
 
         final BalanceInquiryResult inquiryResult = inquireBalance(account, connection);
-        final BalanceSnapshot balanceSnapshot = saveSnapshot(account, inquiryResult);
-        return BalanceResponse.of(account, balanceSnapshot);
+        return saveSnapshot(account, inquiryResult);
     }
 
     private Account findAccount(final Long userId, final String accountAlias) {

@@ -1,8 +1,7 @@
 package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
-import com.movi_backend.domain.account.entity.OpenbankingConnection;
-import com.movi_backend.domain.account.repository.BalanceSnapshotRepository;
+import com.movi_backend.domain.account.application.BalanceInquiryService;
 import com.movi_backend.domain.fds.client.FdsAssessmentClient;
 import com.movi_backend.domain.fds.client.FdsAssessmentResponseValidator;
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentRequest;
@@ -57,7 +56,7 @@ public class TransferExecutionService {
 
     private final TransferRepository transferRepository;
     private final TransactionRepository transactionRepository;
-    private final BalanceSnapshotRepository balanceSnapshotRepository;
+    private final BalanceInquiryService balanceInquiryService;
     private final UserTransferProfileRepository userTransferProfileRepository;
     private final FdsAssessmentRepository fdsAssessmentRepository;
     private final FdsAssessmentClient fdsAssessmentClient;
@@ -88,8 +87,10 @@ public class TransferExecutionService {
             return resolveExisting(existingTransfer.get());
         }
 
-        validateConnection(command.fromAccount().getConnection());
-        final BalanceSnapshot balanceSnapshot = findLatestBalance(command.fromAccount().getId());
+        final BalanceSnapshot balanceSnapshot = balanceInquiryService.refresh(
+                command.user().getId(),
+                command.fromAccount()
+        );
         if (balanceSnapshot.getAvailableAmount() < command.amount()) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
         }
@@ -189,20 +190,6 @@ public class TransferExecutionService {
     private FdsAssessment findAssessment(final Long transferId) {
         return fdsAssessmentRepository.findByTransferId(transferId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ASSESSMENT_FAILED));
-    }
-
-    private void validateConnection(final OpenbankingConnection connection) {
-        if (connection == null) {
-            throw new BusinessException(ErrorCode.CONNECTION_NOT_FOUND);
-        }
-        if (!connection.isUsable(LocalDateTime.now())) {
-            throw new BusinessException(ErrorCode.CONNECTION_EXPIRED);
-        }
-    }
-
-    private BalanceSnapshot findLatestBalance(final Long accountId) {
-        return balanceSnapshotRepository.findTopByAccountIdOrderByFetchedAtDesc(accountId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.BALANCE_INQUIRY_FAILED));
     }
 
     private Transfer createTransfer(final ConfirmedTransferCommand command) {

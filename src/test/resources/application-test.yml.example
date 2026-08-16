@@ -29,3 +29,8 @@ movi:
   auth:
     dev-mode: true
     dev-user-id: 1
+  voice:
+    client-type: mock
+    base-url: http://localhost:8000
+    connect-timeout: 1s
+    response-timeout: 10s

@@ -210,6 +210,66 @@ class VoiceCommandServiceTest {
     }
 
     @Test
+    @DisplayName("확인 대기 중 취소 발화를 처리하면 슬롯을 폐기하고 세션을 취소한다")
+    void 확인_대기_중_취소_발화를_처리하면_슬롯을_폐기하고_세션을_취소한다()
+            throws Exception {
+        // given
+        final ObjectMapper objectMapper = new ObjectMapper();
+        final VoiceSession session = createSession();
+        session.awaitConfirmation(
+                VoiceIntent.TRANSFER,
+                objectMapper.writeValueAsString(PendingTransferSlots.awaitingConfirmation(
+                        50_000L,
+                        "엄마",
+                        null,
+                        8L,
+                        12L,
+                        "confirmation-123"
+                )),
+                LocalDateTime.now()
+        );
+        final VoiceAnalysisResponse analysis = VoiceAnalysisResponse.of(
+                "voice-125",
+                SESSION_ID,
+                "아니 취소할게",
+                HIGH_CONFIDENCE,
+                VoiceIntent.CANCEL,
+                HIGH_CONFIDENCE,
+                VoiceEntities.transfer(null, null, null),
+                VoiceEntityConfidences.transfer(null, null, null),
+                List.of(),
+                80
+        );
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class))).willReturn(analysis);
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(
+                USER_ID,
+                SESSION_ID,
+                createAudio()
+        );
+
+        // then
+        assertThat(response.state()).isEqualTo(VoiceSessionStatus.CANCELED);
+        assertThat(response.intent()).isEqualTo(VoiceIntent.CANCEL);
+        assertThat(response.toVoiceMessage()).isEqualTo("송금을 취소했어요.");
+        assertThat(session.getPendingSlots()).isNull();
+        assertThat(session.getPendingIntent()).isNull();
+        assertThat(session.getEndedAt()).isNotNull();
+        then(transferValidationService).shouldHaveNoInteractions();
+
+        final ArgumentCaptor<VoiceCommand> commandCaptor =
+                ArgumentCaptor.forClass(VoiceCommand.class);
+        then(voiceCommandRepository).should().save(commandCaptor.capture());
+        assertThat(commandCaptor.getValue().getIntent()).isEqualTo(VoiceIntent.CANCEL);
+        assertThat(commandCaptor.getValue().getResponseText()).isEqualTo("송금을 취소했어요.");
+    }
+
+    @Test
     @DisplayName("다른 사용자의 세션에 명령을 보내면 접근 권한 예외가 발생한다")
     void 다른_사용자의_세션에_명령을_보내면_접근_권한_예외가_발생한다() {
         // given

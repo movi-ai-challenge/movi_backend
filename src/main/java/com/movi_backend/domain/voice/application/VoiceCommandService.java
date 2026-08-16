@@ -72,6 +72,9 @@ public class VoiceCommandService {
 
         final PendingTransferSlots previousSlots = readPendingSlots(session);
         final VoiceAnalysisResponse analysis = analyze(audio, session, previousSlots);
+        if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
+            return processConfirmationResponse(session, analysis, now);
+        }
         validateIntent(analysis.intent());
 
         final TransferCommandRequest commandRequest = createCommandRequest(
@@ -141,7 +144,8 @@ public class VoiceCommandService {
             throw new BusinessException(ErrorCode.SLOT_EXPIRED);
         }
         if (session.getStatus() != VoiceSessionStatus.ACTIVE
-                && session.getStatus() != VoiceSessionStatus.CLARIFYING) {
+                && session.getStatus() != VoiceSessionStatus.CLARIFYING
+                && session.getStatus() != VoiceSessionStatus.AWAITING_CONFIRMATION) {
             throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
         }
         if (session.isRetryExceeded()) {
@@ -183,6 +187,22 @@ public class VoiceCommandService {
         if (intent != VoiceIntent.TRANSFER) {
             throw new BusinessException(ErrorCode.INTENT_UNKNOWN);
         }
+    }
+
+    private VoiceCommandResponse processConfirmationResponse(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final LocalDateTime now
+    ) {
+        if (analysis.intent() != VoiceIntent.CANCEL) {
+            throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
+        }
+        final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
+        session.cancel(now);
+        final VoiceCommandResponse response = VoiceCommandResponse.canceled(session);
+        voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
+        voiceCommandRepository.save(voiceCommand);
+        return response;
     }
 
     private TransferCommandRequest createCommandRequest(
@@ -371,7 +391,8 @@ public class VoiceCommandService {
     }
 
     private PendingTransferSlots readPendingSlots(final VoiceSession session) {
-        if (session.getStatus() != VoiceSessionStatus.CLARIFYING) {
+        if (session.getStatus() != VoiceSessionStatus.CLARIFYING
+                && session.getStatus() != VoiceSessionStatus.AWAITING_CONFIRMATION) {
             return null;
         }
         if (session.getPendingSlots() == null || session.getPendingSlots().isBlank()) {

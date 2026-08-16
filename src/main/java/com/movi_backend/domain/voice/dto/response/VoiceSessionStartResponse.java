@@ -10,6 +10,7 @@ public record VoiceSessionStartResponse(
         LocalDateTime expiresAt
 ) {
 
+    /** 저장된 음성 세션을 외부 응답 모델로 변환한다. */
     public static VoiceSessionStartResponse from(final VoiceSession voiceSession) {
         return new VoiceSessionStartResponse(
                 voiceSession.getId(),

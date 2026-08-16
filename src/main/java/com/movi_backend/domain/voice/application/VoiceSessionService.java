@@ -19,6 +19,12 @@ public class VoiceSessionService {
     private final EntityManager entityManager;
     private final VoiceSessionRepository voiceSessionRepository;
 
+    /**
+     * 인증된 사용자의 앱 음성 세션을 생성한다.
+     *
+     * @param userId 세션을 소유할 사용자 ID
+     * @return 생성된 세션의 공개 정보
+     */
     @Transactional
     public VoiceSessionStartResponse start(final Long userId) {
         final User user = findUser(userId);
@@ -30,6 +36,7 @@ public class VoiceSessionService {
         return VoiceSessionStartResponse.from(savedSession);
     }
 
+    /** 사용자 ID에 해당하는 엔티티를 조회하고 존재하지 않으면 음성 안내 가능한 예외를 던진다. */
     private User findUser(final Long userId) {
         final User user = entityManager.find(User.class, userId);
         if (user == null) {

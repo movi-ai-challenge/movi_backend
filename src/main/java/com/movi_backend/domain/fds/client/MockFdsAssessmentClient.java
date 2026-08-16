@@ -6,6 +6,7 @@ import com.movi_backend.domain.fds.client.dto.FdsScores;
 import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -58,7 +59,7 @@ public class MockFdsAssessmentClient implements FdsAssessmentClient {
                     request,
                     riskLevel,
                     new BigDecimal("0.65"),
-                    List.of("NEW_RECIPIENT")
+                    determineMediumReasonCodes(request)
             );
         }
         return responseOf(
@@ -85,5 +86,22 @@ public class MockFdsAssessmentClient implements FdsAssessmentClient {
                 reasonCodes,
                 1
         );
+    }
+
+    private List<String> determineMediumReasonCodes(final FdsAssessmentRequest request) {
+        final List<String> reasonCodes = new ArrayList<>();
+        if (request.recipient().firstTime()) {
+            reasonCodes.add("NEW_RECIPIENT");
+        }
+        if (request.profile().coldStart()) {
+            reasonCodes.add("COLD_START");
+        }
+        if (!request.context().trustedDevice()) {
+            reasonCodes.add("NEW_DEVICE");
+        }
+        if (request.amount().compareTo(MEDIUM_AMOUNT) > 0) {
+            reasonCodes.add("HIGH_AMOUNT");
+        }
+        return List.copyOf(reasonCodes);
     }
 }

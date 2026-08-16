@@ -15,12 +15,14 @@ import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import java.net.SocketTimeoutException;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 class HttpFdsAssessmentClientTest {
@@ -93,6 +95,37 @@ class HttpFdsAssessmentClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.ASSESSMENT_FAILED);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("FDS API 응답이 시간 초과되면 위험도 평가 시간 초과 예외가 발생한다")
+    void FDS_API_응답이_시간_초과되면_위험도_평가_시간_초과_예외가_발생한다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder()
+                .baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(
+                builder.build(),
+                new FdsAssessmentResponseValidator()
+        );
+        final FdsAssessmentRequest request = FdsClientFixture.normalRequest();
+        server.expect(once(), requestTo("http://localhost:8000/internal/v1/fraud/predict"))
+                .andRespond(ignored -> {
+                    throw new ResourceAccessException(
+                            "FDS 응답 시간 초과",
+                            new SocketTimeoutException("read timed out")
+                    );
+                });
+
+        // when
+        final Throwable thrown = catchThrowable(() -> client.assess(request));
+
+        // then
+        assertThat(thrown)
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ASSESSMENT_TIMEOUT);
         server.verify();
     }
 }

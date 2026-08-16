@@ -10,6 +10,7 @@ import com.movi_backend.domain.fds.client.dto.FdsRecipientFeature;
 import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +49,64 @@ class MockFdsAssessmentClientTest {
         // then
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
         assertThat(response.decision()).isEqualTo(FdsDecision.ALLOW_WITH_ALERT);
+        assertThat(response.reasonCodes()).containsExactly("NEW_RECIPIENT", "COLD_START");
+    }
+
+    @Test
+    @DisplayName("기존 수취인의 초기 프로필을 평가하면 COLD_START 사유를 반환한다")
+    void 기존_수취인의_초기_프로필을_평가하면_COLD_START_사유를_반환한다() {
+        // given
+        final FdsAssessmentRequest request = FdsClientFixture.requestOf(
+                new BigDecimal("50000"),
+                FdsRecipientFeature.of(5, false),
+                FdsProfileFeature.coldStartProfile(),
+                FdsContextFeature.of(true, new BigDecimal("0.93"))
+        );
+
+        // when
+        final FdsAssessmentResponse response = client.assess(request);
+
+        // then
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
+        assertThat(response.reasonCodes()).containsExactly("COLD_START");
+    }
+
+    @Test
+    @DisplayName("비신뢰 기기의 이체를 평가하면 NEW_DEVICE 사유를 반환한다")
+    void 비신뢰_기기의_이체를_평가하면_NEW_DEVICE_사유를_반환한다() {
+        // given
+        final FdsAssessmentRequest request = FdsClientFixture.requestOf(
+                new BigDecimal("50000"),
+                FdsRecipientFeature.of(5, false),
+                existingProfile(),
+                FdsContextFeature.of(false, new BigDecimal("0.93"))
+        );
+
+        // when
+        final FdsAssessmentResponse response = client.assess(request);
+
+        // then
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
+        assertThat(response.reasonCodes()).containsExactly("NEW_DEVICE");
+    }
+
+    @Test
+    @DisplayName("십만 원 초과 이체를 평가하면 HIGH_AMOUNT 사유를 반환한다")
+    void 십만_원_초과_이체를_평가하면_HIGH_AMOUNT_사유를_반환한다() {
+        // given
+        final FdsAssessmentRequest request = FdsClientFixture.requestOf(
+                new BigDecimal("100001"),
+                FdsRecipientFeature.of(5, false),
+                existingProfile(),
+                FdsContextFeature.of(true, new BigDecimal("0.93"))
+        );
+
+        // when
+        final FdsAssessmentResponse response = client.assess(request);
+
+        // then
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
+        assertThat(response.reasonCodes()).containsExactly("HIGH_AMOUNT");
     }
 
     @Test
@@ -67,5 +126,16 @@ class MockFdsAssessmentClientTest {
         // then
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.HIGH);
         assertThat(response.decision()).isEqualTo(FdsDecision.BLOCK);
+    }
+
+    private FdsProfileFeature existingProfile() {
+        return FdsProfileFeature.of(
+                new BigDecimal("42000"),
+                new BigDecimal("100000"),
+                new BigDecimal("11000"),
+                8,
+                3,
+                List.of(9, 12, 18)
+        );
     }
 }

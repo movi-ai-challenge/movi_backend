@@ -76,6 +76,13 @@ public record FdsProfileFeature(
             final List<Integer> commonHours
     ) {
         if (!coldStart) {
+            if (averageAmount30d == null
+                    || maximumAmount30d == null
+                    || stddevAmount30d == null) {
+                throw new IllegalArgumentException(
+                        "비초기 사용자 프로필은 집계 금액이 필요합니다."
+                );
+            }
             return;
         }
         if (averageAmount30d != null || maximumAmount30d != null || stddevAmount30d != null

@@ -1,11 +1,15 @@
 package com.movi_backend.domain.voice.dto.response;
 
 import com.movi_backend.domain.account.entity.Account;
+import com.movi_backend.domain.fds.type.RiskLevel;
+import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
 import com.movi_backend.domain.transfer.type.TransferSlot;
+import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.domain.voice.entity.VoiceSession;
 import com.movi_backend.domain.voice.type.VoiceIntent;
 import com.movi_backend.domain.voice.type.VoiceSessionStatus;
+import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.util.KoreanMoneyFormatter;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,7 +23,11 @@ public record VoiceCommandResponse(
         FromAccount fromAccount,
         Recipient recipient,
         Long amount,
-        LocalDateTime expiresAt
+        LocalDateTime expiresAt,
+        Long transferId,
+        TransferStatus status,
+        RiskLevel riskLevel,
+        LocalDateTime completedAt
 ) {
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
@@ -47,7 +55,11 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                session.getExpiresAt()
+                session.getExpiresAt(),
+                null,
+                null,
+                null,
+                null
         );
     }
 
@@ -67,7 +79,11 @@ public record VoiceCommandResponse(
                 FromAccount.from(account),
                 Recipient.from(transferRecipient),
                 amount,
-                session.getExpiresAt()
+                session.getExpiresAt(),
+                null,
+                null,
+                null,
+                null
         );
     }
 
@@ -81,13 +97,48 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                session.getExpiresAt()
+                session.getExpiresAt(),
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public static VoiceCommandResponse executed(final TransferExecutionResult result) {
+        return new VoiceCommandResponse(
+                null,
+                VoiceSessionStatus.COMPLETED,
+                VoiceIntent.CONFIRM,
+                List.of(),
+                null,
+                null,
+                Recipient.named(result.recipientName()),
+                result.amount(),
+                null,
+                result.transferId(),
+                result.status(),
+                result.riskLevel(),
+                result.completedAt()
         );
     }
 
     public String toVoiceMessage() {
         if (this.state == VoiceSessionStatus.CANCELED) {
             return CANCELED_MESSAGE;
+        }
+        if (this.status == TransferStatus.COMPLETED) {
+            final String formattedAmount = KoreanMoneyFormatter.format(this.amount);
+            return "%s 님에게 %s을 보냈어요.".formatted(
+                    this.recipientNameForResult(),
+                    formattedAmount
+            );
+        }
+        if (this.status == TransferStatus.BLOCKED) {
+            return ErrorCode.HIGH_RISK_BLOCKED.getVoiceMessage();
+        }
+        if (this.status == TransferStatus.FAILED) {
+            return ErrorCode.TRANSFER_EXECUTION_FAILED.getVoiceMessage();
         }
         if (this.state == VoiceSessionStatus.CLARIFYING) {
             if (this.missingSlots.contains(TransferSlot.RECIPIENT)) {
@@ -102,6 +153,13 @@ public record VoiceCommandResponse(
                 this.recipient.holderName(),
                 formattedAmount
         );
+    }
+
+    private String recipientNameForResult() {
+        if (this.recipient != null) {
+            return this.recipient.holderName();
+        }
+        return "받는 분";
     }
 
     public record FromAccount(Long accountId, String alias, String bankName) {
@@ -127,6 +185,10 @@ public record VoiceCommandResponse(
                     recipient.getHolderName(),
                     recipient.getBankCode()
             );
+        }
+
+        public static Recipient named(final String holderName) {
+            return new Recipient(null, holderName, null);
         }
     }
 }

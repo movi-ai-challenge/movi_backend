@@ -87,7 +87,11 @@ class VoiceSessionControllerTest {
                 null,
                 null,
                 null,
-                expiresAt
+                expiresAt,
+                null,
+                null,
+                null,
+                null
         );
         final org.springframework.mock.web.MockMultipartFile audio =
                 new org.springframework.mock.web.MockMultipartFile(
@@ -99,7 +103,8 @@ class VoiceSessionControllerTest {
         given(voiceCommandService.process(
                 org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.eq(sessionId),
-                org.mockito.ArgumentMatchers.any()
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.isNull()
         )).willReturn(response);
         final CurrentUserArgumentResolver resolver = new CurrentUserArgumentResolver(
                 new AuthProperties(true, 1L)

@@ -11,11 +11,17 @@ import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.type.UserType;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
+import com.movi_backend.domain.transfer.application.TransferExecutionService;
+import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
 import com.movi_backend.domain.transfer.application.model.TransferClarification;
+import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.application.model.ValidatedTransferCommand;
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
+import com.movi_backend.domain.transfer.type.TransferStatus;
+import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.voice.application.model.PendingTransferSlots;
 import com.movi_backend.domain.voice.client.VoiceAnalysisClient;
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisRequest;
@@ -38,6 +44,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,7 +75,13 @@ class VoiceCommandServiceTest {
     private TransferValidationService transferValidationService;
 
     @Mock
+    private TransferExecutionService transferExecutionService;
+
+    @Mock
     private AccountRepository accountRepository;
+
+    @Mock
+    private TransferRecipientRepository transferRecipientRepository;
 
     @Mock
     private Account account;
@@ -172,7 +185,9 @@ class VoiceCommandServiceTest {
                 voiceCommandRepository,
                 voiceAnalysisClient,
                 transferValidationService,
+                transferExecutionService,
                 accountRepository,
+                transferRecipientRepository,
                 objectMapper
         );
 
@@ -270,6 +285,77 @@ class VoiceCommandServiceTest {
     }
 
     @Test
+    @DisplayName("확인 대기 중 확인 발화를 처리하면 멱등성 키로 이체를 실행하고 세션을 완료한다")
+    void 확인_대기_중_확인_발화를_처리하면_멱등성_키로_이체를_실행하고_세션을_완료한다()
+            throws Exception {
+        // given
+        final ObjectMapper objectMapper = new ObjectMapper();
+        final VoiceSession session = createSession();
+        session.awaitConfirmation(
+                VoiceIntent.TRANSFER,
+                objectMapper.writeValueAsString(PendingTransferSlots.awaitingConfirmation(
+                        50_000L,
+                        "엄마",
+                        null,
+                        8L,
+                        12L,
+                        "confirmation-123"
+                )),
+                LocalDateTime.now()
+        );
+        final VoiceAnalysisResponse analysis = VoiceAnalysisResponse.of(
+                "voice-126",
+                SESSION_ID,
+                "응 보내줘",
+                HIGH_CONFIDENCE,
+                VoiceIntent.CONFIRM,
+                HIGH_CONFIDENCE,
+                VoiceEntities.transfer(null, null, null),
+                VoiceEntityConfidences.transfer(null, null, null),
+                List.of(),
+                75
+        );
+        final String idempotencyKey = UUID.randomUUID().toString();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(transferExecutionService.findCompletedResult(USER_ID, idempotencyKey))
+                .willReturn(Optional.empty());
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class))).willReturn(analysis);
+        given(accountRepository.findById(12L)).willReturn(Optional.of(account));
+        given(account.getUser()).willReturn(session.getUser());
+        given(account.isActive()).willReturn(true);
+        given(transferRecipientRepository.findById(8L)).willReturn(Optional.of(recipient));
+        given(recipient.getUser()).willReturn(session.getUser());
+        given(voiceCommandRepository.saveAndFlush(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(transferExecutionService.execute(any(ConfirmedTransferCommand.class)))
+                .willReturn(new TransferExecutionResult(
+                        101L,
+                        TransferStatus.COMPLETED,
+                        RiskLevel.LOW,
+                        50_000L,
+                        "김영희",
+                        LocalDateTime.now()
+                ));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(
+                USER_ID,
+                SESSION_ID,
+                createAudio(),
+                idempotencyKey
+        );
+
+        // then
+        assertThat(response.transferId()).isEqualTo(101L);
+        assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(response.toVoiceMessage()).isEqualTo("김영희 님에게 5만원을 보냈어요.");
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
+        assertThat(session.getPendingSlots()).isNull();
+        then(transferExecutionService).should().execute(any(ConfirmedTransferCommand.class));
+    }
+
+    @Test
     @DisplayName("다른 사용자의 세션에 명령을 보내면 접근 권한 예외가 발생한다")
     void 다른_사용자의_세션에_명령을_보내면_접근_권한_예외가_발생한다() {
         // given
@@ -340,7 +426,9 @@ class VoiceCommandServiceTest {
                 voiceCommandRepository,
                 voiceAnalysisClient,
                 transferValidationService,
+                transferExecutionService,
                 accountRepository,
+                transferRecipientRepository,
                 new ObjectMapper()
         );
     }

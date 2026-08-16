@@ -33,6 +33,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -40,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TransferExecutionService {
 
     private static final int COLD_START_TRANSFER_COUNT = 3;
@@ -82,7 +85,7 @@ public class TransferExecutionService {
         }
 
         final Transfer transfer = createTransfer(command);
-        transferRepository.saveAndFlush(transfer);
+        saveTransfer(transfer);
         transfer.startRiskReview();
 
         final FdsAssessmentRequest request = createAssessmentRequest(
@@ -98,7 +101,7 @@ public class TransferExecutionService {
 
         if (response.decision() == FdsDecision.BLOCK) {
             transfer.block("고위험 거래");
-            transferRiskAlertPort.send(transfer, assessment);
+            sendRiskAlert(transfer, assessment);
             return TransferExecutionResult.of(transfer, assessment);
         }
 
@@ -109,9 +112,28 @@ public class TransferExecutionService {
         transfer.complete(completedAt);
         command.recipient().recordTransfer(completedAt);
         if (response.decision().requiresGuardianAlert()) {
-            transferRiskAlertPort.send(transfer, assessment);
+            sendRiskAlert(transfer, assessment);
         }
         return TransferExecutionResult.of(transfer, assessment);
+    }
+
+    private void saveTransfer(final Transfer transfer) {
+        try {
+            transferRepository.saveAndFlush(transfer);
+        } catch (final DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.DUPLICATE_TRANSFER);
+        }
+    }
+
+    private void sendRiskAlert(
+            final Transfer transfer,
+            final FdsAssessment assessment
+    ) {
+        try {
+            transferRiskAlertPort.send(transfer, assessment);
+        } catch (final RuntimeException exception) {
+            log.warn("보호자 위험 알림 요청 실패: transferId={}", transfer.getId());
+        }
     }
 
     private TransferExecutionResult resolveExisting(final Transfer transfer) {

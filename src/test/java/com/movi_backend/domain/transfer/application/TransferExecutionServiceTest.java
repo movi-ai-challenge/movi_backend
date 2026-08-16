@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
@@ -42,6 +44,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -187,6 +190,107 @@ class TransferExecutionServiceTest {
         assertThat(result.transferId()).isEqualTo(TRANSFER_ID);
         assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
         then(fdsAssessmentClient).shouldHaveNoInteractions();
+        then(transferExecutionPort).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("동시 요청이 멱등성 키 UNIQUE와 충돌하면 중복 이체 예외가 발생한다")
+    void 동시_요청이_멱등성_키_UNIQUE와_충돌하면_중복_이체_예외가_발생한다() {
+        // given
+        final String idempotencyKey = UUID.randomUUID().toString();
+        given(user.getId()).willReturn(USER_ID);
+        given(account.getId()).willReturn(ACCOUNT_ID);
+        given(account.getConnection()).willReturn(connection);
+        given(connection.isUsable(any())).willReturn(true);
+        given(recipient.getBankCode()).willReturn("088");
+        given(recipient.getAccountNum()).willReturn("encrypted-account");
+        given(recipient.getHolderName()).willReturn("김영희");
+        given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
+        given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
+                .willReturn(Optional.empty());
+        given(balanceSnapshotRepository.findTopByAccountIdOrderByFetchedAtDesc(ACCOUNT_ID))
+                .willReturn(Optional.of(balanceSnapshot));
+        given(transferRepository.saveAndFlush(any(Transfer.class)))
+                .willThrow(new DataIntegrityViolationException("unique constraint"));
+        final ConfirmedTransferCommand command = ConfirmedTransferCommand.of(
+                user,
+                account,
+                recipient,
+                voiceCommand,
+                device,
+                50_000L,
+                idempotencyKey,
+                new BigDecimal("0.95")
+        );
+        final TransferExecutionService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.execute(command))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATE_TRANSFER);
+        then(fdsAssessmentClient).shouldHaveNoInteractions();
+        then(transferExecutionPort).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("오픈뱅킹 실행이 실패하면 이체를 실패 상태로 남긴다")
+    void 오픈뱅킹_실행이_실패하면_이체를_실패_상태로_남긴다() {
+        // given
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        willThrow(new BusinessException(ErrorCode.TRANSFER_EXECUTION_FAILED))
+                .given(transferExecutionPort)
+                .execute(any(Transfer.class));
+        final TransferExecutionService service = createService();
+
+        // when
+        final TransferExecutionResult result = service.execute(command);
+
+        // then
+        assertThat(result.status()).isEqualTo(TransferStatus.FAILED);
+        assertThat(result.completedAt()).isNull();
+        then(recipient).should(never()).recordTransfer(any());
+    }
+
+    @Test
+    @DisplayName("중위험 알림 요청이 실패해도 완료된 이체 상태를 유지한다")
+    void 중위험_알림_요청이_실패해도_완료된_이체_상태를_유지한다() {
+        // given
+        final ConfirmedTransferCommand command = givenCommand(150_000L);
+        givenFdsResponse(RiskLevel.MEDIUM);
+        givenAssessmentSaved();
+        willThrow(new RuntimeException("알림 제공자 장애"))
+                .given(transferRiskAlertPort)
+                .send(any(Transfer.class), any(FdsAssessment.class));
+        final TransferExecutionService service = createService();
+
+        // when
+        final TransferExecutionResult result = service.execute(command);
+
+        // then
+        assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
+        then(transferExecutionPort).should().execute(any(Transfer.class));
+    }
+
+    @Test
+    @DisplayName("고위험 알림 요청이 실패해도 차단된 이체 상태를 유지한다")
+    void 고위험_알림_요청이_실패해도_차단된_이체_상태를_유지한다() {
+        // given
+        final ConfirmedTransferCommand command = givenCommand(800_000L);
+        givenFdsResponse(RiskLevel.HIGH);
+        givenAssessmentSaved();
+        willThrow(new RuntimeException("알림 제공자 장애"))
+                .given(transferRiskAlertPort)
+                .send(any(Transfer.class), any(FdsAssessment.class));
+        final TransferExecutionService service = createService();
+
+        // when
+        final TransferExecutionResult result = service.execute(command);
+
+        // then
+        assertThat(result.status()).isEqualTo(TransferStatus.BLOCKED);
         then(transferExecutionPort).shouldHaveNoInteractions();
     }
 

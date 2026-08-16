@@ -19,6 +19,7 @@ public class VoiceSessionController {
 
     private final VoiceSessionService voiceSessionService;
 
+    /** 인증된 사용자의 음성 세션을 시작하고 첫 음성 안내를 반환한다. */
     @PostMapping
     public ApiResponse<VoiceSessionStartResponse> start(
             @CurrentUser final AuthUser authUser

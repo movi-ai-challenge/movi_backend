@@ -5,12 +5,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.movi_backend.domain.transfer.type.TransferSlot;
+import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.domain.voice.application.VoiceSessionService;
+import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
 import com.movi_backend.domain.voice.dto.response.VoiceSessionStartResponse;
+import com.movi_backend.domain.voice.type.VoiceIntent;
 import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.global.security.AuthProperties;
 import com.movi_backend.global.security.CurrentUserArgumentResolver;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +30,9 @@ class VoiceSessionControllerTest {
 
     @Mock
     private VoiceSessionService voiceSessionService;
+
+    @Mock
+    private VoiceCommandService voiceCommandService;
 
     @Test
     @DisplayName("음성 세션 시작을 요청하면 세션 정보와 음성 안내를 반환한다")
@@ -42,7 +50,10 @@ class VoiceSessionControllerTest {
                 new AuthProperties(true, 1L)
         );
         final MockMvc mockMvc = MockMvcBuilders
-                .standaloneSetup(new VoiceSessionController(voiceSessionService))
+                .standaloneSetup(new VoiceSessionController(
+                        voiceSessionService,
+                        voiceCommandService
+                ))
                 .setCustomArgumentResolvers(resolver)
                 .build();
 
@@ -58,5 +69,63 @@ class VoiceSessionControllerTest {
                 .andExpect(jsonPath("$.data.voiceSessionId").value(15L))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.expiresAt").value("2026-08-16T21:30:00"));
+    }
+
+    @Test
+    @DisplayName("음성 명령을 보내면 재질문 정보와 음성 안내를 반환한다")
+    void 음성_명령을_보내면_재질문_정보와_음성_안내를_반환한다() throws Exception {
+        // given
+        final Long userId = 3L;
+        final Long sessionId = 15L;
+        final LocalDateTime expiresAt = LocalDateTime.of(2026, 8, 16, 21, 31);
+        final VoiceCommandResponse response = new VoiceCommandResponse(
+                sessionId,
+                VoiceSessionStatus.CLARIFYING,
+                VoiceIntent.TRANSFER,
+                List.of(TransferSlot.AMOUNT),
+                null,
+                null,
+                null,
+                null,
+                expiresAt
+        );
+        final org.springframework.mock.web.MockMultipartFile audio =
+                new org.springframework.mock.web.MockMultipartFile(
+                        "audio",
+                        "voice.webm",
+                        "audio/webm",
+                        new byte[]{1, 2, 3}
+                );
+        given(voiceCommandService.process(
+                org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq(sessionId),
+                org.mockito.ArgumentMatchers.any()
+        )).willReturn(response);
+        final CurrentUserArgumentResolver resolver = new CurrentUserArgumentResolver(
+                new AuthProperties(true, 1L)
+        );
+        final MockMvc mockMvc = MockMvcBuilders
+                .standaloneSetup(new VoiceSessionController(
+                        voiceSessionService,
+                        voiceCommandService
+                ))
+                .setCustomArgumentResolvers(resolver)
+                .build();
+
+        // when
+        final ResultActions result = mockMvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/voice/sessions/{voiceSessionId}/commands", sessionId)
+                        .file(audio)
+                        .header("X-Dev-User-Id", userId)
+        );
+
+        // then
+        result
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"))
+                .andExpect(jsonPath("$.voiceMessage").value("얼마를 보내시겠어요?"))
+                .andExpect(jsonPath("$.data.state").value("CLARIFYING"))
+                .andExpect(jsonPath("$.data.missingSlots[0]").value("AMOUNT"));
     }
 }

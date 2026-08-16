@@ -10,6 +10,7 @@ import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.util.SensitiveTextMasker;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +36,7 @@ public class TransferValidationService {
             final TransferCommandRequest command
     ) {
         validateOverallConfidence(command);
+        validateDirectAccountNumber(command);
 
         final List<TransferSlot> missingSlots = findMissingSlots(command);
         if (!missingSlots.isEmpty()) {
@@ -48,6 +50,15 @@ public class TransferValidationService {
                 recipient,
                 normalizeOptional(command.sourceAccountAlias())
         );
+    }
+
+    private void validateDirectAccountNumber(final TransferCommandRequest command) {
+        if (SensitiveTextMasker.containsSensitiveNumber(command.recipient())) {
+            throw new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND);
+        }
+        if (SensitiveTextMasker.containsSensitiveNumber(command.sourceAccountAlias())) {
+            throw new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND);
+        }
     }
 
     private void validateOverallConfidence(final TransferCommandRequest command) {

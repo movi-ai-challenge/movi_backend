@@ -44,7 +44,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             final HttpStatusCode status,
             final WebRequest request
     ) {
-        log.warn("요청 값 검증 실패: {}", exception.getMessage());
+        final java.util.List<String> invalidFields = exception.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(fieldError -> fieldError.getField())
+                .distinct()
+                .toList();
+        log.warn("요청 값 검증 실패: fields={}", invalidFields);
         return toObjectResponse(ErrorCode.BAD_REQUEST);
     }
 

@@ -97,7 +97,7 @@ class VoiceCommandServiceTest {
         final VoiceAnalysisResponse analysis = VoiceAnalysisResponse.of(
                 "voice-123",
                 SESSION_ID,
-                "엄마한테 보내줘",
+                "엄마 계좌 110-123-123456으로 보내줘",
                 HIGH_CONFIDENCE,
                 VoiceIntent.TRANSFER,
                 HIGH_CONFIDENCE,
@@ -136,6 +136,9 @@ class VoiceCommandServiceTest {
         then(voiceCommandRepository).should().save(commandCaptor.capture());
         assertThat(commandCaptor.getValue().getStatus().name()).isEqualTo("CLARIFY");
         assertThat(commandCaptor.getValue().getProcessingMs()).isEqualTo(120);
+        assertThat(commandCaptor.getValue().getSttText())
+                .isEqualTo("엄마 계좌 ***3456으로 보내줘");
+        assertThat(commandCaptor.getValue().getSttText()).doesNotContain("110-123-123456");
     }
 
     @Test

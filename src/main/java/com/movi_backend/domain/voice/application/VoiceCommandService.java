@@ -29,6 +29,7 @@ import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.domain.voice.type.VoiceSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.util.SensitiveTextMasker;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -433,12 +434,23 @@ public class VoiceCommandService {
         return VoiceCommand.builder()
                 .session(session)
                 .user(session.getUser())
-                .sttText(analysis.transcript())
+                .sttText(SensitiveTextMasker.mask(analysis.transcript()))
                 .sttConfidence(analysis.sttConfidence())
                 .intent(analysis.intent())
-                .entities(writeJson(analysis.entities()))
+                .entities(writeJson(maskEntities(analysis.entities())))
                 .nluConfidence(analysis.intentConfidence())
                 .build();
+    }
+
+    private VoiceEntities maskEntities(final VoiceEntities entities) {
+        return new VoiceEntities(
+                entities.amount(),
+                SensitiveTextMasker.mask(entities.recipient()),
+                SensitiveTextMasker.mask(entities.sourceAccountAlias()),
+                entities.bankName(),
+                entities.startDate(),
+                entities.endDate()
+        );
     }
 
     private VoiceCommandResponse clarify(

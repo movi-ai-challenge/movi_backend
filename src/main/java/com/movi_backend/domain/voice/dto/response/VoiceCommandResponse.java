@@ -24,6 +24,7 @@ public record VoiceCommandResponse(
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
     private static final String AMOUNT_QUESTION = "얼마를 보내시겠어요?";
+    private static final String CANCELED_MESSAGE = "송금을 취소했어요.";
 
     public VoiceCommandResponse {
         if (missingSlots == null) {
@@ -70,7 +71,24 @@ public record VoiceCommandResponse(
         );
     }
 
+    public static VoiceCommandResponse canceled(final VoiceSession session) {
+        return new VoiceCommandResponse(
+                session.getId(),
+                session.getStatus(),
+                VoiceIntent.CANCEL,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                session.getExpiresAt()
+        );
+    }
+
     public String toVoiceMessage() {
+        if (this.state == VoiceSessionStatus.CANCELED) {
+            return CANCELED_MESSAGE;
+        }
         if (this.state == VoiceSessionStatus.CLARIFYING) {
             if (this.missingSlots.contains(TransferSlot.RECIPIENT)) {
                 return RECIPIENT_QUESTION;

@@ -17,11 +17,11 @@ public class VoiceAnalysisResponseValidator {
 
     public VoiceAnalysisResponse validate(
             final VoiceAnalysisRequest request,
-            final VoiceAnalysisResponse response
+        final VoiceAnalysisResponse response
     ) {
         validateRequiredFields(request, response);
-        validateConfidence(response.sttConfidence());
-        validateConfidence(response.intentConfidence());
+        validateRequiredConfidence(response.sttConfidence());
+        validateRequiredConfidence(response.intentConfidence());
         validateEntityConfidences(response.entityConfidences());
         validateProcessingTime(response.processingMs());
         return response;
@@ -61,6 +61,13 @@ public class VoiceAnalysisResponseValidator {
         validateConfidence(confidences.bankName());
         validateConfidence(confidences.startDate());
         validateConfidence(confidences.endDate());
+    }
+
+    private void validateRequiredConfidence(final BigDecimal confidence) {
+        if (confidence == null) {
+            throw invalidResponse("confidence 누락");
+        }
+        validateConfidence(confidence);
     }
 
     private void validateConfidence(final BigDecimal confidence) {

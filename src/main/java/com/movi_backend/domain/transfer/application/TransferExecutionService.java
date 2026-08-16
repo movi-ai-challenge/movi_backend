@@ -2,6 +2,7 @@ package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
 import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.fds.client.FdsAssessmentClient;
 import com.movi_backend.domain.fds.client.FdsAssessmentResponseValidator;
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentRequest;
@@ -28,6 +29,8 @@ import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -57,6 +60,7 @@ public class TransferExecutionService {
     private final TransferRepository transferRepository;
     private final TransactionRepository transactionRepository;
     private final BalanceInquiryService balanceInquiryService;
+    private final EntityManager entityManager;
     private final UserTransferProfileRepository userTransferProfileRepository;
     private final FdsAssessmentRepository fdsAssessmentRepository;
     private final FdsAssessmentClient fdsAssessmentClient;
@@ -87,6 +91,7 @@ public class TransferExecutionService {
             return resolveExisting(existingTransfer.get());
         }
 
+        lockUser(command.user().getId());
         final BalanceSnapshot balanceSnapshot = balanceInquiryService.refresh(
                 command.user().getId(),
                 command.fromAccount()
@@ -128,6 +133,17 @@ public class TransferExecutionService {
             sendRiskAlert(transfer, assessment);
         }
         return TransferExecutionResult.of(transfer, assessment);
+    }
+
+    private void lockUser(final Long userId) {
+        final User lockedUser = entityManager.find(
+                User.class,
+                userId,
+                LockModeType.PESSIMISTIC_WRITE
+        );
+        if (lockedUser == null) {
+            throw new BusinessException(ErrorCode.USER_NOT_FOUND);
+        }
     }
 
     private void validateDailyLimit(final ConfirmedTransferCommand command) {

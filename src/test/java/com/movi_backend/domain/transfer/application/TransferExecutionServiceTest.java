@@ -37,6 +37,8 @@ import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.domain.voice.entity.VoiceCommand;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +62,7 @@ class TransferExecutionServiceTest {
     @Mock private TransferRepository transferRepository;
     @Mock private TransactionRepository transactionRepository;
     @Mock private BalanceInquiryService balanceInquiryService;
+    @Mock private EntityManager entityManager;
     @Mock private UserTransferProfileRepository userTransferProfileRepository;
     @Mock private FdsAssessmentRepository fdsAssessmentRepository;
     @Mock private FdsAssessmentClient fdsAssessmentClient;
@@ -89,6 +92,7 @@ class TransferExecutionServiceTest {
         assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
         assertThat(result.riskLevel()).isEqualTo(RiskLevel.LOW);
         assertThat(result.completedAt()).isNotNull();
+        then(entityManager).should().find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE);
         then(balanceInquiryService).should().refresh(USER_ID, account);
         then(transferExecutionPort).should().execute(any(Transfer.class));
         then(transferRiskAlertPort).shouldHaveNoInteractions();
@@ -210,6 +214,8 @@ class TransferExecutionServiceTest {
         // given
         final String idempotencyKey = UUID.randomUUID().toString();
         given(user.getId()).willReturn(USER_ID);
+        given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
+                .willReturn(user);
         given(recipient.getBankCode()).willReturn("088");
         given(recipient.getAccountNum()).willReturn("encrypted-account");
         given(recipient.getHolderName()).willReturn("김영희");
@@ -253,6 +259,8 @@ class TransferExecutionServiceTest {
         // given
         final String idempotencyKey = UUID.randomUUID().toString();
         given(user.getId()).willReturn(USER_ID);
+        given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
+                .willReturn(user);
         given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
         given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
                 .willReturn(Optional.empty());
@@ -291,6 +299,8 @@ class TransferExecutionServiceTest {
         // given
         final String idempotencyKey = UUID.randomUUID().toString();
         given(user.getId()).willReturn(USER_ID);
+        given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
+                .willReturn(user);
         given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
                 .willReturn(Optional.empty());
         given(balanceInquiryService.refresh(USER_ID, account)).willReturn(balanceSnapshot);
@@ -381,6 +391,8 @@ class TransferExecutionServiceTest {
     private ConfirmedTransferCommand givenCommand(final long amount) {
         final String idempotencyKey = UUID.randomUUID().toString();
         given(user.getId()).willReturn(USER_ID);
+        given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
+                .willReturn(user);
         given(recipient.getBankCode()).willReturn("088");
         given(recipient.getAccountNum()).willReturn("encrypted-account");
         given(recipient.getHolderName()).willReturn("김영희");
@@ -470,6 +482,7 @@ class TransferExecutionServiceTest {
                 transferRepository,
                 transactionRepository,
                 balanceInquiryService,
+                entityManager,
                 userTransferProfileRepository,
                 fdsAssessmentRepository,
                 fdsAssessmentClient,

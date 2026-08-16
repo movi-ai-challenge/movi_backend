@@ -29,3 +29,5 @@ movi:
   auth:
     dev-mode: true
     dev-user-id: 1
+  fds:
+    client-type: mock

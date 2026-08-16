@@ -58,6 +58,7 @@ public class VoiceCommandService {
     );
 
     private final VoiceSessionRepository voiceSessionRepository;
+    private final VoiceSessionExpirationService voiceSessionExpirationService;
     private final VoiceCommandRepository voiceCommandRepository;
     private final VoiceAnalysisClient voiceAnalysisClient;
     private final TransferValidationService transferValidationService;
@@ -180,9 +181,7 @@ public class VoiceCommandService {
 
     private void validateSession(final VoiceSession session, final LocalDateTime now) {
         if (session.isExpired(now)) {
-            if (!session.isClosed()) {
-                session.expire(now);
-            }
+            voiceSessionExpirationService.expire(session.getId(), now);
             throw new BusinessException(ErrorCode.SLOT_EXPIRED);
         }
         if (session.getStatus() != VoiceSessionStatus.ACTIVE
@@ -191,7 +190,7 @@ public class VoiceCommandService {
             throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
         }
         if (session.isRetryExceeded()) {
-            session.expire(now);
+            voiceSessionExpirationService.expire(session.getId(), now);
             throw new BusinessException(ErrorCode.RETRY_LIMIT_EXCEEDED);
         }
     }

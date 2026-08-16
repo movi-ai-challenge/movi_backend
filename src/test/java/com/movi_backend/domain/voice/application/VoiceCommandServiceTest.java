@@ -185,6 +185,7 @@ class VoiceCommandServiceTest {
                 .willAnswer(invocation -> invocation.getArgument(0));
         final VoiceCommandService service = new VoiceCommandService(
                 voiceSessionRepository,
+                new VoiceSessionExpirationService(voiceSessionRepository),
                 voiceCommandRepository,
                 voiceAnalysisClient,
                 transferValidationService,
@@ -423,9 +424,36 @@ class VoiceCommandServiceTest {
         then(voiceAnalysisClient).shouldHaveNoInteractions();
     }
 
+    @Test
+    @DisplayName("재질문 횟수를 초과한 세션에 발화하면 슬롯을 폐기하고 세션을 만료한다")
+    void 재질문_횟수를_초과한_세션에_발화하면_슬롯을_폐기하고_세션을_만료한다()
+            throws Exception {
+        // given
+        final ObjectMapper objectMapper = new ObjectMapper();
+        final VoiceSession session = createSession();
+        final String pendingSlots = objectMapper.writeValueAsString(
+                PendingTransferSlots.clarifying(null, "엄마", null)
+        );
+        session.clarify(VoiceIntent.TRANSFER, pendingSlots, LocalDateTime.now());
+        session.clarify(VoiceIntent.TRANSFER, pendingSlots, LocalDateTime.now());
+        session.clarify(VoiceIntent.TRANSFER, pendingSlots, LocalDateTime.now());
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, createAudio()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RETRY_LIMIT_EXCEEDED);
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.EXPIRED);
+        assertThat(session.getPendingSlots()).isNull();
+        then(voiceAnalysisClient).shouldHaveNoInteractions();
+    }
+
     private VoiceCommandService createService() {
         return new VoiceCommandService(
                 voiceSessionRepository,
+                new VoiceSessionExpirationService(voiceSessionRepository),
                 voiceCommandRepository,
                 voiceAnalysisClient,
                 transferValidationService,

@@ -17,6 +17,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -34,7 +35,13 @@ import lombok.NoArgsConstructor;
  */
 @Getter
 @Entity
-@Table(name = "transfers")
+@Table(
+        name = "transfers",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_transfer_idem",
+                columnNames = "idempotency_key"
+        )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Transfer {
 

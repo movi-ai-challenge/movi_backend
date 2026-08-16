@@ -19,11 +19,18 @@ import com.movi_backend.domain.transfer.application.model.ConfirmedTransferComma
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.application.port.TransferExecutionPort;
 import com.movi_backend.domain.transfer.application.port.TransferRiskAlertPort;
+import com.movi_backend.domain.transfer.config.TransferProperties;
+import com.movi_backend.domain.transfer.entity.Transaction;
 import com.movi_backend.domain.transfer.entity.Transfer;
+import com.movi_backend.domain.transfer.repository.TransactionRepository;
 import com.movi_backend.domain.transfer.repository.TransferRepository;
+import com.movi_backend.domain.transfer.type.TransactionSource;
+import com.movi_backend.domain.transfer.type.TransactionType;
+import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
@@ -46,8 +53,10 @@ import tools.jackson.databind.ObjectMapper;
 public class TransferExecutionService {
 
     private static final int COLD_START_TRANSFER_COUNT = 3;
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Seoul");
 
     private final TransferRepository transferRepository;
+    private final TransactionRepository transactionRepository;
     private final BalanceSnapshotRepository balanceSnapshotRepository;
     private final UserTransferProfileRepository userTransferProfileRepository;
     private final FdsAssessmentRepository fdsAssessmentRepository;
@@ -55,6 +64,7 @@ public class TransferExecutionService {
     private final FdsAssessmentResponseValidator responseValidator;
     private final TransferExecutionPort transferExecutionPort;
     private final TransferRiskAlertPort transferRiskAlertPort;
+    private final TransferProperties transferProperties;
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)
@@ -83,6 +93,7 @@ public class TransferExecutionService {
         if (balanceSnapshot.getAvailableAmount() < command.amount()) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
         }
+        validateDailyLimit(command);
 
         final Transfer transfer = createTransfer(command);
         saveTransfer(transfer);
@@ -111,10 +122,42 @@ public class TransferExecutionService {
         final LocalDateTime completedAt = LocalDateTime.now();
         transfer.complete(completedAt);
         command.recipient().recordTransfer(completedAt);
+        saveTransaction(command, balanceSnapshot, completedAt);
         if (response.decision().requiresGuardianAlert()) {
             sendRiskAlert(transfer, assessment);
         }
         return TransferExecutionResult.of(transfer, assessment);
+    }
+
+    private void validateDailyLimit(final ConfirmedTransferCommand command) {
+        final LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        final long completedAmount = transferRepository.sumAmountByUserAndStatusBetween(
+                command.user().getId(),
+                TransferStatus.COMPLETED,
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay()
+        );
+        if (completedAmount > transferProperties.dailyLimit() - command.amount()) {
+            throw new BusinessException(ErrorCode.DAILY_LIMIT_EXCEEDED);
+        }
+    }
+
+    private void saveTransaction(
+            final ConfirmedTransferCommand command,
+            final BalanceSnapshot balanceSnapshot,
+            final LocalDateTime completedAt
+    ) {
+        final Transaction transaction = Transaction.builder()
+                .account(command.fromAccount())
+                .tranType(TransactionType.OUT)
+                .amount(command.amount())
+                .balanceAfter(balanceSnapshot.getAvailableAmount() - command.amount())
+                .counterpartyName(command.recipient().getHolderName())
+                .counterpartyAccount(command.recipient().getAccountNum())
+                .tranDatetime(completedAt)
+                .source(TransactionSource.INTERNAL)
+                .build();
+        transactionRepository.save(transaction);
     }
 
     private void saveTransfer(final Transfer transfer) {

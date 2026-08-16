@@ -28,8 +28,11 @@ import com.movi_backend.domain.transfer.application.model.ConfirmedTransferComma
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.application.port.TransferExecutionPort;
 import com.movi_backend.domain.transfer.application.port.TransferRiskAlertPort;
+import com.movi_backend.domain.transfer.config.TransferProperties;
+import com.movi_backend.domain.transfer.entity.Transaction;
 import com.movi_backend.domain.transfer.entity.Transfer;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.domain.transfer.repository.TransactionRepository;
 import com.movi_backend.domain.transfer.repository.TransferRepository;
 import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.domain.voice.entity.VoiceCommand;
@@ -42,6 +45,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -56,12 +60,14 @@ class TransferExecutionServiceTest {
     private static final Long TRANSFER_ID = 101L;
 
     @Mock private TransferRepository transferRepository;
+    @Mock private TransactionRepository transactionRepository;
     @Mock private BalanceSnapshotRepository balanceSnapshotRepository;
     @Mock private UserTransferProfileRepository userTransferProfileRepository;
     @Mock private FdsAssessmentRepository fdsAssessmentRepository;
     @Mock private FdsAssessmentClient fdsAssessmentClient;
     @Mock private TransferExecutionPort transferExecutionPort;
     @Mock private TransferRiskAlertPort transferRiskAlertPort;
+    @Mock private TransferProperties transferProperties;
     @Mock private User user;
     @Mock private Account account;
     @Mock private OpenbankingConnection connection;
@@ -88,6 +94,13 @@ class TransferExecutionServiceTest {
         assertThat(result.completedAt()).isNotNull();
         then(transferExecutionPort).should().execute(any(Transfer.class));
         then(transferRiskAlertPort).shouldHaveNoInteractions();
+        final ArgumentCaptor<Transaction> transactionCaptor =
+                ArgumentCaptor.forClass(Transaction.class);
+        then(transactionRepository).should().save(transactionCaptor.capture());
+        assertThat(transactionCaptor.getValue().getTranType().name()).isEqualTo("OUT");
+        assertThat(transactionCaptor.getValue().getAmount()).isEqualTo(50_000L);
+        assertThat(transactionCaptor.getValue().getBalanceAfter()).isEqualTo(950_000L);
+        assertThat(transactionCaptor.getValue().getCounterpartyName()).isEqualTo("김영희");
     }
 
     @Test
@@ -210,6 +223,13 @@ class TransferExecutionServiceTest {
                 .willReturn(Optional.empty());
         given(balanceSnapshotRepository.findTopByAccountIdOrderByFetchedAtDesc(ACCOUNT_ID))
                 .willReturn(Optional.of(balanceSnapshot));
+        given(transferRepository.sumAmountByUserAndStatusBetween(
+                org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.eq(TransferStatus.COMPLETED),
+                any(),
+                any()
+        )).willReturn(0L);
+        given(transferProperties.dailyLimit()).willReturn(3_000_000L);
         given(transferRepository.saveAndFlush(any(Transfer.class)))
                 .willThrow(new DataIntegrityViolationException("unique constraint"));
         final ConfirmedTransferCommand command = ConfirmedTransferCommand.of(
@@ -234,6 +254,48 @@ class TransferExecutionServiceTest {
     }
 
     @Test
+    @DisplayName("오늘 완료 금액과 요청 금액이 일일 한도를 넘으면 이체를 거부한다")
+    void 오늘_완료_금액과_요청_금액이_일일_한도를_넘으면_이체를_거부한다() {
+        // given
+        final String idempotencyKey = UUID.randomUUID().toString();
+        given(user.getId()).willReturn(USER_ID);
+        given(account.getId()).willReturn(ACCOUNT_ID);
+        given(account.getConnection()).willReturn(connection);
+        given(connection.isUsable(any())).willReturn(true);
+        given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
+        given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
+                .willReturn(Optional.empty());
+        given(balanceSnapshotRepository.findTopByAccountIdOrderByFetchedAtDesc(ACCOUNT_ID))
+                .willReturn(Optional.of(balanceSnapshot));
+        given(transferRepository.sumAmountByUserAndStatusBetween(
+                org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.eq(TransferStatus.COMPLETED),
+                any(),
+                any()
+        )).willReturn(2_980_000L);
+        given(transferProperties.dailyLimit()).willReturn(3_000_000L);
+        final ConfirmedTransferCommand command = ConfirmedTransferCommand.of(
+                user,
+                account,
+                recipient,
+                voiceCommand,
+                device,
+                50_000L,
+                idempotencyKey,
+                new BigDecimal("0.95")
+        );
+        final TransferExecutionService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.execute(command))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DAILY_LIMIT_EXCEEDED);
+        then(fdsAssessmentClient).shouldHaveNoInteractions();
+        then(transferExecutionPort).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("오픈뱅킹 실행이 실패하면 이체를 실패 상태로 남긴다")
     void 오픈뱅킹_실행이_실패하면_이체를_실패_상태로_남긴다() {
         // given
@@ -252,6 +314,7 @@ class TransferExecutionServiceTest {
         assertThat(result.status()).isEqualTo(TransferStatus.FAILED);
         assertThat(result.completedAt()).isNull();
         then(recipient).should(never()).recordTransfer(any());
+        then(transactionRepository).shouldHaveNoInteractions();
     }
 
     @Test
@@ -311,6 +374,13 @@ class TransferExecutionServiceTest {
                 .willReturn(Optional.empty());
         given(balanceSnapshotRepository.findTopByAccountIdOrderByFetchedAtDesc(ACCOUNT_ID))
                 .willReturn(Optional.of(balanceSnapshot));
+        given(transferRepository.sumAmountByUserAndStatusBetween(
+                org.mockito.ArgumentMatchers.eq(USER_ID),
+                org.mockito.ArgumentMatchers.eq(TransferStatus.COMPLETED),
+                any(),
+                any()
+        )).willReturn(0L);
+        given(transferProperties.dailyLimit()).willReturn(3_000_000L);
         given(userTransferProfileRepository.findById(USER_ID)).willReturn(Optional.empty());
         given(transferRepository.saveAndFlush(any(Transfer.class))).willAnswer(invocation -> {
             final Transfer transfer = invocation.getArgument(0);
@@ -381,6 +451,7 @@ class TransferExecutionServiceTest {
     private TransferExecutionService createService() {
         return new TransferExecutionService(
                 transferRepository,
+                transactionRepository,
                 balanceSnapshotRepository,
                 userTransferProfileRepository,
                 fdsAssessmentRepository,
@@ -388,6 +459,7 @@ class TransferExecutionServiceTest {
                 new FdsAssessmentResponseValidator(),
                 transferExecutionPort,
                 transferRiskAlertPort,
+                transferProperties,
                 new ObjectMapper()
         );
     }

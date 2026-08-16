@@ -43,3 +43,8 @@ movi:
     base-url: ${VOICE_API_BASE_URL:http://localhost:8000}
     connect-timeout: 1s
     response-timeout: 10s
+  fds:
+    client-type: ${FDS_CLIENT_TYPE:mock}
+    base-url: ${FDS_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 3s

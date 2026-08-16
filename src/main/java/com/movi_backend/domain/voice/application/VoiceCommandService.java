@@ -3,11 +3,15 @@ package com.movi_backend.domain.voice.application;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
+import com.movi_backend.domain.transfer.application.TransferExecutionService;
+import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
 import com.movi_backend.domain.transfer.application.model.TransferClarification;
+import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.application.model.TransferValidationResult;
 import com.movi_backend.domain.transfer.application.model.ValidatedTransferCommand;
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.domain.voice.application.model.PendingTransferSlots;
 import com.movi_backend.domain.voice.client.VoiceAnalysisClient;
@@ -56,24 +60,48 @@ public class VoiceCommandService {
     private final VoiceCommandRepository voiceCommandRepository;
     private final VoiceAnalysisClient voiceAnalysisClient;
     private final TransferValidationService transferValidationService;
+    private final TransferExecutionService transferExecutionService;
     private final AccountRepository accountRepository;
+    private final TransferRecipientRepository transferRecipientRepository;
     private final ObjectMapper objectMapper;
 
-    @Transactional
     public VoiceCommandResponse process(
             final Long userId,
             final Long voiceSessionId,
             final MultipartFile audio
     ) {
+        return process(userId, voiceSessionId, audio, null);
+    }
+
+    @Transactional
+    public VoiceCommandResponse process(
+            final Long userId,
+            final Long voiceSessionId,
+            final MultipartFile audio,
+            final String idempotencyKey
+    ) {
         validateAudio(audio);
         final LocalDateTime now = LocalDateTime.now();
         final VoiceSession session = findOwnedSession(userId, voiceSessionId);
+        final VoiceCommandResponse replayedResponse = findReplayedResponse(
+                userId,
+                idempotencyKey
+        );
+        if (replayedResponse != null) {
+            return replayedResponse;
+        }
         validateSession(session, now);
 
         final PendingTransferSlots previousSlots = readPendingSlots(session);
         final VoiceAnalysisResponse analysis = analyze(audio, session, previousSlots);
         if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
-            return processConfirmationResponse(session, analysis, now);
+            return processConfirmationResponse(
+                    session,
+                    analysis,
+                    previousSlots,
+                    idempotencyKey,
+                    now
+            );
         }
         validateIntent(analysis.intent());
 
@@ -105,6 +133,19 @@ public class VoiceCommandService {
                 analysis.processingMs(),
                 now
         );
+    }
+
+    private VoiceCommandResponse findReplayedResponse(
+            final Long userId,
+            final String idempotencyKey
+    ) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        validateIdempotencyKey(idempotencyKey);
+        return transferExecutionService.findCompletedResult(userId, idempotencyKey)
+                .map(VoiceCommandResponse::executed)
+                .orElse(null);
     }
 
     private void validateAudio(final MultipartFile audio) {
@@ -192,17 +233,111 @@ public class VoiceCommandService {
     private VoiceCommandResponse processConfirmationResponse(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final PendingTransferSlots pendingSlots,
+            final String idempotencyKey,
             final LocalDateTime now
     ) {
-        if (analysis.intent() != VoiceIntent.CANCEL) {
-            throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
+        if (analysis.intent() == VoiceIntent.CANCEL) {
+            return cancel(session, analysis, now);
         }
+        if (analysis.intent() == VoiceIntent.CONFIRM) {
+            return confirm(session, analysis, pendingSlots, idempotencyKey, now);
+        }
+        throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
+    }
+
+    private VoiceCommandResponse cancel(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final LocalDateTime now
+    ) {
         final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
         session.cancel(now);
         final VoiceCommandResponse response = VoiceCommandResponse.canceled(session);
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         voiceCommandRepository.save(voiceCommand);
         return response;
+    }
+
+    private VoiceCommandResponse confirm(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final PendingTransferSlots pendingSlots,
+            final String idempotencyKey,
+            final LocalDateTime now
+    ) {
+        validateIdempotencyKey(idempotencyKey);
+        validateConfirmationSlots(pendingSlots);
+        final Account account = findOwnedAccount(
+                session.getUser().getId(),
+                pendingSlots.fromAccountId()
+        );
+        final TransferRecipient recipient = findOwnedRecipient(
+                session.getUser().getId(),
+                pendingSlots.recipientId()
+        );
+        final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
+        voiceCommandRepository.saveAndFlush(voiceCommand);
+        session.startProcessing(now);
+
+        final TransferExecutionResult result = transferExecutionService.execute(
+                ConfirmedTransferCommand.of(
+                        session.getUser(),
+                        account,
+                        recipient,
+                        voiceCommand,
+                        session.getDevice(),
+                        pendingSlots.amount(),
+                        idempotencyKey,
+                        analysis.sttConfidence()
+                )
+        );
+        session.complete(LocalDateTime.now());
+        final VoiceCommandResponse response = VoiceCommandResponse.executed(result);
+        voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
+        return response;
+    }
+
+    private void validateIdempotencyKey(final String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "멱등성 키 누락");
+        }
+        try {
+            UUID.fromString(idempotencyKey);
+        } catch (final IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "멱등성 키 형식 오류");
+        }
+    }
+
+    private void validateConfirmationSlots(final PendingTransferSlots pendingSlots) {
+        if (pendingSlots == null
+                || pendingSlots.amount() == null
+                || pendingSlots.recipientId() == null
+                || pendingSlots.fromAccountId() == null
+                || pendingSlots.confirmationId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
+        }
+    }
+
+    private Account findOwnedAccount(final Long userId, final Long accountId) {
+        final Account account = accountRepository.findById(accountId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
+        if (!Objects.equals(account.getUser().getId(), userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        if (!account.isActive()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE);
+        }
+        return account;
+    }
+
+    private TransferRecipient findOwnedRecipient(final Long userId, final Long recipientId) {
+        final TransferRecipient recipient = transferRecipientRepository.findById(recipientId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND));
+        if (!Objects.equals(recipient.getUser().getId(), userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        return recipient;
     }
 
     private TransferCommandRequest createCommandRequest(

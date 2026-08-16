@@ -9,4 +9,6 @@ public interface TransferRepository extends JpaRepository<Transfer, Long> {
     Optional<Transfer> findByIdAndUserId(Long transferId, Long userId);
 
     Optional<Transfer> findByIdempotencyKey(String idempotencyKey);
+
+    Optional<Transfer> findByIdempotencyKeyAndUserId(String idempotencyKey, Long userId);
 }

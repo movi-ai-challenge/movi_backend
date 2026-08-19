@@ -26,6 +26,8 @@ logging:
 #   인증 필터 구현 전 다른 파트가 API를 개발·테스트하기 위한 장치이며,
 #   운영 환경에서는 반드시 false 여야 한다.
 movi:
+  openbanking:
+    mode: mock
   auth:
     dev-mode: true
     dev-user-id: 1

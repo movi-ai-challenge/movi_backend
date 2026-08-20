@@ -168,7 +168,7 @@ erDiagram
         varchar to_account_num
         varchar to_holder_name
         bigint amount
-        varchar status "PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED"
+        varchar status "PENDING/RISK_REVIEW/HOLD/COMPLETED/BLOCKED/FAILED/CANCELED"
         varchar idempotency_key UK
         datetime requested_at
         datetime completed_at
@@ -257,8 +257,9 @@ erDiagram
         bigint protectee_user_id FK
         bigint guardian_user_id FK
         varchar guardian_name
-        varchar guardian_phone
-        varchar relation
+        varchar guardian_phone "AES-GCM 암호화"
+        varchar guardian_phone_hash "HMAC-SHA256 (중복 확인)"
+        varchar relation "CHILD/SPOUSE/SOCIAL_WORKER/OTHER"
         varchar status "REQUESTED/ACTIVE/REJECTED/REVOKED"
         varchar invite_token UK
         datetime invite_expires_at

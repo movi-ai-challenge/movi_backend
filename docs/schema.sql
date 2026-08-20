@@ -221,7 +221,7 @@ CREATE TABLE transfers (
     to_holder_name   VARCHAR(50)  NOT NULL,
     amount           BIGINT       NOT NULL,
     status           VARCHAR(30)  NOT NULL DEFAULT 'PENDING'
-                     COMMENT 'PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED',
+                     COMMENT 'PENDING/RISK_REVIEW/HOLD/COMPLETED/BLOCKED/FAILED/CANCELED',
     idempotency_key  VARCHAR(64)  NOT NULL COMMENT '중복 발화 방지',
     fail_reason      VARCHAR(200) NULL,
     requested_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -305,7 +305,8 @@ CREATE TABLE guardian_links (
     guardian_user_id   BIGINT       NULL     COMMENT '보호자 가입 후 바인딩',
     guardian_name      VARCHAR(50)  NOT NULL,
     guardian_phone     VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
-    relation           VARCHAR(30)  NULL     COMMENT '자녀/배우자/사회복지사',
+    guardian_phone_hash VARCHAR(64) NULL     COMMENT '보호자 전화번호 중복 확인용 HMAC-SHA256',
+    relation           VARCHAR(30)  NULL     COMMENT 'CHILD/SPOUSE/SOCIAL_WORKER/OTHER',
     status             VARCHAR(20)  NOT NULL DEFAULT 'REQUESTED'
                        COMMENT 'REQUESTED/ACTIVE/REJECTED/REVOKED',
     invite_token       VARCHAR(64)  NOT NULL,
@@ -316,6 +317,7 @@ CREATE TABLE guardian_links (
     PRIMARY KEY (link_id),
     UNIQUE KEY uk_glink_token (invite_token),
     KEY idx_glink_protectee (protectee_user_id, status),
+    KEY idx_glink_protectee_phone_status (protectee_user_id, guardian_phone_hash, status),
     KEY idx_glink_guardian (guardian_user_id, status),
     CONSTRAINT fk_glink_protectee FOREIGN KEY (protectee_user_id) REFERENCES users (user_id),
     CONSTRAINT fk_glink_guardian FOREIGN KEY (guardian_user_id) REFERENCES users (user_id)

@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Base64;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
@@ -48,6 +49,26 @@ public class SensitiveDataCrypto {
             return Base64.getEncoder().encodeToString(join(iv, encrypted));
         } catch (final GeneralSecurityException exception) {
             throw new IllegalStateException("민감정보를 암호화하지 못했습니다.", exception);
+        }
+    }
+
+    /**
+     * 암호문을 복호화한다.
+     *
+     * <p><b>호출 직전까지 미루고, 결과를 변수 밖으로 흘리지 않는다.</b> SMS Provider에 넘길
+     * 전화번호처럼 외부 전달이 반드시 필요한 순간에만 쓴다. 복호화 결과를 로그·예외 메시지·
+     * 응답 DTO에 담지 않는다.
+     */
+    public String decrypt(final String cipherText) {
+        try {
+            final byte[] decoded = Base64.getDecoder().decode(cipherText);
+            final byte[] iv = Arrays.copyOfRange(decoded, 0, IV_LENGTH_BYTES);
+            final byte[] encrypted = Arrays.copyOfRange(decoded, IV_LENGTH_BYTES, decoded.length);
+            final Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, encryptionKey, new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
+            return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+        } catch (final GeneralSecurityException | IllegalArgumentException exception) {
+            throw new IllegalStateException("민감정보를 복호화하지 못했습니다.", exception);
         }
     }
 

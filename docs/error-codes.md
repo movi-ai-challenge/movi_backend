@@ -125,6 +125,8 @@
 | TRANSFER_4040 | `TRANSFER_NOT_FOUND` | 404 | 이체 내역을 찾을 수 없습니다. | 송금 내역을 찾을 수 없어요. |
 | TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 계좌번호를 말씀해 주세요. |
 | TRANSFER_4090 | `DUPLICATE_TRANSFER` | 409 | 이미 처리 중인 이체 요청입니다. | 방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요. |
+| TRANSFER_4007 | `TRANSFER_NOT_AWAITING_CONFIRMATION` | 400 | 확인을 기다리는 이체가 아닙니다. | 확인할 송금이 없어요. 처음부터 다시 말씀해 주세요. |
+| TRANSFER_4008 | `TRANSFER_CONFIRMATION_EXPIRED` | 400 | 이체 확인 시간이 만료되었습니다. | 확인 시간이 지나서 송금을 취소했어요. 다시 말씀해 주세요. |
 
 ### VOICE — 음성 인식·재질문
 
@@ -162,6 +164,9 @@
 | GUARDIAN_4004 | `SELF_LINK_NOT_ALLOWED` | 400 | 본인을 보호자로 등록할 수 없습니다. | 본인은 보호자로 등록할 수 없어요. |
 | GUARDIAN_4030 | `GUARDIAN_NO_PERMISSION` | 403 | 보호자 권한이 없습니다. | 이 정보를 볼 권한이 없어요. |
 | GUARDIAN_4040 | `GUARDIAN_LINK_NOT_FOUND` | 404 | 보호자 연결 정보를 찾을 수 없습니다. | 연결된 보호자가 없어요. |
+| GUARDIAN_4005 | `INVALID_GUARDIAN_RELATION` | 400 | 지원하지 않는 보호자 관계입니다. | 보호자 관계 정보를 다시 확인해 주세요. |
+| GUARDIAN_4090 | `DUPLICATE_GUARDIAN_REQUEST` | 409 | 이미 처리 중인 보호자 연결 요청입니다. | 이미 보호자 연결을 요청했어요. |
+| GUARDIAN_4091 | `GUARDIAN_LINK_ALREADY_PROCESSED` | 409 | 이미 처리된 보호자 연결 요청입니다. | 이미 처리된 보호자 연결 요청이에요. |
 
 ### NOTI — 알림
 

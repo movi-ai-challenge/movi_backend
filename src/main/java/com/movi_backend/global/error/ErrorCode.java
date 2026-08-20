@@ -99,6 +99,12 @@ public enum ErrorCode {
             "그런 이름으로 저장된 분이 없어요. 계좌번호를 말씀해 주세요."),
     DUPLICATE_TRANSFER(HttpStatus.CONFLICT, "TRANSFER_4090", "이미 처리 중인 이체 요청입니다.",
             "방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요."),
+    TRANSFER_NOT_AWAITING_CONFIRMATION(HttpStatus.BAD_REQUEST, "TRANSFER_4007",
+            "확인을 기다리는 이체가 아닙니다.",
+            "확인할 송금이 없어요. 처음부터 다시 말씀해 주세요."),
+    TRANSFER_CONFIRMATION_EXPIRED(HttpStatus.BAD_REQUEST, "TRANSFER_4008",
+            "이체 확인 시간이 만료되었습니다.",
+            "확인 시간이 지나서 송금을 취소했어요. 다시 말씀해 주세요."),
 
     // 음성 인식·재질문
     AMOUNT_MISSING(HttpStatus.BAD_REQUEST, "VOICE_4001", "이체 금액이 누락되었습니다.",
@@ -141,6 +147,12 @@ public enum ErrorCode {
             "이 정보를 볼 권한이 없어요."),
     GUARDIAN_LINK_NOT_FOUND(HttpStatus.NOT_FOUND, "GUARDIAN_4040", "보호자 연결 정보를 찾을 수 없습니다.",
             "연결된 보호자가 없어요."),
+    INVALID_GUARDIAN_RELATION(HttpStatus.BAD_REQUEST, "GUARDIAN_4005", "지원하지 않는 보호자 관계입니다.",
+            "보호자 관계 정보를 다시 확인해 주세요."),
+    DUPLICATE_GUARDIAN_REQUEST(HttpStatus.CONFLICT, "GUARDIAN_4090", "이미 처리 중인 보호자 연결 요청입니다.",
+            "이미 보호자 연결을 요청했어요."),
+    GUARDIAN_LINK_ALREADY_PROCESSED(HttpStatus.CONFLICT, "GUARDIAN_4091", "이미 처리된 보호자 연결 요청입니다.",
+            "이미 처리된 보호자 연결 요청이에요."),
 
     // 알림
     INVALID_PHONE_NUMBER(HttpStatus.BAD_REQUEST, "NOTI_4001", "유효하지 않은 전화번호 형식입니다.",

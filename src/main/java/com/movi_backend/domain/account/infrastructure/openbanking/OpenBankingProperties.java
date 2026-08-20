@@ -15,6 +15,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param redirectUri  인증 후 인가 코드를 받을 Callback URL.
  *                     <b>오픈뱅킹 포털에 등록한 값과 정확히 같아야 한다</b>
  * @param scope        요청할 권한 범위
+ * @param clientUseCode 이용기관코드. 오픈뱅킹이 토큰 응답의 {@code client_use_code}로 알려준다.
+ *                      거래고유번호(bank_tran_id) 앞자리에 쓰인다
  */
 @ConfigurationProperties(prefix = "movi.openbanking")
 public record OpenBankingProperties(
@@ -23,7 +25,8 @@ public record OpenBankingProperties(
         String clientId,
         String clientSecret,
         String redirectUri,
-        String scope
+        String scope,
+        String clientUseCode
 ) {
     public static final String MODE_MOCK = "mock";
     private static final String DEFAULT_BASE_URL = "https://testapi.openbanking.or.kr";

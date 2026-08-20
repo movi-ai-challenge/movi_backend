@@ -28,6 +28,7 @@ logging:
 movi:
   openbanking:
     mode: mock
+    client-use-code: M000000000
     redirect-uri: http://localhost:8080/api/openbanking/callback
   auth:
     dev-mode: true

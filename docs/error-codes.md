@@ -103,12 +103,15 @@
 | 코드 | Enum | HTTP | message | voiceMessage |
 |---|---|---|---|---|
 | OPENBANK_4001 | `INVALID_FINTECH_USE_NUM` | 400 | 유효하지 않은 핀테크이용번호입니다. | 계좌 정보에 문제가 있어요. 계좌를 다시 연결해 주세요. |
+| OPENBANK_4002 | `INVALID_OPENBANKING_STATE` | 400 | 유효하지 않은 계좌 연결 요청입니다. | 계좌 연결에 실패했어요. 처음부터 다시 시도해 주세요. |
 | OPENBANK_4010 | `CONNECTION_EXPIRED` | 401 | 오픈뱅킹 연결이 만료되었습니다. | 은행 연결이 끊어졌어요. 다시 연결해 주세요. |
 | OPENBANK_4040 | `CONNECTION_NOT_FOUND` | 404 | 오픈뱅킹 연결 정보를 찾을 수 없습니다. | 은행 계좌가 연결되어 있지 않아요. |
 | OPENBANK_5000 | `OPENBANK_COMMUNICATION_ERROR` | 502 | 오픈뱅킹 통신에 실패하였습니다. | 은행과 연결이 잠시 안 돼요. 조금 뒤에 다시 시도해 주세요. |
 | OPENBANK_5001 | `BALANCE_INQUIRY_FAILED` | 502 | 잔액 조회에 실패했습니다. | 잔액을 확인하지 못했어요. 다시 말씀해 주세요. |
 | OPENBANK_5002 | `TRANSFER_EXECUTION_FAILED` | 502 | 이체 실행에 실패했습니다. | 송금하지 못했어요. 돈은 빠져나가지 않았어요. |
 
+> `INVALID_OPENBANKING_STATE`는 계좌 연결 CSRF 방어 실패 시 반환합니다. 카카오 로그인용 `AUTH_4014`(`INVALID_OAUTH_STATE`)와 구분됩니다. **왜 실패했는지 사용자에게 설명하지 않습니다** — 공격 시도라면 공격자에게 정보를 주게 되기 때문입니다.
+>
 > `TRANSFER_EXECUTION_FAILED`의 음성 문구에 **"돈은 빠져나가지 않았어요"** 를 넣은 이유 — 화면을 못 보는 사용자에게 가장 불안한 상황이 "실패했는데 돈이 나갔는지 모르는" 경우입니다.
 
 ### TRANSFER — 이체

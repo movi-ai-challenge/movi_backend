@@ -44,6 +44,7 @@ movi:
     # 오픈뱅킹 포털에 등록한 Callback URL 과 정확히 같아야 한다
     redirect-uri: http://localhost:8080/api/openbanking/callback
     scope: login inquiry transfer
+    client-use-code: 오픈뱅킹_이용기관코드
   auth:
     dev-mode: true
     dev-user-id: 1

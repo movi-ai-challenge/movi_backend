@@ -52,6 +52,17 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   - 사용자당 `is_primary=true` 계좌는 **최대 1개**. 기본 계좌 변경 시 기존 것을 먼저 해제한다
   - 토큰 만료(`expires_at`) 확인 후 갱신 — 만료된 토큰으로 호출하면 오픈뱅킹이 거부한다
 - **Mock 어댑터 우선** — 오픈뱅킹 Sandbox 승인은 외부 변수다. 인터페이스를 먼저 정의하고 Mock 구현체로 개발한 뒤 실 API로 교체한다
+
+- **오픈뱅킹 Port는 두 개다.** 역할이 겹치지 않으니 용도에 맞는 쪽을 쓴다
+
+  | Port | 담당 | Mock 어댑터 | 전환 방식 |
+  |---|---|---|---|
+  | `BalanceInquiryPort` | 잔액조회 | `MockBalanceInquiryAdapter` | `@Profile("local","test")` |
+  | `OpenBankingClient` | 계좌 목록·이체 | `MockOpenBankingClient` | `movi.openbanking.mode` |
+
+  잔액은 호출 빈도와 캐시 정책(`balance_snapshots`)이 달라 분리했다. **새 오퍼레이션을 추가할 때 어느 Port에 넣을지 먼저 정하고, 같은 기능을 양쪽에 만들지 않는다.**
+
+  `MockOpenBankingClient`는 잔액을 상태로 들고 이체할 때 차감한다. 고정값이면 잔액 부족 분기를 시연할 수 없기 때문이다. 같은 `tranId`로 재호출하면 새 이체를 만들지 않고 기존 결과를 돌려줘, 실제 오픈뱅킹의 멱등 동작을 Mock 단계에서 검증할 수 있다
 - `balance_snapshots`는 API 호출 비용 절감 + FDS 피처(잔액 대비 이체 비율)용. 조회할 때마다 남긴다
 
 ### `transfer` — 이체·거래내역

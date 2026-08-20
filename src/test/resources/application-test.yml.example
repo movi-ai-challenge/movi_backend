@@ -32,7 +32,8 @@ movi:
   auth:
     dev-mode: true
     dev-user-id: 1
-  transfer:
-    minimum-amount: 1
-    per-transfer-limit: 1000000
-    daily-limit: 3000000
+  voice:
+    client-type: mock
+    base-url: http://localhost:8000
+    connect-timeout: 1s
+    response-timeout: 10s

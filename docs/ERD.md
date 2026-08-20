@@ -59,10 +59,12 @@ erDiagram
     users {
         bigint user_id PK
         varchar name
-        varchar phone UK "암호화"
+        varchar phone "AES-GCM 암호화"
+        varchar phone_hash UK "HMAC-SHA256"
         date birth_date
         varchar user_type "SENIOR/VISUALLY_IMPAIRED/GENERAL"
         varchar status "ACTIVE/DORMANT/WITHDRAWN"
+        bigint token_version "JWT 무효화 버전"
         datetime created_at
         datetime updated_at
     }
@@ -366,7 +368,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 보호자 승인이 빠지면서 알림이 이상거래 통보의 유일한 수단이 됐습니다. "어떤 이체 때문에 나간 알림인지" 추적할 수 없으면 사후 대응이 불가능하므로 이체를 직접 참조합니다.
 
 **7. 개인정보 컬럼 암호화**
-`users.phone`, `accounts.account_num_masked`, `transfers.to_account_num`, `guardian_links.guardian_phone`은 AES 양방향 암호화 대상. 토큰류(`access_token`, `refresh_token`)도 동일.
+`users.phone`, `accounts.account_num_masked`, `transfers.to_account_num`, `guardian_links.guardian_phone`은 AES 양방향 암호화 대상. 토큰류(`access_token`, `refresh_token`)도 동일. 무작위 IV를 사용하는 암호문은 직접 중복 비교할 수 없으므로 `users.phone_hash`에는 별도 키로 만든 HMAC-SHA256 검색 해시를 저장합니다.
 
 ---
 

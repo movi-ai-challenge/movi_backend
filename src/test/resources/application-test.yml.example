@@ -28,6 +28,7 @@ logging:
 movi:
   openbanking:
     mode: mock
+    redirect-uri: http://localhost:8080/api/openbanking/callback
   auth:
     dev-mode: true
     dev-user-id: 1

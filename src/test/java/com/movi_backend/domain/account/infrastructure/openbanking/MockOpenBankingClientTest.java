@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 class MockOpenBankingClientTest {
 
     private static final String PRIMARY = "199000000000000000000001";
+    private static final String TOKEN = "mock-access-token";
 
     @Test
     @DisplayName("계좌 목록을 조회하면 연결된 계좌를 반환한다")
@@ -23,7 +24,7 @@ class MockOpenBankingClientTest {
         final MockOpenBankingClient client = new MockOpenBankingClient();
 
         // when
-        final List<OpenBankingAccount> accounts = client.fetchAccounts("U001");
+        final List<OpenBankingAccount> accounts = client.fetchAccounts("U001", "mock-token");
 
         // then
         assertThat(accounts).isNotEmpty();
@@ -38,7 +39,7 @@ class MockOpenBankingClientTest {
         final long before = client.currentBalanceOf(PRIMARY);
 
         // when
-        client.transfer(command("tran-1", 50_000L));
+        client.transfer(command("tran-1", 50_000L), TOKEN);
 
         // then
         assertThat(client.currentBalanceOf(PRIMARY)).isEqualTo(before - 50_000L);
@@ -52,8 +53,8 @@ class MockOpenBankingClientTest {
         final long before = client.currentBalanceOf(PRIMARY);
 
         // when
-        final OpenBankingTransferResult first = client.transfer(command("tran-dup", 10_000L));
-        final OpenBankingTransferResult second = client.transfer(command("tran-dup", 10_000L));
+        final OpenBankingTransferResult first = client.transfer(command("tran-dup", 10_000L), TOKEN);
+        final OpenBankingTransferResult second = client.transfer(command("tran-dup", 10_000L), TOKEN);
 
         // then
         assertThat(second.bankTranId()).isEqualTo(first.bankTranId());
@@ -68,7 +69,7 @@ class MockOpenBankingClientTest {
         final long balance = client.currentBalanceOf(PRIMARY);
 
         // when & then
-        assertThatThrownBy(() -> client.transfer(command("tran-over", balance + 1L)))
+        assertThatThrownBy(() -> client.transfer(command("tran-over", balance + 1L), TOKEN))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INSUFFICIENT_BALANCE);
@@ -82,7 +83,7 @@ class MockOpenBankingClientTest {
         final long before = client.currentBalanceOf(PRIMARY);
 
         // when
-        assertThatThrownBy(() -> client.transfer(command("tran-over", before + 1L)))
+        assertThatThrownBy(() -> client.transfer(command("tran-over", before + 1L), TOKEN))
                 .isInstanceOf(BusinessException.class);
 
         // then

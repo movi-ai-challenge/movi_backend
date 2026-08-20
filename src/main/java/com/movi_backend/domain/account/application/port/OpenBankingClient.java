@@ -23,15 +23,19 @@ public interface OpenBankingClient {
     /**
      * 사용자가 연결한 계좌 목록을 조회한다.
      *
-     * @param userSeqNo 금결원 사용자일련번호
+     * @param userSeqNo   금결원 사용자일련번호
+     * @param accessToken 사용자 인증으로 발급받은 토큰. 저장 시 암호화 대상이므로
+     *                    로그에 남기지 않는다
      */
-    List<OpenBankingAccount> fetchAccounts(String userSeqNo);
+    List<OpenBankingAccount> fetchAccounts(String userSeqNo, String accessToken);
 
     /**
      * 이체를 실행한다.
      *
      * <p>{@code command.tranId()}로 중복 실행을 차단한다. 같은 키로 다시 호출하면
      * 새 이체를 만들지 않고 기존 결과를 반환한다.
+     *
+     * @param accessToken 사용자 인증으로 발급받은 토큰
      */
-    OpenBankingTransferResult transfer(OpenBankingTransferCommand command);
+    OpenBankingTransferResult transfer(OpenBankingTransferCommand command, String accessToken);
 }

@@ -31,6 +31,9 @@ import lombok.NoArgsConstructor;
  *
  * <p>상태 전이는 {@link TransferStatus#canTransitionTo}가 강제한다. 특히 {@code COMPLETED}
  * 이후에는 어떤 상태로도 가지 않는다. 또한 <b>모든 이체는 FDS 평가를 거쳐야</b> 완료될 수 있다.
+ *
+ * <p>고위험으로 감지되면 곧바로 차단하지 않고 {@code HOLD}로 두어 사용자에게 다시 물어본다.
+ * {@code HOLD}에서도 <b>오픈뱅킹은 아직 호출하지 않은 상태</b>다.
  */
 @Getter
 @Entity
@@ -123,6 +126,21 @@ public class Transfer {
     public void complete(final LocalDateTime now) {
         transitionTo(TransferStatus.COMPLETED);
         this.completedAt = now;
+    }
+
+    /**
+     * 고위험 감지 후 사용자 재확인을 기다린다.
+     *
+     * <p>실패가 아니므로 {@code failReason}을 남기지 않는다. 여기에 사유를 적으면 재확인을 거쳐
+     * 완료된 거래에 실패 사유가 남는다.
+     */
+    public void hold() {
+        transitionTo(TransferStatus.HOLD);
+    }
+
+    /** 사용자 재확인을 기다리는 중인지 여부 */
+    public boolean awaitsConfirmation() {
+        return this.status.awaitsConfirmation();
     }
 
     /** 고위험으로 차단한다. */

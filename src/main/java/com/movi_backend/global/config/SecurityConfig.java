@@ -6,6 +6,7 @@ import com.movi_backend.global.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -24,6 +25,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    /** 보호자가 아직 가입 전일 수 있어 초대 내용 조회만 인증 없이 연다. 승인·거절은 인증이 필요하다. */
+    private static final String PUBLIC_INVITATION_ENDPOINT = "/api/v1/guardian-links/invitations/*";
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/kakao/**",
@@ -50,6 +54,7 @@ public class SecurityConfig {
                         exception.authenticationEntryPoint(restAuthenticationEntryPoint))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(PUBLIC_ENDPOINTS).permitAll();
+                    auth.requestMatchers(HttpMethod.GET, PUBLIC_INVITATION_ENDPOINT).permitAll();
                     if (authProperties.devMode()) {
                         auth.anyRequest().permitAll();
                         return;

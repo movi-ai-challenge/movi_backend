@@ -35,7 +35,7 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 |---|---|---|
 | 도메인 엔티티 | `domain/{도메인}/entity/` | 20개 (테이블과 1:1) |
 | enum | `domain/{도메인}/type/` | 17개 |
-| 에러 코드 | `global/error/ErrorCode` | 59개 |
+| 에러 코드 | `global/error/ErrorCode` | 68개 |
 | 공통 응답 | `global/response/ApiResponse`, `PageResponse` | |
 | 인증 컨텍스트 | `global/security/AuthUser`, `@CurrentUser` | |
 | 시각 자동화 | `global/entity/BaseTimeEntity`, `BaseCreatedEntity` | |

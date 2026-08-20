@@ -37,3 +37,21 @@ movi:
   crypto:
     encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     hash-key: YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=
+
+  # 외부 연동은 테스트에서 전부 mock을 쓴다.
+  guardian:
+    invitation-expire-hours: 24
+    invite-url: http://localhost:3000/guardian/invite
+    default-receive-alert: true
+  sms:
+    provider: mock
+  fds:
+    mode: mock
+    mock-high-amount: 1000000
+    mock-medium-amount: 300000
+  openbanking:
+    mode: mock
+    mock-balance: 1000000
+
+  transfer:
+    confirmation-expire-minutes: 5

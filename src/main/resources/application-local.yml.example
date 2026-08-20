@@ -49,3 +49,29 @@ movi:
     # openssl rand -base64 32 로 각각 생성한다.
     encryption-key: Base64_AES_키
     hash-key: Base64_HMAC_키
+
+  # 보호자 연결
+  guardian:
+    invitation-expire-hours: 24
+    invite-url: http://localhost:3000/guardian/invite
+    default-receive-alert: true
+
+  # SMS — 계약 전까지 mock. 실제 발송 없이 로그만 남는다.
+  sms:
+    provider: mock
+
+  # FDS — AI 파트 추론 API가 열리면 mode를 http로 바꾸고 base-url을 채운다.
+  fds:
+    mode: mock
+    base-url: http://localhost:8000
+    mock-high-amount: 1000000
+    mock-medium-amount: 300000
+
+  # 오픈뱅킹 — Sandbox 승인 전까지 mock. mock-balance가 잔액 조회 응답이 된다.
+  openbanking:
+    mode: mock
+    mock-balance: 1000000
+
+  # 이체 — 고위험 감지 후 본인 재확인 대기 시간(분)
+  transfer:
+    confirmation-expire-minutes: 5

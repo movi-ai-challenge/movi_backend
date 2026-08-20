@@ -26,14 +26,11 @@ logging:
 #   인증 필터 구현 전 다른 파트가 API를 개발·테스트하기 위한 장치이며,
 #   운영 환경에서는 반드시 false 여야 한다.
 movi:
+  openbanking:
+    mode: mock
+    redirect-uri: http://localhost:8080/api/openbanking/callback
   auth:
     dev-mode: true
     dev-user-id: 1
-  kakao:
-    rest-api-key: test-rest-api-key
-    redirect-uri: http://localhost:8080/api/v1/auth/kakao/callback
-  jwt:
-    secret: test-jwt-signing-key-must-be-at-least-32-bytes
-  crypto:
-    encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
-    hash-key: YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=
+  fds:
+    client-type: mock

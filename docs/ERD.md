@@ -191,6 +191,11 @@ erDiagram
         bigint user_id FK
         bigint device_id FK
         varchar channel "APP/PHONE"
+        varchar status "ACTIVE/CLARIFYING/AWAITING_CONFIRMATION/PROCESSING/COMPLETED/CANCELED/EXPIRED"
+        varchar pending_intent "대기 중인 의도"
+        json pending_slots "보관 슬롯"
+        int retry_count "재질문 횟수 (최대 3)"
+        datetime expires_at "슬롯 만료 시각"
         datetime started_at
         datetime ended_at
     }
@@ -202,7 +207,7 @@ erDiagram
         varchar audio_uri
         text stt_text
         decimal stt_confidence
-        varchar intent "BALANCE/TRANSFER/HISTORY/GUARDIAN/SETTING/UNKNOWN"
+        varchar intent "BALANCE/TRANSFER/HISTORY/CONFIRM/CANCEL/UNKNOWN"
         json entities
         decimal nlu_confidence
         text response_text
@@ -300,23 +305,21 @@ erDiagram
 ## 3. 핵심 플로우 ↔ 테이블 매핑
 
 ### ① 인증 플로우
-```
-앱 시작 → 카카오 로그인      → oauth_accounts (provider_user_id 조회/생성) + users + JWT
-        → PIN 최초 등록      → user_credentials (pin_hash 저장)
-재로그인 → 전화번호 + PIN    → user_credentials (pin_hash 검증, failed_attempts++) + JWT
-로그아웃 → token_version 증가 → 기존 Access/Refresh JWT 즉시 무효화
+```text
+앱 시작 → 카카오 로그인      → oauth_accounts (provider_user_id 조회/생성) + users
+        → PIN/생체인증       → user_credentials (pin_hash 검증, failed_attempts++)
         → (신규) 오픈뱅킹 연결 → openbanking_connections + accounts 벌크 등록
 ```
 
 ### ③④ 음성 명령 → 이체
-```
+```text
 홈(음성 대기)  → voice_sessions 생성
 발화           → voice_commands (stt_text, intent=TRANSFER, entities={수취인,금액})
 이체 정보 확인 → transfers INSERT (status=PENDING, idempotency_key)
 ```
 
 ### ⑤ FDS 위험도 분기
-```
+```text
 transfers.status = RISK_REVIEW
   → fds_assessments (Isolation Forest anomaly_score 산출)
      · 피처 소스: user_transfer_profiles + transactions + devices + voice_commands
@@ -334,7 +337,7 @@ transfers.status = RISK_REVIEW
 > `guardian_approvals` 테이블과 `transfers.status`의 `GUARDIAN_PENDING`은 삭제했습니다.
 
 ### 보호자 연결
-```
+```text
 연결 요청 → guardian_links (status=REQUESTED, invite_token 발급)
 SMS 발송  → notifications (channel=SMS, template_code=GUARDIAN_INVITE)
 수락      → guardian_links.status=ACTIVE, guardian_user_id 바인딩

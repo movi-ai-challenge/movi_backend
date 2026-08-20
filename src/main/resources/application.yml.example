@@ -22,6 +22,15 @@ movi:
     base-url: ${FDS_API_BASE_URL:http://localhost:8000}
     connect-timeout: 1s
     response-timeout: 3s
+  voice:
+    client-type: ${VOICE_CLIENT_TYPE:mock}
+    base-url: ${VOICE_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 10s
+  transfer:
+    minimum-amount: 1
+    per-transfer-limit: 1000000
+    daily-limit: 3000000
 
 management:
   endpoints:
@@ -39,10 +48,3 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
-
-movi:
-  voice:
-    client-type: ${VOICE_CLIENT_TYPE:mock}
-    base-url: ${VOICE_API_BASE_URL:http://localhost:8000}
-    connect-timeout: 1s
-    response-timeout: 10s

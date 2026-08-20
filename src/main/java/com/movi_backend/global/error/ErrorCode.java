@@ -67,6 +67,8 @@ public enum ErrorCode {
     // 오픈뱅킹 연동
     INVALID_FINTECH_USE_NUM(HttpStatus.BAD_REQUEST, "OPENBANK_4001", "유효하지 않은 핀테크이용번호입니다.",
             "계좌 정보에 문제가 있어요. 계좌를 다시 연결해 주세요."),
+    INVALID_OPENBANKING_STATE(HttpStatus.BAD_REQUEST, "OPENBANK_4002", "유효하지 않은 계좌 연결 요청입니다.",
+            "계좌 연결에 실패했어요. 처음부터 다시 시도해 주세요."),
     CONNECTION_EXPIRED(HttpStatus.UNAUTHORIZED, "OPENBANK_4010", "오픈뱅킹 연결이 만료되었습니다.",
             "은행 연결이 끊어졌어요. 다시 연결해 주세요."),
     CONNECTION_NOT_FOUND(HttpStatus.NOT_FOUND, "OPENBANK_4040", "오픈뱅킹 연결 정보를 찾을 수 없습니다.",

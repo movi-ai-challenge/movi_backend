@@ -16,6 +16,13 @@ logging:
   level:
     com.movi_backend: debug
 
+movi:
+  fds:
+    client-type: mock
+    base-url: ${FDS_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 3s
+
 management:
   endpoints:
     web:

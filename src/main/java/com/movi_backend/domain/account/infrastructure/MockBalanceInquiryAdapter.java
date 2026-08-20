@@ -2,11 +2,11 @@ package com.movi_backend.domain.account.infrastructure;
 
 import com.movi_backend.domain.account.application.port.BalanceInquiryPort;
 import com.movi_backend.domain.account.application.port.BalanceInquiryResult;
-import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile({"local", "test"})
+@ConditionalOnProperty(name = "movi.openbanking.mode", havingValue = "mock", matchIfMissing = true)
 public class MockBalanceInquiryAdapter implements BalanceInquiryPort {
 
     private static final long MOCK_BALANCE_AMOUNT = 53_000L;

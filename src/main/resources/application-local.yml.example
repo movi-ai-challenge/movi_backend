@@ -36,7 +36,14 @@ logging:
 #   운영 환경에서는 반드시 false 여야 한다.
 movi:
   openbanking:
+    # mock = Mock 어댑터 (기본), real = 실 API 어댑터
     mode: mock
+    base-url: https://testapi.openbanking.or.kr
+    client-id: 오픈뱅킹_CLIENT_ID
+    client-secret: 오픈뱅킹_CLIENT_SECRET
+    # 오픈뱅킹 포털에 등록한 Callback URL 과 정확히 같아야 한다
+    redirect-uri: http://localhost:8080/api/openbanking/callback
+    scope: login inquiry transfer
   auth:
     dev-mode: true
     dev-user-id: 1

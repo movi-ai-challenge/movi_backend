@@ -56,13 +56,16 @@ public class MockOpenBankingClient implements OpenBankingClient {
     private final AtomicLong bankTranSequence = new AtomicLong(1L);
 
     @Override
-    public List<OpenBankingAccount> fetchAccounts(final String userSeqNo) {
+    public List<OpenBankingAccount> fetchAccounts(final String userSeqNo, final String accessToken) {
         log.info("[MOCK] 계좌 목록 조회 userSeqNo={}", userSeqNo);
         return ACCOUNTS;
     }
 
     @Override
-    public OpenBankingTransferResult transfer(final OpenBankingTransferCommand command) {
+    public OpenBankingTransferResult transfer(
+            final OpenBankingTransferCommand command,
+            final String accessToken
+    ) {
         final OpenBankingTransferResult executed = executedTransfers.get(command.tranId());
         if (executed != null) {
             log.info("[MOCK] 중복 이체 요청 — 기존 결과 반환 tranId={}", command.tranId());

@@ -14,7 +14,9 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 
 ### `auth` — 인증
 
-- 카카오 OAuth + PIN/생체인증 2단계. 소셜 로그인 후 PIN 검증까지 통과해야 금융 기능 접근 가능
+- 최초 계정 연결은 카카오 OAuth로 처리하고, 이후에는 전화번호 + PIN으로도 로그인할 수 있다
+- 카카오 로그인 후 PIN을 최초 등록하며, 두 로그인 방식 모두 자체 Access/Refresh JWT를 발급한다
+- 로그아웃 시 `users.token_version`을 증가시켜 기존 Access/Refresh JWT를 즉시 무효화한다
 - 토큰: Access(단기, `Bearer`) / Refresh
 - **불변식**
   - `oauth_accounts (provider, provider_user_id)` UNIQUE — 같은 카카오 계정으로 중복 가입 불가

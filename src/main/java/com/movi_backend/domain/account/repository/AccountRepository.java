@@ -12,4 +12,8 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     Optional<Account> findByUserIdAndPrimaryIsTrue(Long userId);
 
     List<Account> findAllByUserIdAndActiveIsTrue(Long userId);
+
+    Optional<Account> findByUserIdAndPrimaryTrue(Long userId);
+
+    Optional<Account> findByUserIdAndAlias(Long userId, String alias);
 }

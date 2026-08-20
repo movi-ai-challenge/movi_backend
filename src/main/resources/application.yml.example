@@ -16,6 +16,13 @@ logging:
   level:
     com.movi_backend: debug
 
+movi:
+  fds:
+    client-type: mock
+    base-url: ${FDS_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 3s
+
 management:
   endpoints:
     web:
@@ -89,3 +96,9 @@ movi:
   #                                지나면 차단으로 확정한다. 무기한 열어 두지 않는다.
   transfer:
     confirmation-expire-minutes: ${TRANSFER_CONFIRMATION_EXPIRE_MINUTES:5}
+
+  voice:
+    client-type: ${VOICE_CLIENT_TYPE:mock}
+    base-url: ${VOICE_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 10s

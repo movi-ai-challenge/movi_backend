@@ -7,7 +7,7 @@
 
 ## 1. 코드 체계
 
-```
+```text
 {도메인}_{HTTP상태 3자리}{일련번호 1자리}
 
 예) AUTH_4010  → 인증 도메인 / 401 / 0번
@@ -123,7 +123,7 @@
 | TRANSFER_4006 | `INVALID_STATUS_TRANSITION` | 400 | 처리할 수 없는 이체 상태입니다. | 이미 처리된 송금이에요. |
 | TRANSFER_4031 | `TRANSFER_BLOCKED` | 403 | 위험 거래로 차단된 이체입니다. | 안전을 위해 이번 송금을 멈췄어요. 보호자에게 알려 드렸어요. |
 | TRANSFER_4040 | `TRANSFER_NOT_FOUND` | 404 | 이체 내역을 찾을 수 없습니다. | 송금 내역을 찾을 수 없어요. |
-| TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 계좌번호를 말씀해 주세요. |
+| TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 다시 말씀해 주세요. |
 | TRANSFER_4090 | `DUPLICATE_TRANSFER` | 409 | 이미 처리 중인 이체 요청입니다. | 방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요. |
 | TRANSFER_4007 | `TRANSFER_NOT_AWAITING_CONFIRMATION` | 400 | 확인을 기다리는 이체가 아닙니다. | 확인할 송금이 없어요. 처음부터 다시 말씀해 주세요. |
 | TRANSFER_4008 | `TRANSFER_CONFIRMATION_EXPIRED` | 400 | 이체 확인 시간이 만료되었습니다. | 확인 시간이 지나서 송금을 취소했어요. 다시 말씀해 주세요. |
@@ -137,12 +137,17 @@
 | VOICE_4003 | `INTENT_UNKNOWN` | 400 | 명령 의도를 파악하지 못했습니다. | 무엇을 도와드릴까요? 잔액 조회나 송금이라고 말씀해 주세요. |
 | VOICE_4004 | `LOW_CONFIDENCE` | 400 | 음성 인식 신뢰도가 낮습니다. | 잘 못 들었어요. 다시 한번 말씀해 주세요. |
 | VOICE_4005 | `SLOT_EXPIRED` | 400 | 대화 세션이 만료되었습니다. | 시간이 좀 지났어요. 처음부터 다시 말씀해 주세요. |
-| VOICE_4006 | `RETRY_LIMIT_EXCEEDED` | 400 | 음성 인식 재시도 횟수를 초과했습니다. | 음성 인식이 잘 안 되네요. 직접 입력으로 바꿔 드릴게요. |
+| VOICE_4006 | `RETRY_LIMIT_EXCEEDED` | 400 | 음성 인식 재시도 횟수를 초과했습니다. | 음성 인식이 잘 안 되네요. 잠시 후 다시 시도해 주세요. |
+| VOICE_4007 | `INVALID_SESSION_STATE` | 400 | 처리할 수 없는 음성 세션 상태입니다. | 지금은 처리할 수 없어요. 처음부터 다시 말씀해 주세요. |
 | VOICE_4040 | `VOICE_SESSION_NOT_FOUND` | 404 | 음성 세션을 찾을 수 없습니다. | 처음부터 다시 말씀해 주세요. |
 | VOICE_5000 | `STT_FAILED` | 502 | 음성 인식에 실패했습니다. | 소리를 알아듣지 못했어요. 다시 말씀해 주세요. |
 | VOICE_5001 | `TTS_FAILED` | 502 | 음성 합성에 실패했습니다. | — (음성 출력 자체가 실패한 상황이므로 화면·진동으로 대체) |
 
 > `AMOUNT_MISSING` · `RECIPIENT_MISSING`의 문구는 **MVP 기능명세서에 명시된 재질문 문구를 그대로** 사용했습니다. 임의로 바꾸지 마세요.
+>
+> 다만 **공개 Voice API에서 슬롯 누락은 에러가 아니라 대화의 정상 분기**입니다. `200`과 함께
+> `state: CLARIFYING`으로 응답합니다([integration-spec.md](integration-spec.md) 5.3절).
+> 이 두 에러 코드는 직접 실행 API나 내부 검증 실패에만 사용합니다.
 
 ### FDS — 이상거래 탐지
 

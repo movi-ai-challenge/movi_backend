@@ -54,12 +54,23 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   - 사용자당 `is_primary=true` 계좌는 **최대 1개**. 기본 계좌 변경 시 기존 것을 먼저 해제한다
   - 토큰 만료(`expires_at`) 확인 후 갱신 — 만료된 토큰으로 호출하면 오픈뱅킹이 거부한다
 - **Mock 어댑터 우선** — 오픈뱅킹 Sandbox 승인은 외부 변수다. 인터페이스를 먼저 정의하고 Mock 구현체로 개발한 뒤 실 API로 교체한다
+
+- **오픈뱅킹 Port는 두 개다.** 역할이 겹치지 않으니 용도에 맞는 쪽을 쓴다
+
+  | Port | 담당 | Mock 어댑터 | 전환 방식 |
+  |---|---|---|---|
+  | `BalanceInquiryPort` | 잔액조회 | `MockBalanceInquiryAdapter` | `@Profile("local","test")` |
+  | `OpenBankingClient` | 계좌 목록·이체 | `MockOpenBankingClient` | `movi.openbanking.mode` |
+
+  잔액은 호출 빈도와 캐시 정책(`balance_snapshots`)이 달라 분리했다. **새 오퍼레이션을 추가할 때 어느 Port에 넣을지 먼저 정하고, 같은 기능을 양쪽에 만들지 않는다.**
+
+  `MockOpenBankingClient`는 잔액을 상태로 들고 이체할 때 차감한다. 고정값이면 잔액 부족 분기를 시연할 수 없기 때문이다. 같은 `tranId`로 재호출하면 새 이체를 만들지 않고 기존 결과를 돌려줘, 실제 오픈뱅킹의 멱등 동작을 Mock 단계에서 검증할 수 있다
 - `balance_snapshots`는 API 호출 비용 절감 + FDS 피처(잔액 대비 이체 비율)용. 조회할 때마다 남긴다
 
 ### `transfer` — 이체·거래내역
 
 - **상태 전이** (역방향 금지)
-  ```
+  ```text
   PENDING → RISK_REVIEW → COMPLETED
                         → BLOCKED
             → FAILED / CANCELED
@@ -80,22 +91,67 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   - 재질문 문구는 **템플릿 고정**. 매번 달라지면 시각장애인 사용자가 혼란스럽다
 - **슬롯 세션 만료가 핵심**
   "엄마한테" 발화 후 3분 뒤 다른 말을 했을 때 이전 슬롯이 살아 있으면 엉뚱한 이체가 나간다.
-  대기 슬롯에는 반드시 만료 시각을 두고, 만료된 슬롯은 폐기 후 처음부터 다시 묻는다. (권장 60초)
+  `VoiceSession`이 슬롯의 **단일 소유자**이며 저장·병합·만료를 모두 책임진다. 프론트와 AI는 슬롯을 보관하지 않는다.
+
+  | 항목 | 값 | 상수 |
+  |---|---:|---|
+  | 일반 세션 유효시간 | 5분 | `SESSION_TIMEOUT_MINUTES` |
+  | 재질문·확인 대기 | 60초 | `PENDING_TIMEOUT_SECONDS` |
+  | 같은 슬롯 재질문 | 3회 | `MAX_RETRY_COUNT` |
+
+  만료 시 **슬롯을 전부 폐기한다. 일부만 살리지 않는다.** 3회를 넘기면 세션을 종료하고 `VOICE_4006`을 반환한다.
+
+- **세션 상태 전이** (`VoiceSessionStatus`)
+  ```text
+  ACTIVE ─┬─ CLARIFYING
+          ├─ AWAITING_CONFIRMATION ─┬─ PROCESSING → COMPLETED
+          │                         └─ CANCELED
+          └─ EXPIRED
+  ```
+  `PROCESSING` 중에는 확인 발화를 다시 받지 않는다 — 중복 이체를 막는 1차 방어선이다.
+
+- **확인 정보 불변성** — `AWAITING_CONFIRMATION` 이후 금액·출금계좌·수취인이 바뀌면 기존 `confirmationId`와 `idempotencyKey`를 폐기하고 확인 문장을 새로 만든다
 - `stt_confidence`는 FDS 피처로 전달된다 — 인식 신뢰도가 낮은 이체는 위험 신호
+- **신뢰도 기준** — 구간은 서로 겹치지 않는다
+
+  | 구간 | 처리 |
+  |---|---|
+  | `0.80` 이상 | 다음 백엔드 검증으로 진행 |
+  | `0.60` 이상 `0.80` 미만 | 자동 실행하지 않고 전체 발화 재요청 |
+  | `0.60` 미만 또는 null | `VOICE_4004`로 재발화 요청 |
+
+  `sttConfidence`와 `nluConfidence` 중 하나라도 기준 미만이면 더 낮은 구간을 따른다.
+  개별 슬롯 confidence가 `0.80` 미만이면 그 슬롯을 누락으로 처리한다.
 
 ### `fds` — 이상거래 탐지
 
 - Isolation Forest 기반. 모델·추론 API는 AI 파트 제공, 백엔드는 호출과 판정 반영을 담당
 - **분기**
-  ```
+  ```text
   LOW    → ALLOW             → 이체 완료
   MEDIUM → ALLOW_WITH_ALERT  → 이체 완료 + 보호자 SMS 통보
   HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보
   ```
 - **불변식**
   - `fds_assessments.transfer_id` UNIQUE — 이체 1건당 평가 1건
-  - `features` JSON에 모델 입력 스냅샷을 남긴다. 모델 교체 후 재평가·백테스트에 필요하다
-  - FDS 호출 실패 시 **이체를 통과시키지 않는다**. 평가 불가는 곧 위험이다
+  - `features` JSON에 모델 입력 스냅샷을 남긴다. 모델 교체 후 재평가·백테스트에 필요하다.
+    MVP에서는 `policyVersion`, `ruleScore`, `finalRiskScore`, `reasonCodes`도 이 JSON에 함께 담는다 (전용 컬럼은 운영 분석 요구가 생기면 별도 스키마 변경으로 추가)
+  - FDS 호출 실패 시 **이체를 통과시키지 않는다**. 평가 불가는 곧 위험이다.
+    타임아웃·통신 오류·역직렬화 실패·필수값 누락·정의되지 않은 위험도/결정 조합은 전부 평가 실패로 본다
+  - **임계값을 백엔드가 재계산하지 않는다.** AI가 반환한 위험도와 결정 조합만 검증한다
+  - 타임아웃은 **3초, 자동 재시도 없음**
+
+- **Cold start** — 최근 30일 성공 이체가 3건 미만이면 `coldStart=true`로 전달한다. 프로필이 비어 있으면 이상치 판정이 무의미하므로 AI가 룰 정책으로 최소 위험도를 상향한다
+
+- **이체 한도** (설정값으로 관리, 하드코딩 금지)
+
+  | 항목 | 값 |
+  |---|---:|
+  | 최소 금액 | 1원 |
+  | 1회 한도 | 1,000,000원 |
+  | 1일 누적 한도 | 3,000,000원 |
+
+  오픈뱅킹 한도가 더 낮으면 더 낮은 값을 적용한다.
 - `user_transfer_profiles`는 배치로 갱신. 프로필이 비어 있으면 이상치 판정이 무의미하므로, 신규 사용자는 별도 정책이 필요하다
 
 ### `guardian` — 보호자·알림

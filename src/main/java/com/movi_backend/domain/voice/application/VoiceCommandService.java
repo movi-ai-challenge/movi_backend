@@ -66,6 +66,7 @@ public class VoiceCommandService {
     private final AccountRepository accountRepository;
     private final TransferRecipientRepository transferRecipientRepository;
     private final ObjectMapper objectMapper;
+    private final AudioDurationValidator audioDurationValidator;
 
     public VoiceCommandResponse process(
             final Long userId,
@@ -161,6 +162,7 @@ public class VoiceCommandService {
         if (!SUPPORTED_AUDIO_TYPES.contains(contentType)) {
             throw new BusinessException(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
         }
+        audioDurationValidator.validate(audio, contentType);
     }
 
     private String normalizeContentType(final String contentType) {

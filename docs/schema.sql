@@ -235,7 +235,7 @@ CREATE TABLE transfers (
     requested_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at     DATETIME     NULL,
     PRIMARY KEY (transfer_id),
-    UNIQUE KEY uk_transfer_idem (idempotency_key),
+    UNIQUE KEY uk_transfer_user_idem (user_id, idempotency_key),
     KEY idx_transfer_user_time (user_id, requested_at DESC),
     KEY idx_transfer_status (status),
     CONSTRAINT fk_transfer_user FOREIGN KEY (user_id) REFERENCES users (user_id),

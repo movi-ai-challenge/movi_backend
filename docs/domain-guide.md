@@ -76,7 +76,7 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
             → FAILED / CANCELED
   ```
 - **불변식**
-  - `transfers.idempotency_key` UNIQUE — 음성은 오인식·중복 발화가 잦다. 클라이언트 발급 키로 중복 이체를 차단한다
+  - `transfers (user_id, idempotency_key)` UNIQUE — 음성은 오인식·중복 발화가 잦다. 사용자별 클라이언트 발급 키로 중복 이체를 차단한다
   - `COMPLETED` 이후에는 어떤 상태로도 전이하지 않는다
   - 모든 이체는 FDS 평가를 거친다. 평가 없이 `COMPLETED`가 될 수 없다
 - `transfer_recipients (user_id, nickname)` UNIQUE — "엄마"가 두 명일 수 없다. 음성 별칭이 곧 조회 키

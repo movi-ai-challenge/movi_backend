@@ -1,0 +1,68 @@
+package com.movi_backend.domain.guardian.infrastructure;
+
+import com.movi_backend.domain.fds.type.RiskLevel;
+import com.movi_backend.domain.guardian.application.GuardianNotificationTransactionService;
+import com.movi_backend.domain.guardian.application.model.QueuedGuardianNotification;
+import com.movi_backend.domain.guardian.application.port.SmsNotificationSender;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class GuardianRiskAlertDeliveryService {
+
+    private final GuardianNotificationTransactionService transactionService;
+    private final SmsNotificationSender smsNotificationSender;
+
+    public void deliver(final Long transferId, final RiskLevel riskLevel) {
+        final List<QueuedGuardianNotification> notifications;
+        try {
+            notifications = transactionService.queue(transferId, riskLevel);
+        } catch (final RuntimeException exception) {
+            log.warn("보호자 알림 대기열 저장 실패: transferId={}", transferId);
+            return;
+        }
+
+        for (final QueuedGuardianNotification notification : notifications) {
+            deliver(notification, transferId);
+        }
+    }
+
+    private void deliver(
+            final QueuedGuardianNotification notification,
+            final Long transferId
+    ) {
+        final String providerMessageId;
+        try {
+            providerMessageId = smsNotificationSender.send(
+                    notification.notificationId(),
+                    notification.encryptedTargetPhone(),
+                    notification.templateCode(),
+                    notification.message()
+            );
+        } catch (final RuntimeException exception) {
+            markFailed(notification.notificationId(), transferId);
+            return;
+        }
+
+        try {
+            transactionService.markSent(notification.notificationId(), providerMessageId);
+        } catch (final RuntimeException exception) {
+            // 발송은 성공했으므로 FAILED로 덮어쓰지 않는다. 같은 알림 ID로 상태 복구·재조회한다.
+            log.warn("보호자 알림 성공 상태 저장 실패: transferId={}, notificationId={}",
+                    transferId, notification.notificationId());
+        }
+    }
+
+    private void markFailed(final Long notificationId, final Long transferId) {
+        try {
+            transactionService.markFailed(notificationId);
+        } catch (final RuntimeException exception) {
+            log.warn("보호자 알림 실패 상태 저장 실패: transferId={}, notificationId={}",
+                    transferId, notificationId);
+        }
+    }
+}

@@ -104,9 +104,10 @@ public class VoiceCommand extends BaseCreatedEntity {
     }
 
     /** 필수 슬롯이 비어 재질문한 경우 */
-    public void markClarify(final String responseText) {
+    public void markClarify(final String responseText, final int processingMs) {
         this.status = VoiceCommandStatus.CLARIFY;
         this.responseText = responseText;
+        this.processingMs = processingMs;
     }
 
     public void markFailed(final String responseText) {

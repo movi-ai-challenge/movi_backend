@@ -19,7 +19,11 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "movi.jwt.secret=test-jwt-signing-key-must-be-at-least-32-bytes",
+        "movi.crypto.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        "movi.crypto.hash-key=YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk="
+})
 @ActiveProfiles("test")
 class VoiceSessionExpirationServiceIntegrationTest {
 

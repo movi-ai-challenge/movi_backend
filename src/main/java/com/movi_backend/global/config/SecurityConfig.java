@@ -1,5 +1,9 @@
 package com.movi_backend.global.config;
 
+import com.movi_backend.global.security.AuthProperties;
+import com.movi_backend.global.security.JwtAuthenticationFilter;
+import com.movi_backend.global.security.RestAuthenticationEntryPoint;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -8,19 +12,31 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * 보안 설정.
  *
- * <p><b>현재는 개발 편의를 위해 모든 요청을 허용한다.</b> Spring Security 의존성만 추가하고
- * 설정을 두지 않으면 전 엔드포인트가 기본 인증으로 잠겨 다른 파트의 개발이 막히기 때문이다.
- *
- * <p>인증 담당자가 JWT 필터를 구현하면서 {@code permitAll()}을 실제 인가 규칙으로 교체한다.
- * 교체 전까지 이 설정으로 배포하지 않는다.
+ * <p>운영에서는 로그인·토큰 갱신·Actuator 수집 경로만 공개하고 나머지는 JWT 인증을 요구한다.
+ * {@code movi.auth.dev-mode=true}인 로컬 환경에서는 기존 개발용 인증 컨텍스트를 사용할 수 있다.
  */
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private static final String[] PUBLIC_ENDPOINTS = {
+            "/api/v1/auth/kakao/**",
+            "/api/v1/auth/pin/login",
+            "/api/v1/auth/token/refresh",
+            "/actuator/health",
+            "/actuator/info",
+            "/actuator/prometheus"
+    };
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+    private final AuthProperties authProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(final HttpSecurity http) throws Exception {
@@ -30,8 +46,17 @@ public class SecurityConfig {
                 .httpBasic(httpBasic -> httpBasic.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // TODO(auth): JWT 인증 필터 추가 후 실제 인가 규칙으로 교체
-                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .exceptionHandling(exception ->
+                        exception.authenticationEntryPoint(restAuthenticationEntryPoint))
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(PUBLIC_ENDPOINTS).permitAll();
+                    if (authProperties.devMode()) {
+                        auth.anyRequest().permitAll();
+                        return;
+                    }
+                    auth.anyRequest().authenticated();
+                })
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 

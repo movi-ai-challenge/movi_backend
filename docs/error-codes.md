@@ -70,9 +70,11 @@
 | AUTH_4011 | `INVALID_ACCESS_TOKEN` | 401 | 유효하지 않은 액세스 토큰입니다. | 다시 로그인해 주세요. |
 | AUTH_4012 | `EXPIRED_ACCESS_TOKEN` | 401 | 액세스 토큰이 만료되었습니다. | 로그인 시간이 지났어요. 다시 로그인해 주세요. |
 | AUTH_4013 | `INVALID_REFRESH_TOKEN` | 401 | 리프레시 토큰이 유효하지 않습니다. | 다시 로그인해 주세요. |
+| AUTH_4014 | `INVALID_OAUTH_STATE` | 401 | 로그인 요청 상태가 유효하지 않습니다. | 로그인을 처음부터 다시 시도해 주세요. |
 | AUTH_4020 | `PIN_MISMATCH` | 401 | 비밀번호가 일치하지 않습니다. | 비밀번호가 맞지 않아요. 다시 입력해 주세요. |
 | AUTH_4021 | `PIN_LOCKED` | 403 | 비밀번호 입력 제한 횟수를 초과했습니다. | 비밀번호를 여러 번 잘못 입력하셨어요. 잠시 후 다시 시도해 주세요. |
 | AUTH_4022 | `PIN_NOT_REGISTERED` | 400 | 등록된 비밀번호가 없습니다. | 비밀번호를 먼저 등록해 주세요. |
+| AUTH_4090 | `PIN_ALREADY_REGISTERED` | 409 | 비밀번호가 이미 등록되어 있습니다. | 비밀번호가 이미 등록되어 있어요. |
 | AUTH_4023 | `BIOMETRIC_NOT_ENABLED` | 400 | 생체인증이 설정되어 있지 않습니다. | 지문이나 얼굴 인식이 설정되어 있지 않아요. |
 | AUTH_4030 | `FORBIDDEN` | 403 | 접근 권한이 없습니다. | 이 기능을 사용할 수 없어요. |
 | AUTH_4040 | `USER_NOT_FOUND` | 404 | 회원을 찾을 수 없습니다. | 회원 정보를 찾을 수 없어요. |
@@ -82,6 +84,8 @@
 | 코드 | Enum | HTTP | message | voiceMessage |
 |---|---|---|---|---|
 | KAKAO_4000 | `KAKAO_TOKEN_IS_BLANK` | 400 | 카카오 토큰이 비어 있습니다. | 로그인에 실패했어요. 다시 시도해 주세요. |
+| KAKAO_4001 | `KAKAO_AUTHORIZATION_FAILED` | 400 | 카카오 인가 처리에 실패했습니다. | 카카오 로그인을 처음부터 다시 시도해 주세요. |
+| KAKAO_4002 | `KAKAO_REQUIRED_INFO_MISSING` | 400 | 카카오 필수 회원 정보가 없습니다. | 전화번호 제공에 동의한 뒤 다시 로그인해 주세요. |
 | KAKAO_5000 | `KAKAO_COMMUNICATION_ERROR` | 502 | 카카오 통신에 실패하였습니다. | 카카오 로그인이 지금 안 돼요. 잠시 후 다시 시도해 주세요. |
 
 ### ACCOUNT — 계좌
@@ -99,12 +103,15 @@
 | 코드 | Enum | HTTP | message | voiceMessage |
 |---|---|---|---|---|
 | OPENBANK_4001 | `INVALID_FINTECH_USE_NUM` | 400 | 유효하지 않은 핀테크이용번호입니다. | 계좌 정보에 문제가 있어요. 계좌를 다시 연결해 주세요. |
+| OPENBANK_4002 | `INVALID_OPENBANKING_STATE` | 400 | 유효하지 않은 계좌 연결 요청입니다. | 계좌 연결에 실패했어요. 처음부터 다시 시도해 주세요. |
 | OPENBANK_4010 | `CONNECTION_EXPIRED` | 401 | 오픈뱅킹 연결이 만료되었습니다. | 은행 연결이 끊어졌어요. 다시 연결해 주세요. |
 | OPENBANK_4040 | `CONNECTION_NOT_FOUND` | 404 | 오픈뱅킹 연결 정보를 찾을 수 없습니다. | 은행 계좌가 연결되어 있지 않아요. |
 | OPENBANK_5000 | `OPENBANK_COMMUNICATION_ERROR` | 502 | 오픈뱅킹 통신에 실패하였습니다. | 은행과 연결이 잠시 안 돼요. 조금 뒤에 다시 시도해 주세요. |
 | OPENBANK_5001 | `BALANCE_INQUIRY_FAILED` | 502 | 잔액 조회에 실패했습니다. | 잔액을 확인하지 못했어요. 다시 말씀해 주세요. |
 | OPENBANK_5002 | `TRANSFER_EXECUTION_FAILED` | 502 | 이체 실행에 실패했습니다. | 송금하지 못했어요. 돈은 빠져나가지 않았어요. |
 
+> `INVALID_OPENBANKING_STATE`는 계좌 연결 CSRF 방어 실패 시 반환합니다. 카카오 로그인용 `AUTH_4014`(`INVALID_OAUTH_STATE`)와 구분됩니다. **왜 실패했는지 사용자에게 설명하지 않습니다** — 공격 시도라면 공격자에게 정보를 주게 되기 때문입니다.
+>
 > `TRANSFER_EXECUTION_FAILED`의 음성 문구에 **"돈은 빠져나가지 않았어요"** 를 넣은 이유 — 화면을 못 보는 사용자에게 가장 불안한 상황이 "실패했는데 돈이 나갔는지 모르는" 경우입니다.
 
 ### TRANSFER — 이체

@@ -38,8 +38,8 @@ import lombok.NoArgsConstructor;
 @Table(
         name = "transfers",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_transfer_idem",
-                columnNames = "idempotency_key"
+                name = "uk_transfer_user_idem",
+                columnNames = {"user_id", "idempotency_key"}
         )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

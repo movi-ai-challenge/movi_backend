@@ -205,7 +205,9 @@ class TransferExecutionServiceTest {
         transfer.startRiskReview();
         transfer.complete(java.time.LocalDateTime.now());
         final FdsAssessment assessment = assessmentOf(transfer, RiskLevel.LOW);
-        given(transferRepository.findByIdempotencyKeyAndUserId(
+        given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
+                .willReturn(user);
+        given(transferRepository.findLockedByIdempotencyKeyAndUserId(
                 command.idempotencyKey(), USER_ID
         )).willReturn(Optional.of(transfer));
         given(fdsAssessmentRepository.findByTransferId(TRANSFER_ID))
@@ -234,7 +236,7 @@ class TransferExecutionServiceTest {
         given(recipient.getAccountNum()).willReturn("encrypted-account");
         given(recipient.getHolderName()).willReturn("김영희");
         given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
-        given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
+        given(transferRepository.findLockedByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
                 .willReturn(Optional.empty());
         given(balanceInquiryService.refresh(USER_ID, account)).willReturn(balanceSnapshot);
         given(transferRepository.sumAmountByUserAndStatusBetween(
@@ -276,7 +278,7 @@ class TransferExecutionServiceTest {
         given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
                 .willReturn(user);
         given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
-        given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
+        given(transferRepository.findLockedByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
                 .willReturn(Optional.empty());
         given(balanceInquiryService.refresh(USER_ID, account)).willReturn(balanceSnapshot);
         given(transferRepository.sumAmountByUserAndStatusBetween(
@@ -315,7 +317,7 @@ class TransferExecutionServiceTest {
         given(user.getId()).willReturn(USER_ID);
         given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
                 .willReturn(user);
-        given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
+        given(transferRepository.findLockedByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
                 .willReturn(Optional.empty());
         given(balanceInquiryService.refresh(USER_ID, account)).willReturn(balanceSnapshot);
         given(balanceSnapshot.getAvailableAmount()).willReturn(40_000L);
@@ -419,7 +421,7 @@ class TransferExecutionServiceTest {
         given(recipient.isFirstTime()).willReturn(false);
         given(device.isTrusted()).willReturn(true);
         given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
-        given(transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
+        given(transferRepository.findLockedByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))
                 .willReturn(Optional.empty());
         given(balanceInquiryService.refresh(USER_ID, account)).willReturn(balanceSnapshot);
         given(transferRepository.sumAmountByUserAndStatusBetween(

@@ -75,7 +75,7 @@ ACTIVE
 - 최소 금액, 1회 한도, 일일 누적 한도 검증
 - 확인 직전 실시간 가용 잔액 재검증
 - 사용자 행 비관적 잠금으로 동시 일일 한도 우회 방지
-- `idempotency_key` 사전 조회와 DB UNIQUE 이중 방어
+- 사용자 잠금 후 `idempotency_key` 조회와 `(user_id, idempotency_key)` DB UNIQUE 이중 방어
 - 같은 키의 완료 요청은 기존 결과 반환
 - 완료 송금의 출금 거래내역 저장
 - 완료 후 수취인 송금 횟수 갱신
@@ -114,9 +114,12 @@ PENDING → RISK_REVIEW → COMPLETED
 | MEDIUM | ALLOW_WITH_ALERT | 송금 실행 후 보호자 알림 요청 |
 | HIGH | BLOCK | 송금 미실행 및 보호자 긴급 알림 요청 |
 
+송금 커밋 후 별도 트랜잭션에서 활성 보호자별 알림 이력을 `QUEUED`로 확정하고,
+SMS 외부 호출 뒤 별도 트랜잭션에서 `SENT` 또는 `FAILED`로 기록합니다.
 보호자 알림 실패가 이미 완료되거나 차단된 송금 상태를 되돌리지 않도록 격리되어 있습니다.
 
-> 실제 SMS·알림 저장 어댑터는 아직 연결 전이며, 현재는 Mock Alert Adapter를 사용합니다.
+> `local`과 `test`는 Mock SMS 제공자를 사용합니다. 운영 SMS 제공자가 연결되기 전에는
+> 발송 성공으로 위장하지 않고 알림을 `FAILED`로 남깁니다.
 
 ### 보안과 장애 대응
 
@@ -209,7 +212,8 @@ mysql -u root -p movi < docs/schema.sql
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-기본 프로필은 `local`이며 Voice, FDS, 잔액조회, 송금, 보호자 알림은 Mock 구현을 사용합니다.
+기본 프로필은 `local`이며 Voice, FDS, 잔액조회, 송금, SMS 제공자는 Mock 구현을 사용합니다.
+보호자 알림 대상 조회와 발송 이력 저장은 실제 Repository를 사용합니다.
 
 ## 빌드와 테스트
 
@@ -259,7 +263,7 @@ src/main/java/com/movi_backend
 | AI FDS | HTTP/Mock Client 구현 | 모델 승인 버전과 staging 통합 검증 |
 | 잔액조회 | Port/Mock 구현 | 실제 오픈뱅킹 Sandbox Adapter |
 | 송금 실행 | Port/Mock 구현 | 실제 오픈뱅킹 Sandbox Adapter |
-| 보호자 알림 | Port/Mock 구현 | 알림 DB 저장, 실제 SMS Adapter와 재시도 |
+| 보호자 알림 | 활성 보호자 조회·알림 DB 저장·Mock SMS 구현 | 실제 SMS Adapter와 재시도 |
 | 인증 | 개발 인증 컨텍스트 구현 | JWT 필터·운영 인가 통합 |
 | 개인정보 | 음성 텍스트 마스킹 구현 | 전화번호·계좌번호·토큰 AES 계층 최종 연결 |
 | 음성 파일 | 형식·5MB 제한 구현 | WebM/WAV 15초 길이 검증 |

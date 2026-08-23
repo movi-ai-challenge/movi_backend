@@ -205,7 +205,7 @@ CREATE TABLE transfers (
     requested_at     DATETIME     NOT NULL COMMENT '요청일시',
     completed_at     DATETIME     NULL COMMENT '완료일시',
     PRIMARY KEY (transfer_id),
-    UNIQUE KEY uk_transfer_idem (idempotency_key),
+    UNIQUE KEY uk_transfer_user_idem (user_id, idempotency_key),
     CONSTRAINT fk_transfer_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_transfer_account FOREIGN KEY (from_account_id) REFERENCES accounts (account_id),
     CONSTRAINT fk_transfer_recipient FOREIGN KEY (recipient_id) REFERENCES transfer_recipients (recipient_id),

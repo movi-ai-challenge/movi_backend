@@ -169,7 +169,7 @@ erDiagram
         varchar to_holder_name
         bigint amount
         varchar status "PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED"
-        varchar idempotency_key UK
+        varchar idempotency_key "uk (user_id, idempotency_key)"
         datetime requested_at
         datetime completed_at
         varchar fail_reason
@@ -359,7 +359,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 "엄마한테 5만원 보내줘" 같은 음성 명령을 해석하려면 별칭↔계좌 매핑이 필수입니다. 동시에 `transfer_count`는 FDS의 "처음 보내는 상대" 피처로 직접 쓰입니다.
 
 **4. `idempotency_key` on `transfers`**
-음성 인식은 오인식·중복 발화가 잦습니다. 클라이언트가 발급한 키로 중복 이체를 차단해야 합니다.
+음성 인식은 오인식·중복 발화가 잦습니다. 클라이언트가 발급한 키로 사용자별 중복 이체를 차단해야 합니다.
 
 **5. `balance_snapshots` 유지**
 오픈뱅킹 잔액 조회는 API 호출 비용/속도 제약이 있어 캐시가 필요하고, FDS 피처(잔액 대비 이체 비율)에도 씁니다.
@@ -379,7 +379,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 | `oauth_accounts` | `uk (provider, provider_user_id)` | 카카오 로그인 조회 |
 | `accounts` | `idx (user_id, is_active)` | 홈 진입 시 계좌 목록 |
 | `transactions` | `idx (account_id, tran_datetime DESC)` | 거래 내역 기간 필터 |
-| `transfers` | `uk (idempotency_key)` / `idx (user_id, requested_at DESC)` | 중복 방지 / 이체 이력 |
+| `transfers` | `uk (user_id, idempotency_key)` / `idx (user_id, requested_at DESC)` | 사용자별 중복 방지 / 이체 이력 |
 | `voice_commands` | `idx (user_id, created_at DESC)` / `idx (intent, status)` | 음성 로그 분석 |
 | `guardian_links` | `idx (protectee_user_id, status)` / `uk (invite_token)` | 활성 보호자 조회 / 초대 수락 |
 | `notifications` | `idx (status)` / `idx (user_id, created_at DESC)` | 발송 재시도 / 알림 이력 |

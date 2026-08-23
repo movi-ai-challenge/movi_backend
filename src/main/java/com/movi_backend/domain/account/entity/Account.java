@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -29,7 +30,13 @@ import lombok.NoArgsConstructor;
  */
 @Getter
 @Entity
-@Table(name = "accounts")
+@Table(
+        name = "accounts",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_account_user_alias",
+                columnNames = {"user_id", "account_alias"}
+        )
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Account extends BaseCreatedEntity {
 

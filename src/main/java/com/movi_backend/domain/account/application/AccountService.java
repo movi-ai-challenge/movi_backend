@@ -8,6 +8,7 @@ import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class AccountService {
+
+    private static final int MAX_ALIAS_LENGTH = 50;
 
     private final AccountRepository accountRepository;
 
@@ -58,16 +61,38 @@ public class AccountService {
      */
     @Transactional
     public AccountResponse changeAlias(final Long userId, final Long accountId, final String alias) {
+        final String normalizedAlias = normalizeAlias(alias);
         final Account target = accountRepository.findByIdAndUserId(accountId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
 
-        accountRepository.findByUserIdAndAlias(userId, alias)
+        if (!target.isActive()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE);
+        }
+
+        accountRepository.findByUserIdAndAlias(userId, normalizedAlias)
                 .filter(duplicated -> !duplicated.getId().equals(accountId))
                 .ifPresent(duplicated -> {
                     throw new BusinessException(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
                 });
 
-        target.changeAlias(alias);
+        try {
+            target.changeAlias(normalizedAlias);
+            accountRepository.flush();
+        } catch (final DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
+        }
         return AccountResponse.from(target);
+    }
+
+    private String normalizeAlias(final String alias) {
+        if (alias == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+
+        final String normalizedAlias = alias.strip();
+        if (normalizedAlias.isEmpty() || normalizedAlias.length() > MAX_ALIAS_LENGTH) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+        return normalizedAlias;
     }
 }

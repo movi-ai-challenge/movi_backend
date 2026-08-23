@@ -326,7 +326,7 @@ public class TransferExecutionService {
                     transfer.getIdempotencyKey(),
                     transfer.getFromAccount().getFintechUseNum(),
                     transfer.getToBankCode(),
-                    transfer.getToAccountNum(),
+                    sensitiveDataCrypto.decrypt(transfer.getToAccountNum()),
                     transfer.getToHolderName(),
                     transfer.getAmount()
             );

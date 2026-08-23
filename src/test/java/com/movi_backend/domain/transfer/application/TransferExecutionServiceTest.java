@@ -205,6 +205,8 @@ class TransferExecutionServiceTest {
         transfer.startRiskReview();
         transfer.complete(java.time.LocalDateTime.now());
         final FdsAssessment assessment = assessmentOf(transfer, RiskLevel.LOW);
+        given(entityManager.find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE))
+                .willReturn(user);
         given(transferRepository.findByIdempotencyKeyAndUserId(
                 command.idempotencyKey(), USER_ID
         )).willReturn(Optional.of(transfer));

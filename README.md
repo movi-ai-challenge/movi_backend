@@ -75,7 +75,7 @@ ACTIVE
 - 최소 금액, 1회 한도, 일일 누적 한도 검증
 - 확인 직전 실시간 가용 잔액 재검증
 - 사용자 행 비관적 잠금으로 동시 일일 한도 우회 방지
-- `idempotency_key` 사전 조회와 DB UNIQUE 이중 방어
+- 사용자 잠금 후 `idempotency_key` 조회와 `(user_id, idempotency_key)` DB UNIQUE 이중 방어
 - 같은 키의 완료 요청은 기존 결과 반환
 - 완료 송금의 출금 거래내역 저장
 - 완료 후 수취인 송금 횟수 갱신

@@ -10,7 +10,7 @@ public record AccountAliasChangeRequest(
 ) {
     public AccountAliasChangeRequest {
         if (alias != null) {
-            alias = alias.trim();
+            alias = alias.strip();
         }
     }
 }

@@ -106,6 +106,7 @@ CREATE TABLE accounts (
     created_at         DATETIME     NOT NULL COMMENT '생성일시',
     PRIMARY KEY (account_id),
     UNIQUE KEY uk_account_fintech (fintech_use_num),
+    UNIQUE KEY uk_account_user_alias (user_id, account_alias),
     CONSTRAINT fk_account_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_account_conn FOREIGN KEY (connection_id) REFERENCES openbanking_connections (connection_id)
 ) COMMENT '연결 계좌';

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,11 +46,29 @@ class AccountServiceTest {
         final AccountResponse response = accountService.changeAlias(
                 USER_ID,
                 ACCOUNT_ID,
-                "  월급통장  "
+                "\u2003월급통장\u2003"
         );
 
         assertThat(account.getAlias()).isEqualTo("월급통장");
         assertThat(response.accountAlias()).isEqualTo("월급통장");
+    }
+
+    @Test
+    @DisplayName("동시 변경으로 별칭 UNIQUE 제약이 충돌하면 중복 별칭 예외가 발생한다")
+    void 동시_변경으로_별칭_UNIQUE_제약이_충돌하면_중복_별칭_예외가_발생한다() {
+        final Account account = account("기존 별칭");
+        given(accountRepository.findByIdAndUserId(ACCOUNT_ID, USER_ID))
+                .willReturn(Optional.of(account));
+        given(accountRepository.findByUserIdAndAlias(USER_ID, "월급통장"))
+                .willReturn(Optional.empty());
+        org.mockito.BDDMockito.willThrow(new DataIntegrityViolationException("unique constraint"))
+                .given(accountRepository)
+                .flush();
+
+        assertThatThrownBy(() -> accountService.changeAlias(USER_ID, ACCOUNT_ID, "월급통장"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
     }
 
     @Test

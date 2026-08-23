@@ -117,6 +117,7 @@ CREATE TABLE accounts (
     created_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (account_id),
     UNIQUE KEY uk_account_fintech (fintech_use_num),
+    UNIQUE KEY uk_account_user_alias (user_id, account_alias),
     KEY idx_account_user_active (user_id, is_active),
     CONSTRAINT fk_account_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_account_conn FOREIGN KEY (connection_id) REFERENCES openbanking_connections (connection_id)

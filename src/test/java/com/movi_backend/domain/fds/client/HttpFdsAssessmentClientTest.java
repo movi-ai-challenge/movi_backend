@@ -7,6 +7,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentRequest;
@@ -20,6 +21,7 @@ import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.ResourceAccessException;
@@ -95,6 +97,32 @@ class HttpFdsAssessmentClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.ASSESSMENT_FAILED);
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("FDS API가 HTTP 504를 반환하면 위험도 평가 시간 초과 예외가 발생한다")
+    void FDS_API가_HTTP_504를_반환하면_위험도_평가_시간_초과_예외가_발생한다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder()
+                .baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(
+                builder.build(),
+                new FdsAssessmentResponseValidator()
+        );
+        final FdsAssessmentRequest request = FdsClientFixture.normalRequest();
+        server.expect(once(), requestTo("http://localhost:8000/internal/v1/fraud/predict"))
+                .andRespond(withStatus(HttpStatus.GATEWAY_TIMEOUT));
+
+        // when
+        final Throwable thrown = catchThrowable(() -> client.assess(request));
+
+        // then
+        assertThat(thrown)
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ASSESSMENT_TIMEOUT);
         server.verify();
     }
 

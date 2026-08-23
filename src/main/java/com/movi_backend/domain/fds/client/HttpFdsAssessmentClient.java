@@ -8,11 +8,13 @@ import java.net.SocketTimeoutException;
 import java.util.concurrent.TimeoutException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 @Component
 @ConditionalOnProperty(prefix = "movi.fds", name = "client-type", havingValue = "http")
@@ -45,15 +47,20 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
             throw exception;
         } catch (final ResourceAccessException exception) {
             if (containsTimeout(exception)) {
-                throw new BusinessException(
-                        ErrorCode.ASSESSMENT_TIMEOUT,
-                        exception.getClass().getSimpleName()
-                );
+                throw assessmentTimeout(exception);
             }
             throw assessmentFailed(exception);
         } catch (final RestClientException exception) {
+            if (isGatewayTimeout(exception)) {
+                throw assessmentTimeout(exception);
+            }
             throw assessmentFailed(exception);
         }
+    }
+
+    private boolean isGatewayTimeout(final RestClientException exception) {
+        return exception instanceof RestClientResponseException responseException
+                && responseException.getStatusCode() == HttpStatus.GATEWAY_TIMEOUT;
     }
 
     private boolean containsTimeout(final Throwable exception) {
@@ -70,6 +77,13 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
     private BusinessException assessmentFailed(final Exception exception) {
         return new BusinessException(
                 ErrorCode.ASSESSMENT_FAILED,
+                exception.getClass().getSimpleName()
+        );
+    }
+
+    private BusinessException assessmentTimeout(final Exception exception) {
+        return new BusinessException(
+                ErrorCode.ASSESSMENT_TIMEOUT,
                 exception.getClass().getSimpleName()
         );
     }

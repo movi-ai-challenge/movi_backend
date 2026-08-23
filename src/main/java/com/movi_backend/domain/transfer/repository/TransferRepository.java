@@ -4,13 +4,22 @@ import com.movi_backend.domain.transfer.entity.Transfer;
 import com.movi_backend.domain.transfer.type.TransferStatus;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface TransferRepository extends JpaRepository<Transfer, Long> {
+
+    @EntityGraph(attributePaths = {"user", "recipient"})
+    List<Transfer> findAllByStatusAndCompletedAtGreaterThanEqualAndCompletedAtLessThan(
+            TransferStatus status,
+            LocalDateTime startAt,
+            LocalDateTime endAt
+    );
 
     Optional<Transfer> findByIdAndUserId(Long transferId, Long userId);
 

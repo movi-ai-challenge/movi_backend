@@ -8,6 +8,7 @@ import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -74,7 +75,12 @@ public class AccountService {
                     throw new BusinessException(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
                 });
 
-        target.changeAlias(normalizedAlias);
+        try {
+            target.changeAlias(normalizedAlias);
+            accountRepository.flush();
+        } catch (final DataIntegrityViolationException exception) {
+            throw new BusinessException(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
+        }
         return AccountResponse.from(target);
     }
 
@@ -83,7 +89,7 @@ public class AccountService {
             throw new BusinessException(ErrorCode.BAD_REQUEST);
         }
 
-        final String normalizedAlias = alias.trim();
+        final String normalizedAlias = alias.strip();
         if (normalizedAlias.isEmpty() || normalizedAlias.length() > MAX_ALIAS_LENGTH) {
             throw new BusinessException(ErrorCode.BAD_REQUEST);
         }

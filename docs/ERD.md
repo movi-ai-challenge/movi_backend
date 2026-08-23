@@ -130,7 +130,7 @@ erDiagram
         varchar bank_code
         varchar bank_name
         varchar account_num_masked
-        varchar account_alias "음성 별칭"
+        varchar account_alias "uk (user_id, account_alias), 음성 별칭"
         varchar account_type "DEPOSIT/SAVING"
         boolean is_primary
         boolean is_active
@@ -377,7 +377,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 | 테이블 | 인덱스 | 용도 |
 |--------|--------|------|
 | `oauth_accounts` | `uk (provider, provider_user_id)` | 카카오 로그인 조회 |
-| `accounts` | `idx (user_id, is_active)` | 홈 진입 시 계좌 목록 |
+| `accounts` | `uk (user_id, account_alias)` / `idx (user_id, is_active)` | 사용자별 별칭 중복 방지 / 홈 계좌 목록 |
 | `transactions` | `idx (account_id, tran_datetime DESC)` | 거래 내역 기간 필터 |
 | `transfers` | `uk (idempotency_key)` / `idx (user_id, requested_at DESC)` | 중복 방지 / 이체 이력 |
 | `voice_commands` | `idx (user_id, created_at DESC)` / `idx (intent, status)` | 음성 로그 분석 |

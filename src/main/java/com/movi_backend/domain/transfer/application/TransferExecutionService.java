@@ -31,6 +31,7 @@ import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
@@ -71,6 +72,7 @@ public class TransferExecutionService {
     private final TransferRiskAlertPort transferRiskAlertPort;
     private final TransferProperties transferProperties;
     private final ObjectMapper objectMapper;
+    private final SensitiveDataCrypto sensitiveDataCrypto;
 
     @Transactional(readOnly = true)
     public Optional<TransferExecutionResult> findCompletedResult(
@@ -330,7 +332,9 @@ public class TransferExecutionService {
             );
             final OpenBankingTransferResult result = openBankingClient.transfer(
                     command,
-                    transfer.getFromAccount().getConnection().getAccessToken()
+                    sensitiveDataCrypto.decrypt(
+                            transfer.getFromAccount().getConnection().getAccessToken()
+                    )
             );
             if (result == null) {
                 throw new BusinessException(ErrorCode.TRANSFER_EXECUTION_FAILED);

@@ -14,6 +14,7 @@ import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,7 @@ public class OpenBankingConnectService {
     private final UserRepository userRepository;
     private final OpenbankingConnectionRepository connectionRepository;
     private final AccountRepository accountRepository;
+    private final SensitiveDataCrypto sensitiveDataCrypto;
 
     /** 사용자를 보낼 오픈뱅킹 인증 URL을 만든다. */
     public String startConnect(final Long userId) {
@@ -79,21 +81,34 @@ public class OpenBankingConnectService {
 
     /** 이미 연결한 적이 있으면 토큰만 갱신한다. user_seq_no 가 UNIQUE 이기 때문이다. */
     private OpenbankingConnection saveConnection(final User user, final OpenBankingToken token) {
+        final String encryptedAccessToken = sensitiveDataCrypto.encrypt(token.accessToken());
+        final String encryptedRefreshToken = encryptNullable(token.refreshToken());
         return connectionRepository.findByUserSeqNo(token.userSeqNo())
                 .map(existing -> {
-                    existing.refresh(token.accessToken(), token.refreshToken(), token.expiresAt());
+                    existing.refresh(
+                            encryptedAccessToken,
+                            encryptedRefreshToken,
+                            token.expiresAt()
+                    );
                     return existing;
                 })
                 .orElseGet(() -> connectionRepository.save(
                         OpenbankingConnection.builder()
                                 .user(user)
                                 .userSeqNo(token.userSeqNo())
-                                .accessToken(token.accessToken())
-                                .refreshToken(token.refreshToken())
+                                .accessToken(encryptedAccessToken)
+                                .refreshToken(encryptedRefreshToken)
                                 .expiresAt(token.expiresAt())
                                 .scope(token.scope())
                                 .build()
                 ));
+    }
+
+    private String encryptNullable(final String token) {
+        if (token == null || token.isBlank()) {
+            return null;
+        }
+        return sensitiveDataCrypto.encrypt(token);
     }
 
     /**

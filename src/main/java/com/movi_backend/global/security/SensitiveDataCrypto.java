@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Base64;
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
@@ -48,6 +49,33 @@ public class SensitiveDataCrypto {
             return Base64.getEncoder().encodeToString(join(iv, encrypted));
         } catch (final GeneralSecurityException exception) {
             throw new IllegalStateException("민감정보를 암호화하지 못했습니다.", exception);
+        }
+    }
+
+    public String decrypt(final String encryptedText) {
+        if (encryptedText == null || encryptedText.isBlank()) {
+            throw new IllegalStateException("민감정보를 복호화하지 못했습니다.");
+        }
+        try {
+            final byte[] combined = Base64.getDecoder().decode(encryptedText);
+            if (combined.length <= IV_LENGTH_BYTES + GCM_TAG_LENGTH_BITS / Byte.SIZE) {
+                throw new IllegalArgumentException("암호문 길이가 유효하지 않습니다.");
+            }
+            final byte[] iv = Arrays.copyOfRange(combined, 0, IV_LENGTH_BYTES);
+            final byte[] encrypted = Arrays.copyOfRange(
+                    combined,
+                    IV_LENGTH_BYTES,
+                    combined.length
+            );
+            final Cipher cipher = Cipher.getInstance(AES_TRANSFORMATION);
+            cipher.init(
+                    Cipher.DECRYPT_MODE,
+                    encryptionKey,
+                    new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            );
+            return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+        } catch (final GeneralSecurityException | IllegalArgumentException exception) {
+            throw new IllegalStateException("민감정보를 복호화하지 못했습니다.", exception);
         }
     }
 

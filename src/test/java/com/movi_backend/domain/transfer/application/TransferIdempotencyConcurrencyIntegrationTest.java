@@ -27,6 +27,7 @@ import com.movi_backend.domain.transfer.application.port.TransferRiskAlertPort;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
 import com.movi_backend.domain.transfer.repository.TransferRepository;
 import com.movi_backend.domain.transfer.type.TransferStatus;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -66,6 +67,9 @@ class TransferIdempotencyConcurrencyIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private SensitiveDataCrypto sensitiveDataCrypto;
 
     @MockitoBean
     private BalanceInquiryService balanceInquiryService;
@@ -184,8 +188,8 @@ class TransferIdempotencyConcurrencyIntegrationTest {
             final OpenbankingConnection connection = OpenbankingConnection.builder()
                     .user(user)
                     .userSeqNo("seq-" + UUID.randomUUID())
-                    .accessToken("encrypted-access-token")
-                    .refreshToken("encrypted-refresh-token")
+                    .accessToken(sensitiveDataCrypto.encrypt("access-token"))
+                    .refreshToken(sensitiveDataCrypto.encrypt("refresh-token"))
                     .expiresAt(LocalDateTime.now().plusDays(1))
                     .scope("transfer")
                     .build();

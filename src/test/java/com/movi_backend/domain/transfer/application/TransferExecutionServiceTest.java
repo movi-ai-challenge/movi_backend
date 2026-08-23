@@ -3,6 +3,7 @@ package com.movi_backend.domain.transfer.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -10,7 +11,11 @@ import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.account.application.port.OpenBankingClient;
+import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferCommand;
+import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferResult;
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
+import com.movi_backend.domain.account.entity.OpenbankingConnection;
 import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.fds.client.FdsAssessmentClient;
@@ -25,7 +30,6 @@ import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
-import com.movi_backend.domain.transfer.application.port.TransferExecutionPort;
 import com.movi_backend.domain.transfer.application.port.TransferRiskAlertPort;
 import com.movi_backend.domain.transfer.config.TransferProperties;
 import com.movi_backend.domain.transfer.entity.Transaction;
@@ -58,6 +62,7 @@ class TransferExecutionServiceTest {
 
     private static final Long USER_ID = 3L;
     private static final Long TRANSFER_ID = 101L;
+    private static final String ACCESS_TOKEN = "test-access-token";
 
     @Mock private TransferRepository transferRepository;
     @Mock private TransactionRepository transactionRepository;
@@ -66,11 +71,12 @@ class TransferExecutionServiceTest {
     @Mock private UserTransferProfileRepository userTransferProfileRepository;
     @Mock private FdsAssessmentRepository fdsAssessmentRepository;
     @Mock private FdsAssessmentClient fdsAssessmentClient;
-    @Mock private TransferExecutionPort transferExecutionPort;
+    @Mock private OpenBankingClient openBankingClient;
     @Mock private TransferRiskAlertPort transferRiskAlertPort;
     @Mock private TransferProperties transferProperties;
     @Mock private User user;
     @Mock private Account account;
+    @Mock private OpenbankingConnection openbankingConnection;
     @Mock private TransferRecipient recipient;
     @Mock private VoiceCommand voiceCommand;
     @Mock private Device device;
@@ -83,6 +89,7 @@ class TransferExecutionServiceTest {
         final ConfirmedTransferCommand command = givenCommand(50_000L);
         givenFdsResponse(RiskLevel.LOW);
         givenAssessmentSaved();
+        givenOpenBankingSuccess();
         final TransferExecutionService service = createService();
 
         // when
@@ -94,7 +101,10 @@ class TransferExecutionServiceTest {
         assertThat(result.completedAt()).isNotNull();
         then(entityManager).should().find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE);
         then(balanceInquiryService).should().refresh(USER_ID, account);
-        then(transferExecutionPort).should().execute(any(Transfer.class));
+        then(openBankingClient).should().transfer(
+                any(OpenBankingTransferCommand.class),
+                eq(ACCESS_TOKEN)
+        );
         then(transferRiskAlertPort).shouldHaveNoInteractions();
         final ArgumentCaptor<Transaction> transactionCaptor =
                 ArgumentCaptor.forClass(Transaction.class);
@@ -112,6 +122,7 @@ class TransferExecutionServiceTest {
         final ConfirmedTransferCommand command = givenCommand(150_000L);
         givenFdsResponse(RiskLevel.MEDIUM);
         givenAssessmentSaved();
+        givenOpenBankingSuccess();
         final TransferExecutionService service = createService();
 
         // when
@@ -120,7 +131,10 @@ class TransferExecutionServiceTest {
         // then
         assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
         assertThat(result.riskLevel()).isEqualTo(RiskLevel.MEDIUM);
-        then(transferExecutionPort).should().execute(any(Transfer.class));
+        then(openBankingClient).should().transfer(
+                any(OpenBankingTransferCommand.class),
+                eq(ACCESS_TOKEN)
+        );
         then(transferRiskAlertPort).should().send(any(Transfer.class), any(FdsAssessment.class));
     }
 
@@ -139,7 +153,7 @@ class TransferExecutionServiceTest {
         // then
         assertThat(result.status()).isEqualTo(TransferStatus.BLOCKED);
         assertThat(result.riskLevel()).isEqualTo(RiskLevel.HIGH);
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
         then(transferRiskAlertPort).should().send(any(Transfer.class), any(FdsAssessment.class));
     }
 
@@ -157,7 +171,7 @@ class TransferExecutionServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ASSESSMENT_FAILED);
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -205,7 +219,7 @@ class TransferExecutionServiceTest {
         assertThat(result.transferId()).isEqualTo(TRANSFER_ID);
         assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
         then(fdsAssessmentClient).shouldHaveNoInteractions();
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -250,7 +264,7 @@ class TransferExecutionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.DUPLICATE_TRANSFER);
         then(fdsAssessmentClient).shouldHaveNoInteractions();
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -290,7 +304,7 @@ class TransferExecutionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.DAILY_LIMIT_EXCEEDED);
         then(fdsAssessmentClient).shouldHaveNoInteractions();
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -323,7 +337,7 @@ class TransferExecutionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INSUFFICIENT_BALANCE);
         then(fdsAssessmentClient).shouldHaveNoInteractions();
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -333,9 +347,10 @@ class TransferExecutionServiceTest {
         final ConfirmedTransferCommand command = givenCommand(50_000L);
         givenFdsResponse(RiskLevel.LOW);
         givenAssessmentSaved();
+        givenOpenBankingConnection();
         willThrow(new BusinessException(ErrorCode.TRANSFER_EXECUTION_FAILED))
-                .given(transferExecutionPort)
-                .execute(any(Transfer.class));
+                .given(openBankingClient)
+                .transfer(any(OpenBankingTransferCommand.class), eq(ACCESS_TOKEN));
         final TransferExecutionService service = createService();
 
         // when
@@ -355,6 +370,7 @@ class TransferExecutionServiceTest {
         final ConfirmedTransferCommand command = givenCommand(150_000L);
         givenFdsResponse(RiskLevel.MEDIUM);
         givenAssessmentSaved();
+        givenOpenBankingSuccess();
         willThrow(new RuntimeException("알림 제공자 장애"))
                 .given(transferRiskAlertPort)
                 .send(any(Transfer.class), any(FdsAssessment.class));
@@ -365,7 +381,10 @@ class TransferExecutionServiceTest {
 
         // then
         assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
-        then(transferExecutionPort).should().execute(any(Transfer.class));
+        then(openBankingClient).should().transfer(
+                any(OpenBankingTransferCommand.class),
+                eq(ACCESS_TOKEN)
+        );
     }
 
     @Test
@@ -385,7 +404,7 @@ class TransferExecutionServiceTest {
 
         // then
         assertThat(result.status()).isEqualTo(TransferStatus.BLOCKED);
-        then(transferExecutionPort).shouldHaveNoInteractions();
+        then(openBankingClient).shouldHaveNoInteractions();
     }
 
     private ConfirmedTransferCommand givenCommand(final long amount) {
@@ -431,6 +450,24 @@ class TransferExecutionServiceTest {
     private void givenAssessmentSaved() {
         given(fdsAssessmentRepository.save(any(FdsAssessment.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    private void givenOpenBankingSuccess() {
+        givenOpenBankingConnection();
+        given(openBankingClient.transfer(
+                any(OpenBankingTransferCommand.class),
+                eq(ACCESS_TOKEN)
+        )).willReturn(OpenBankingTransferResult.of(
+                "test-bank-tran-id",
+                java.time.LocalDateTime.now(),
+                950_000L
+        ));
+    }
+
+    private void givenOpenBankingConnection() {
+        given(account.getFintechUseNum()).willReturn("199000000000000000000001");
+        given(account.getConnection()).willReturn(openbankingConnection);
+        given(openbankingConnection.getAccessToken()).willReturn(ACCESS_TOKEN);
     }
 
     private void givenFdsResponse(final RiskLevel riskLevel) {
@@ -487,7 +524,7 @@ class TransferExecutionServiceTest {
                 fdsAssessmentRepository,
                 fdsAssessmentClient,
                 new FdsAssessmentResponseValidator(),
-                transferExecutionPort,
+                openBankingClient,
                 transferRiskAlertPort,
                 transferProperties,
                 new ObjectMapper()

@@ -2,6 +2,9 @@ package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
 import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.account.application.port.OpenBankingClient;
+import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferCommand;
+import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferResult;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.fds.client.FdsAssessmentClient;
 import com.movi_backend.domain.fds.client.FdsAssessmentResponseValidator;
@@ -17,7 +20,6 @@ import com.movi_backend.domain.fds.repository.UserTransferProfileRepository;
 import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
-import com.movi_backend.domain.transfer.application.port.TransferExecutionPort;
 import com.movi_backend.domain.transfer.application.port.TransferRiskAlertPort;
 import com.movi_backend.domain.transfer.config.TransferProperties;
 import com.movi_backend.domain.transfer.entity.Transaction;
@@ -65,7 +67,7 @@ public class TransferExecutionService {
     private final FdsAssessmentRepository fdsAssessmentRepository;
     private final FdsAssessmentClient fdsAssessmentClient;
     private final FdsAssessmentResponseValidator responseValidator;
-    private final TransferExecutionPort transferExecutionPort;
+    private final OpenBankingClient openBankingClient;
     private final TransferRiskAlertPort transferRiskAlertPort;
     private final TransferProperties transferProperties;
     private final ObjectMapper objectMapper;
@@ -314,7 +316,21 @@ public class TransferExecutionService {
 
     private boolean executeTransfer(final Transfer transfer) {
         try {
-            transferExecutionPort.execute(transfer);
+            final OpenBankingTransferCommand command = OpenBankingTransferCommand.of(
+                    transfer.getIdempotencyKey(),
+                    transfer.getFromAccount().getFintechUseNum(),
+                    transfer.getToBankCode(),
+                    transfer.getToAccountNum(),
+                    transfer.getToHolderName(),
+                    transfer.getAmount()
+            );
+            final OpenBankingTransferResult result = openBankingClient.transfer(
+                    command,
+                    transfer.getFromAccount().getConnection().getAccessToken()
+            );
+            if (result == null) {
+                throw new BusinessException(ErrorCode.TRANSFER_EXECUTION_FAILED);
+            }
         } catch (final RuntimeException exception) {
             transfer.fail("오픈뱅킹 이체 실패");
             return false;

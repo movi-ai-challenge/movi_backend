@@ -11,6 +11,7 @@ public class UnavailableSmsNotificationSender implements SmsNotificationSender {
 
     @Override
     public String send(
+            final Long notificationId,
             final String encryptedTargetPhone,
             final String templateCode,
             final String message

@@ -230,6 +230,18 @@ Content-Type: multipart/form-data
 
 HIGH는 `403`과 `FDS_4031`, FDS 통신 실패는 `502/504`를 사용한다. 두 경우 모두 실제 오픈뱅킹 이체를 호출하지 않는다.
 
+### 5.6 이체 상태 조회
+
+응답을 받지 못한 네트워크 타임아웃에서는 새 키를 만들지 않고 확인 요청에 사용한 키로 상태를 조회한다.
+
+```http
+GET /api/transfers/status?idempotencyKey={UUID}
+Authorization: Bearer {accessToken}
+```
+
+백엔드는 인증 사용자와 키가 모두 일치하는 이체만 반환한다. `PENDING`, `RISK_REVIEW`,
+`COMPLETED`, `BLOCKED`, `FAILED`, `CANCELED`를 상태 데이터로 반환하며 계좌번호는 포함하지 않는다.
+
 ---
 
 ## 6. 음성 세션·슬롯 정책

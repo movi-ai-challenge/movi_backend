@@ -41,6 +41,7 @@ import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.domain.voice.entity.VoiceCommand;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
@@ -81,6 +82,7 @@ class TransferExecutionServiceTest {
     @Mock private VoiceCommand voiceCommand;
     @Mock private Device device;
     @Mock private BalanceSnapshot balanceSnapshot;
+    @Mock private SensitiveDataCrypto sensitiveDataCrypto;
 
     @Test
     @DisplayName("저위험 이체를 확인하면 FDS 평가 후 이체를 완료한다")
@@ -469,7 +471,8 @@ class TransferExecutionServiceTest {
     private void givenOpenBankingConnection() {
         given(account.getFintechUseNum()).willReturn("199000000000000000000001");
         given(account.getConnection()).willReturn(openbankingConnection);
-        given(openbankingConnection.getAccessToken()).willReturn(ACCESS_TOKEN);
+        given(openbankingConnection.getAccessToken()).willReturn("encrypted-access-token");
+        given(sensitiveDataCrypto.decrypt("encrypted-access-token")).willReturn(ACCESS_TOKEN);
     }
 
     private void givenFdsResponse(final RiskLevel riskLevel) {
@@ -529,7 +532,8 @@ class TransferExecutionServiceTest {
                 openBankingClient,
                 transferRiskAlertPort,
                 transferProperties,
-                new ObjectMapper()
+                new ObjectMapper(),
+                sensitiveDataCrypto
         );
     }
 }

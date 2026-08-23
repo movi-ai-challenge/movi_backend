@@ -265,7 +265,7 @@ src/main/java/com/movi_backend
 | 송금 실행 | Port/Mock 구현 | 실제 오픈뱅킹 Sandbox Adapter |
 | 보호자 알림 | 활성 보호자 조회·알림 DB 저장·Mock SMS·실패 재시도 구현 | 실제 SMS Adapter |
 | 인증 | 개발 인증 컨텍스트 구현 | JWT 필터·운영 인가 통합 |
-| 개인정보 | 음성 텍스트 마스킹 구현 | 전화번호·계좌번호·토큰 AES 계층 최종 연결 |
+| 개인정보 | 음성 텍스트 마스킹·사용자 전화번호·오픈뱅킹 토큰 AES 구현 | 계좌번호·보호자 전화번호·OAuth 토큰 AES 연결 |
 | 음성 파일 | WebM/WAV 형식·5MB·15초 제한 구현 | 실제 모바일 녹음 파일 통합 검증 |
 | 운영 | Actuator 설정 | Docker/NCP/HTTPS/E2E 배포 검증 |
 

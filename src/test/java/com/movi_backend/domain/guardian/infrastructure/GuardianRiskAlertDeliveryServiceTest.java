@@ -3,6 +3,7 @@ package com.movi_backend.domain.guardian.infrastructure;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.guardian.application.GuardianNotificationTransactionService;
@@ -90,6 +91,29 @@ class GuardianRiskAlertDeliveryServiceTest {
         deliveryService.deliver(101L, RiskLevel.HIGH);
 
         then(smsNotificationSender).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("만기된 재시도 알림은 기존 알림 ID로 다시 발송한다")
+    void 만기된_알림을_동일한_멱등성_키로_재발송한다() {
+        final QueuedGuardianNotification queued = queuedNotification();
+        given(transactionService.findDueRetries(any())).willReturn(List.of(queued));
+        given(smsNotificationSender.send(
+                201L,
+                "encrypted-phone",
+                "RISK_TRANSFER_ALERT",
+                "주의 알림"
+        )).willReturn("provider-message-id");
+
+        deliveryService.retryDue();
+
+        then(smsNotificationSender).should().send(
+                201L,
+                "encrypted-phone",
+                "RISK_TRANSFER_ALERT",
+                "주의 알림"
+        );
+        then(transactionService).should().markSent(201L, "provider-message-id");
     }
 
     private QueuedGuardianNotification queuedNotification() {

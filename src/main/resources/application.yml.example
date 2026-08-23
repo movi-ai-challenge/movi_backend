@@ -31,6 +31,13 @@ movi:
     minimum-amount: 1
     per-transfer-limit: 1000000
     daily-limit: 3000000
+  notification:
+    retry:
+      enabled: true
+      max-attempts: 3
+      delay: 1m
+      batch-size: 100
+      scan-interval: 30s
 management:
   endpoints:
     web:

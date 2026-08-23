@@ -3,10 +3,13 @@ package com.movi_backend.domain.guardian.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.guardian.application.model.QueuedGuardianNotification;
+import com.movi_backend.domain.guardian.config.NotificationRetryProperties;
 import com.movi_backend.domain.guardian.entity.GuardianLink;
 import com.movi_backend.domain.guardian.entity.Notification;
 import com.movi_backend.domain.guardian.repository.GuardianLinkRepository;
@@ -17,6 +20,9 @@ import com.movi_backend.domain.transfer.entity.Transfer;
 import com.movi_backend.domain.transfer.repository.TransferRepository;
 import java.util.List;
 import java.util.Optional;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import org.springframework.data.domain.Pageable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +42,7 @@ class GuardianNotificationTransactionServiceTest {
     @Mock private User protectee;
     @Mock private User guardian;
     @Mock private GuardianLink guardianLink;
+    @Mock private NotificationRetryProperties retryProperties;
 
     @InjectMocks
     private GuardianNotificationTransactionService service;
@@ -81,19 +88,56 @@ class GuardianNotificationTransactionServiceTest {
     }
 
     @Test
-    @DisplayName("발송 결과는 저장된 알림의 최종 상태를 변경한다")
-    void 발송_결과는_알림의_최종_상태를_변경한다() {
+    @DisplayName("발송 실패는 두 번 재시도 예약 후 세 번째에 최종 실패 처리한다")
+    void 발송_실패는_최대_횟수까지_재시도한다() {
         final Notification sent = notification();
         final Notification failed = notification();
         given(notificationRepository.findById(201L)).willReturn(Optional.of(sent));
         given(notificationRepository.findById(202L)).willReturn(Optional.of(failed));
+        given(retryProperties.maxAttempts()).willReturn(3);
+        given(retryProperties.delay()).willReturn(Duration.ofMinutes(1));
 
         service.markSent(201L, "provider-id");
         service.markFailed(202L);
 
         assertThat(sent.getStatus()).isEqualTo(NotificationStatus.SENT);
         assertThat(sent.getProviderMsgId()).isEqualTo("provider-id");
+        assertThat(failed.getStatus()).isEqualTo(NotificationStatus.QUEUED);
+        assertThat(failed.getRetryCount()).isEqualTo(1);
+        assertThat(failed.getNextRetryAt()).isNotNull();
+
+        service.markFailed(202L);
+        assertThat(failed.getStatus()).isEqualTo(NotificationStatus.QUEUED);
+        assertThat(failed.getRetryCount()).isEqualTo(2);
+
+        service.markFailed(202L);
         assertThat(failed.getStatus()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(failed.getRetryCount()).isEqualTo(3);
+        assertThat(failed.getNextRetryAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("재시도 시각이 지난 알림은 기존 알림 ID와 메시지로 반환한다")
+    void 만기된_알림을_재시도_대상으로_반환한다() {
+        final Notification notification = notification();
+        ReflectionTestUtils.setField(notification, "id", 201L);
+        given(transfer.getAmount()).willReturn(50_000L);
+        given(retryProperties.batchSize()).willReturn(100);
+        given(notificationRepository.findDueRetries(
+                eq(NotificationStatus.QUEUED),
+                any(LocalDateTime.class),
+                any(Pageable.class)
+        )).willReturn(List.of(notification));
+
+        final List<QueuedGuardianNotification> retries = service.findDueRetries(
+                LocalDateTime.now()
+        );
+
+        assertThat(retries).singleElement().satisfies(retry -> {
+            assertThat(retry.notificationId()).isEqualTo(201L);
+            assertThat(retry.encryptedTargetPhone()).isEqualTo("encrypted-phone");
+            assertThat(retry.message()).contains("50,000원");
+        });
     }
 
     private void givenQueueFixture() {

@@ -295,6 +295,8 @@ CREATE TABLE notifications (
     status          VARCHAR(20)  NOT NULL COMMENT 'QUEUED/SENT/FAILED',
     provider_msg_id VARCHAR(100) NULL COMMENT '발송사 메시지 ID',
     sent_at         DATETIME     NULL COMMENT '발송일시',
+    retry_count     INT          NOT NULL DEFAULT 0 COMMENT '실패한 발송 시도 횟수',
+    next_retry_at   DATETIME     NULL COMMENT '다음 재시도 시각',
     created_at      DATETIME     NOT NULL COMMENT '생성일시',
     PRIMARY KEY (notification_id),
     CONSTRAINT fk_noti_user FOREIGN KEY (user_id) REFERENCES users (user_id),

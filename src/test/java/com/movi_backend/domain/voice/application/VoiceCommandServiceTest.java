@@ -84,6 +84,9 @@ class VoiceCommandServiceTest {
     private TransferRecipientRepository transferRecipientRepository;
 
     @Mock
+    private AudioDurationValidator audioDurationValidator;
+
+    @Mock
     private Account account;
 
     @Mock
@@ -192,7 +195,8 @@ class VoiceCommandServiceTest {
                 transferExecutionService,
                 accountRepository,
                 transferRecipientRepository,
-                objectMapper
+                objectMapper,
+                audioDurationValidator
         );
 
         // when
@@ -460,7 +464,8 @@ class VoiceCommandServiceTest {
                 transferExecutionService,
                 accountRepository,
                 transferRecipientRepository,
-                new ObjectMapper()
+                new ObjectMapper(),
+                audioDurationValidator
         );
     }
 

@@ -35,6 +35,27 @@ logging:
 #   인증 필터 구현 전 다른 파트가 API를 개발·테스트하기 위한 장치이며,
 #   운영 환경에서는 반드시 false 여야 한다.
 movi:
+  openbanking:
+    # mock = Mock 어댑터 (기본), real = 실 API 어댑터
+    mode: mock
+    base-url: https://testapi.openbanking.or.kr
+    client-id: 오픈뱅킹_CLIENT_ID
+    client-secret: 오픈뱅킹_CLIENT_SECRET
+    # 오픈뱅킹 포털에 등록한 Callback URL 과 정확히 같아야 한다
+    redirect-uri: http://localhost:8080/api/openbanking/callback
+    scope: login inquiry transfer
+    client-use-code: 오픈뱅킹_이용기관코드
   auth:
     dev-mode: true
     dev-user-id: 1
+  kakao:
+    rest-api-key: 카카오_REST_API_키
+    client-secret: 카카오_Client_Secret_사용_시_입력
+    redirect-uri: http://localhost:8080/api/v1/auth/kakao/callback
+    secure-cookie: false
+  jwt:
+    secret: 32바이트_이상의_로컬_JWT_서명_키를_입력하세요
+  crypto:
+    # openssl rand -base64 32 로 각각 생성한다.
+    encryption-key: Base64_AES_키
+    hash-key: Base64_HMAC_키

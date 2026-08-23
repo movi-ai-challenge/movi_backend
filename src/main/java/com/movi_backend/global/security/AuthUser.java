@@ -13,10 +13,19 @@ import com.movi_backend.domain.auth.type.UserType;
  */
 public record AuthUser(
         Long userId,
-        UserType userType
+        UserType userType,
+        long tokenVersion
 ) {
     public static AuthUser of(final Long userId, final UserType userType) {
-        return new AuthUser(userId, userType);
+        return new AuthUser(userId, userType, 0L);
+    }
+
+    public static AuthUser of(
+            final Long userId,
+            final UserType userType,
+            final long tokenVersion
+    ) {
+        return new AuthUser(userId, userType, tokenVersion);
     }
 
     /** 화면을 보지 못하는 사용자인지 여부. 응답의 voiceMessage 채움 여부 판단에 쓴다. */

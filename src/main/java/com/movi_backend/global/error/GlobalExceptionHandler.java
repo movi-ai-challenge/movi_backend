@@ -74,6 +74,46 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return toObjectResponse(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
     }
 
+    /**
+     * Spring이 직접 처리하는 예외(존재하지 않는 경로, 파라미터 누락 등)의 응답 본문을
+     * {@link ApiResponse}로 교체한다.
+     *
+     * <p>이 훅이 없으면 404 같은 응답만 Spring 기본 ProblemDetail 형식으로 나가,
+     * "모든 응답은 같은 구조"라는 규약이 깨진다. 클라이언트가 {@code code}로 분기하므로
+     * 형식이 다른 응답이 하나라도 있으면 예외 처리를 두 벌 만들어야 한다.
+     */
+    @Override
+    protected ResponseEntity<Object> handleExceptionInternal(
+            final Exception exception,
+            final Object body,
+            final HttpHeaders headers,
+            final HttpStatusCode statusCode,
+            final WebRequest request
+    ) {
+        if (body instanceof ApiResponse) {
+            return new ResponseEntity<>(body, headers, statusCode);
+        }
+        final ErrorCode errorCode = resolveErrorCode(statusCode);
+        log.warn("[{}] {}", errorCode.getCode(), exception.getMessage());
+        return new ResponseEntity<>(ApiResponse.error(errorCode), headers, statusCode);
+    }
+
+    private ErrorCode resolveErrorCode(final HttpStatusCode statusCode) {
+        if (statusCode.isSameCodeAs(HttpStatus.NOT_FOUND)) {
+            return ErrorCode.NOT_FOUND;
+        }
+        if (statusCode.isSameCodeAs(HttpStatus.METHOD_NOT_ALLOWED)) {
+            return ErrorCode.METHOD_NOT_ALLOWED;
+        }
+        if (statusCode.isSameCodeAs(HttpStatus.UNSUPPORTED_MEDIA_TYPE)) {
+            return ErrorCode.UNSUPPORTED_MEDIA_TYPE;
+        }
+        if (statusCode.is5xxServerError()) {
+            return ErrorCode.INTERNAL_SERVER_ERROR;
+        }
+        return ErrorCode.BAD_REQUEST;
+    }
+
     private ResponseEntity<ApiResponse<Void>> toResponse(final ErrorCode errorCode) {
         return ResponseEntity
                 .status(errorCode.getHttpStatus())

@@ -130,13 +130,15 @@ public class TransferExecutionService {
             return TransferExecutionResult.of(transfer, assessment);
         }
 
-        if (!executeTransfer(transfer)) {
+        final Optional<OpenBankingTransferResult> transferResult = executeTransfer(transfer);
+        if (transferResult.isEmpty()) {
             return TransferExecutionResult.of(transfer, assessment);
         }
-        final LocalDateTime completedAt = LocalDateTime.now();
+        final OpenBankingTransferResult executedTransfer = transferResult.get();
+        final LocalDateTime completedAt = executedTransfer.tranDateTime();
         transfer.complete(completedAt);
         command.recipient().recordTransfer(completedAt);
-        saveTransaction(command, balanceSnapshot, completedAt);
+        saveTransaction(command, balanceSnapshot, executedTransfer);
         if (response.decision().requiresGuardianAlert()) {
             sendRiskAlert(transfer, assessment);
         }
@@ -170,16 +172,19 @@ public class TransferExecutionService {
     private void saveTransaction(
             final ConfirmedTransferCommand command,
             final BalanceSnapshot balanceSnapshot,
-            final LocalDateTime completedAt
+            final OpenBankingTransferResult transferResult
     ) {
+        final long balanceAfter = transferResult.balanceAfter() != null
+                ? transferResult.balanceAfter()
+                : balanceSnapshot.getAvailableAmount() - command.amount();
         final Transaction transaction = Transaction.builder()
                 .account(command.fromAccount())
                 .tranType(TransactionType.OUT)
                 .amount(command.amount())
-                .balanceAfter(balanceSnapshot.getAvailableAmount() - command.amount())
+                .balanceAfter(balanceAfter)
                 .counterpartyName(command.recipient().getHolderName())
                 .counterpartyAccount(command.recipient().getAccountNum())
-                .tranDatetime(completedAt)
+                .tranDatetime(transferResult.tranDateTime())
                 .source(TransactionSource.INTERNAL)
                 .build();
         transactionRepository.save(transaction);
@@ -323,7 +328,7 @@ public class TransferExecutionService {
         }
     }
 
-    private boolean executeTransfer(final Transfer transfer) {
+    private Optional<OpenBankingTransferResult> executeTransfer(final Transfer transfer) {
         try {
             final OpenBankingTransferCommand command = OpenBankingTransferCommand.of(
                     transfer.getIdempotencyKey(),
@@ -342,10 +347,10 @@ public class TransferExecutionService {
             if (result == null) {
                 throw new BusinessException(ErrorCode.TRANSFER_EXECUTION_FAILED);
             }
+            return Optional.of(result);
         } catch (final RuntimeException exception) {
             transfer.fail("오픈뱅킹 이체 실패");
-            return false;
+            return Optional.empty();
         }
-        return true;
     }
 }

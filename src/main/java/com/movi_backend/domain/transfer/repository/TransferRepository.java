@@ -2,9 +2,11 @@ package com.movi_backend.domain.transfer.repository;
 
 import com.movi_backend.domain.transfer.entity.Transfer;
 import com.movi_backend.domain.transfer.type.TransferStatus;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -12,9 +14,19 @@ public interface TransferRepository extends JpaRepository<Transfer, Long> {
 
     Optional<Transfer> findByIdAndUserId(Long transferId, Long userId);
 
-    Optional<Transfer> findByIdempotencyKey(String idempotencyKey);
-
     Optional<Transfer> findByIdempotencyKeyAndUserId(String idempotencyKey, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select transfer
+            from Transfer transfer
+            where transfer.idempotencyKey = :idempotencyKey
+              and transfer.user.id = :userId
+            """)
+    Optional<Transfer> findLockedByIdempotencyKeyAndUserId(
+            @Param("idempotencyKey") String idempotencyKey,
+            @Param("userId") Long userId
+    );
 
     @Query("""
             select coalesce(sum(transfer.amount), 0)

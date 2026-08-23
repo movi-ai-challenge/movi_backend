@@ -87,13 +87,14 @@ public class TransferExecutionService {
 
     @Transactional
     public TransferExecutionResult execute(final ConfirmedTransferCommand command) {
+        // 반드시 멱등성 조회보다 먼저 잠근다. 대기한 요청이 선행 트랜잭션의 결과를 조회해야 한다.
+        lockUser(command.user().getId());
         final Optional<Transfer> existingTransfer = transferRepository
                 .findByIdempotencyKeyAndUserId(command.idempotencyKey(), command.user().getId());
         if (existingTransfer.isPresent()) {
             return resolveExisting(existingTransfer.get());
         }
 
-        lockUser(command.user().getId());
         final BalanceSnapshot balanceSnapshot = balanceInquiryService.refresh(
                 command.user().getId(),
                 command.fromAccount()

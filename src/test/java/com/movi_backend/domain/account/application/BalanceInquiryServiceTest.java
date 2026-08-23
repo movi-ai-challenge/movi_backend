@@ -17,6 +17,7 @@ import com.movi_backend.domain.account.repository.BalanceSnapshotRepository;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -40,6 +41,9 @@ class BalanceInquiryServiceTest {
 
     @Mock
     private BalanceInquiryPort balanceInquiryPort;
+
+    @Mock
+    private SensitiveDataCrypto sensitiveDataCrypto;
 
     @Mock
     private Account account;
@@ -67,7 +71,9 @@ class BalanceInquiryServiceTest {
         given(connection.isUsable(any(LocalDateTime.class))).willReturn(true);
         given(account.getFintechUseNum()).willReturn("fintech-use-num");
         given(connection.getAccessToken()).willReturn("encrypted-access-token");
-        given(balanceInquiryPort.inquire("fintech-use-num", "encrypted-access-token"))
+        given(sensitiveDataCrypto.decrypt("encrypted-access-token"))
+                .willReturn("plain-access-token");
+        given(balanceInquiryPort.inquire("fintech-use-num", "plain-access-token"))
                 .willReturn(BalanceInquiryResult.of(53_000L, 50_000L));
         given(balanceSnapshotRepository.save(any(BalanceSnapshot.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -106,7 +112,9 @@ class BalanceInquiryServiceTest {
         given(connection.isUsable(any(LocalDateTime.class))).willReturn(true);
         given(account.getFintechUseNum()).willReturn("fintech-use-num");
         given(connection.getAccessToken()).willReturn("encrypted-access-token");
-        given(balanceInquiryPort.inquire("fintech-use-num", "encrypted-access-token"))
+        given(sensitiveDataCrypto.decrypt("encrypted-access-token"))
+                .willReturn("plain-access-token");
+        given(balanceInquiryPort.inquire("fintech-use-num", "plain-access-token"))
                 .willReturn(BalanceInquiryResult.of(10_000L, 10_000L));
         given(balanceSnapshotRepository.save(any(BalanceSnapshot.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -188,7 +196,9 @@ class BalanceInquiryServiceTest {
         given(connection.isUsable(any(LocalDateTime.class))).willReturn(true);
         given(account.getFintechUseNum()).willReturn("fintech-use-num");
         given(connection.getAccessToken()).willReturn("encrypted-access-token");
-        given(balanceInquiryPort.inquire("fintech-use-num", "encrypted-access-token"))
+        given(sensitiveDataCrypto.decrypt("encrypted-access-token"))
+                .willReturn("plain-access-token");
+        given(balanceInquiryPort.inquire("fintech-use-num", "plain-access-token"))
                 .willReturn(BalanceInquiryResult.of(1_000L, 2_000L));
 
         // when & then
@@ -197,5 +207,28 @@ class BalanceInquiryServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.BALANCE_INQUIRY_FAILED);
         then(balanceSnapshotRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("저장된 액세스 토큰 복호화가 실패하면 오픈뱅킹을 호출하지 않는다")
+    void 액세스_토큰_복호화_실패_시_외부_API를_호출하지_않는다() {
+        given(accountRepository.findByUserIdAndPrimaryTrue(USER_ID))
+                .willReturn(Optional.of(account));
+        given(account.getUser()).willReturn(user);
+        given(user.getId()).willReturn(USER_ID);
+        given(account.isActive()).willReturn(true);
+        given(account.getConnection()).willReturn(connection);
+        given(connection.getUser()).willReturn(user);
+        given(connection.isUsable(any(LocalDateTime.class))).willReturn(true);
+        given(account.getFintechUseNum()).willReturn("fintech-use-num");
+        given(connection.getAccessToken()).willReturn("tampered-token");
+        given(sensitiveDataCrypto.decrypt("tampered-token"))
+                .willThrow(new IllegalStateException("decrypt failed"));
+
+        assertThatThrownBy(() -> balanceInquiryService.inquire(USER_ID, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BALANCE_INQUIRY_FAILED);
+        then(balanceInquiryPort).shouldHaveNoInteractions();
     }
 }

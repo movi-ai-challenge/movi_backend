@@ -189,6 +189,13 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
 - **민감정보 처리**
   - AES 암호화: `users.phone`, `transfers.to_account_num`, `guardian_links.guardian_phone`, 모든 토큰
   - 로그 마스킹: 계좌번호·전화번호·인증 토큰은 원문으로 남기지 않는다. `toString()`에도 포함시키지 않는다
+
+### 오픈뱅킹 토큰 저장
+
+- `openbanking_connections.access_token`, `refresh_token`은 AES-GCM 암호문만 저장한다.
+- 잔액조회와 이체 실행 직전에만 복호화하며 토큰 원문을 로그에 남기지 않는다.
+- 토큰 암호화 적용 전에 평문으로 생성된 연결 데이터는 자동 호환하지 않는다. 기존 사용자는
+  오픈뱅킹 재연결을 통해 새 암호문 토큰을 발급받아야 한다.
 - **예외 메시지는 TTS로 읽힌다**
   스택 트레이스나 영문 기술 용어가 사용자에게 그대로 전달되면 안 된다. 에러 코드마다 사용자가 들었을 때 이해할 수 있는 한국어 안내 문구를 함께 정의한다
 

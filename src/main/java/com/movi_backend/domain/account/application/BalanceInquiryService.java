@@ -10,6 +10,7 @@ import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.account.repository.BalanceSnapshotRepository;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class BalanceInquiryService {
     private final AccountRepository accountRepository;
     private final BalanceSnapshotRepository balanceSnapshotRepository;
     private final BalanceInquiryPort balanceInquiryPort;
+    private final SensitiveDataCrypto sensitiveDataCrypto;
 
     @Transactional
     public BalanceResponse inquire(final Long userId, final String accountAlias) {
@@ -80,7 +82,7 @@ public class BalanceInquiryService {
         try {
             inquiryResult = balanceInquiryPort.inquire(
                     account.getFintechUseNum(),
-                    connection.getAccessToken()
+                    sensitiveDataCrypto.decrypt(connection.getAccessToken())
             );
         } catch (BusinessException exception) {
             throw exception;

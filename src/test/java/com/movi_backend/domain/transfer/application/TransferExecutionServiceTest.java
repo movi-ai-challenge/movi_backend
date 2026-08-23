@@ -103,10 +103,11 @@ class TransferExecutionServiceTest {
         assertThat(result.completedAt()).isNotNull();
         then(entityManager).should().find(User.class, USER_ID, LockModeType.PESSIMISTIC_WRITE);
         then(balanceInquiryService).should().refresh(USER_ID, account);
-        then(openBankingClient).should().transfer(
-                any(OpenBankingTransferCommand.class),
-                eq(ACCESS_TOKEN)
-        );
+        final ArgumentCaptor<OpenBankingTransferCommand> commandCaptor =
+                ArgumentCaptor.forClass(OpenBankingTransferCommand.class);
+        then(openBankingClient).should().transfer(commandCaptor.capture(), eq(ACCESS_TOKEN));
+        assertThat(commandCaptor.getValue().toAccountNum())
+                .isEqualTo("110123456789");
         then(transferRiskAlertPort).shouldHaveNoInteractions();
         final ArgumentCaptor<Transaction> transactionCaptor =
                 ArgumentCaptor.forClass(Transaction.class);
@@ -115,6 +116,8 @@ class TransferExecutionServiceTest {
         assertThat(transactionCaptor.getValue().getAmount()).isEqualTo(50_000L);
         assertThat(transactionCaptor.getValue().getBalanceAfter()).isEqualTo(950_000L);
         assertThat(transactionCaptor.getValue().getCounterpartyName()).isEqualTo("김영희");
+        assertThat(transactionCaptor.getValue().getCounterpartyAccount())
+                .isEqualTo("encrypted-account");
     }
 
     @Test
@@ -368,6 +371,25 @@ class TransferExecutionServiceTest {
     }
 
     @Test
+    @DisplayName("수취 계좌번호 복호화가 실패하면 외부 이체 API를 호출하지 않는다")
+    void 수취_계좌번호_복호화_실패_시_외부_API를_호출하지_않는다() {
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        given(account.getFintechUseNum()).willReturn("199000000000000000000001");
+        given(sensitiveDataCrypto.decrypt("encrypted-account"))
+                .willThrow(new IllegalStateException("decrypt failed"));
+        final TransferExecutionService service = createService();
+
+        final TransferExecutionResult result = service.execute(command);
+
+        assertThat(result.status()).isEqualTo(TransferStatus.FAILED);
+        then(openBankingClient).shouldHaveNoInteractions();
+        then(recipient).should(never()).recordTransfer(any());
+        then(transactionRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("중위험 알림 요청이 실패해도 완료된 이체 상태를 유지한다")
     void 중위험_알림_요청이_실패해도_완료된_이체_상태를_유지한다() {
         // given
@@ -471,6 +493,8 @@ class TransferExecutionServiceTest {
     private void givenOpenBankingConnection() {
         given(account.getFintechUseNum()).willReturn("199000000000000000000001");
         given(account.getConnection()).willReturn(openbankingConnection);
+        given(sensitiveDataCrypto.decrypt("encrypted-account"))
+                .willReturn("110123456789");
         given(openbankingConnection.getAccessToken()).willReturn("encrypted-access-token");
         given(sensitiveDataCrypto.decrypt("encrypted-access-token")).willReturn(ACCESS_TOKEN);
     }

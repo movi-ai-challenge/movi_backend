@@ -114,7 +114,8 @@ PENDING → RISK_REVIEW → COMPLETED
 | MEDIUM | ALLOW_WITH_ALERT | 송금 실행 후 보호자 알림 요청 |
 | HIGH | BLOCK | 송금 미실행 및 보호자 긴급 알림 요청 |
 
-활성 보호자별 알림 이력을 `QUEUED`로 만들고, SMS 결과에 따라 `SENT` 또는 `FAILED`로 기록합니다.
+송금 커밋 후 별도 트랜잭션에서 활성 보호자별 알림 이력을 `QUEUED`로 확정하고,
+SMS 외부 호출 뒤 별도 트랜잭션에서 `SENT` 또는 `FAILED`로 기록합니다.
 보호자 알림 실패가 이미 완료되거나 차단된 송금 상태를 되돌리지 않도록 격리되어 있습니다.
 
 > `local`과 `test`는 Mock SMS 제공자를 사용합니다. 운영 SMS 제공자가 연결되기 전에는

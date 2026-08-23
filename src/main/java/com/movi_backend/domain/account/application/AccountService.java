@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class AccountService {
 
+    private static final int MAX_ALIAS_LENGTH = 50;
+
     private final AccountRepository accountRepository;
 
     /** 연결된 계좌 목록. 기본 계좌가 먼저 온다. */
@@ -58,16 +60,33 @@ public class AccountService {
      */
     @Transactional
     public AccountResponse changeAlias(final Long userId, final Long accountId, final String alias) {
+        final String normalizedAlias = normalizeAlias(alias);
         final Account target = accountRepository.findByIdAndUserId(accountId, userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
 
-        accountRepository.findByUserIdAndAlias(userId, alias)
+        if (!target.isActive()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE);
+        }
+
+        accountRepository.findByUserIdAndAlias(userId, normalizedAlias)
                 .filter(duplicated -> !duplicated.getId().equals(accountId))
                 .ifPresent(duplicated -> {
                     throw new BusinessException(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
                 });
 
-        target.changeAlias(alias);
+        target.changeAlias(normalizedAlias);
         return AccountResponse.from(target);
+    }
+
+    private String normalizeAlias(final String alias) {
+        if (alias == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+
+        final String normalizedAlias = alias.trim();
+        if (normalizedAlias.isEmpty() || normalizedAlias.length() > MAX_ALIAS_LENGTH) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST);
+        }
+        return normalizedAlias;
     }
 }

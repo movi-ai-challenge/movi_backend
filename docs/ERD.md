@@ -169,7 +169,7 @@ erDiagram
         varchar to_holder_name
         bigint amount
         varchar status "PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED"
-        varchar idempotency_key UK
+        varchar idempotency_key "uk (user_id, idempotency_key)"
         datetime requested_at
         datetime completed_at
         varchar fail_reason

@@ -209,4 +209,25 @@ class TransferValidationServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.RECIPIENT_NOT_FOUND);
     }
+
+    @Test
+    @DisplayName("수취인 대신 계좌번호를 말하면 직접 계좌번호 송금을 거부한다")
+    void 수취인_대신_계좌번호를_말하면_직접_계좌번호_송금을_거부한다() {
+        // given
+        final TransferCommandRequest command = TransferCommandRequest.of(
+                50_000L,
+                "110-123-123456",
+                null,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE
+        );
+
+        // when & then
+        assertThatThrownBy(() -> transferValidationService.validate(USER_ID, command))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RECIPIENT_NOT_FOUND);
+    }
 }

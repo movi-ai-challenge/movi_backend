@@ -16,6 +16,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -82,6 +83,12 @@ public class Notification extends BaseCreatedEntity {
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
 
+    @Column(name = "retry_count", nullable = false)
+    private int retryCount;
+
+    @Column(name = "next_retry_at")
+    private LocalDateTime nextRetryAt;
+
     @Builder
     private Notification(
             final User user,
@@ -100,15 +107,31 @@ public class Notification extends BaseCreatedEntity {
         this.targetPhone = targetPhone;
         this.payload = payload;
         this.status = NotificationStatus.QUEUED;
+        this.retryCount = 0;
     }
 
     public void markSent(final String providerMsgId, final LocalDateTime now) {
         this.status = NotificationStatus.SENT;
         this.providerMsgId = providerMsgId;
         this.sentAt = now;
+        this.nextRetryAt = null;
     }
 
-    public void markFailed() {
-        this.status = NotificationStatus.FAILED;
+    public void recordFailure(
+            final LocalDateTime now,
+            final int maxAttempts,
+            final Duration retryDelay
+    ) {
+        if (this.status == NotificationStatus.SENT) {
+            return;
+        }
+        this.retryCount++;
+        if (this.retryCount >= maxAttempts) {
+            this.status = NotificationStatus.FAILED;
+            this.nextRetryAt = null;
+            return;
+        }
+        this.status = NotificationStatus.QUEUED;
+        this.nextRetryAt = now.plus(retryDelay);
     }
 }

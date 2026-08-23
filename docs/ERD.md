@@ -284,6 +284,8 @@ erDiagram
         varchar status "QUEUED/SENT/FAILED"
         varchar provider_msg_id
         datetime sent_at
+        int retry_count "실패한 발송 시도 횟수"
+        datetime next_retry_at "다음 재시도 시각"
     }
 
     audit_logs {
@@ -382,7 +384,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 | `transfers` | `uk (user_id, idempotency_key)` / `idx (user_id, requested_at DESC)` | 사용자별 중복 방지 / 이체 이력 |
 | `voice_commands` | `idx (user_id, created_at DESC)` / `idx (intent, status)` | 음성 로그 분석 |
 | `guardian_links` | `idx (protectee_user_id, status)` / `uk (invite_token)` | 활성 보호자 조회 / 초대 수락 |
-| `notifications` | `idx (status)` / `idx (user_id, created_at DESC)` | 발송 재시도 / 알림 이력 |
+| `notifications` | `idx (status, next_retry_at)` / `idx (user_id, created_at DESC)` | 발송 재시도 / 알림 이력 |
 | `fds_assessments` | `idx (user_id, evaluated_at DESC)` | 프로필 갱신 |
 
 ---

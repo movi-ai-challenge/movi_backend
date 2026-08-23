@@ -341,10 +341,12 @@ CREATE TABLE notifications (
     status          VARCHAR(20)  NOT NULL DEFAULT 'QUEUED' COMMENT 'QUEUED/SENT/FAILED',
     provider_msg_id VARCHAR(100) NULL,
     sent_at         DATETIME     NULL,
+    retry_count     INT          NOT NULL DEFAULT 0 COMMENT '실패한 발송 시도 횟수',
+    next_retry_at   DATETIME     NULL COMMENT '다음 재시도 시각',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (notification_id),
     KEY idx_noti_user (user_id, created_at DESC),
-    KEY idx_noti_status (status),
+    KEY idx_noti_retry (status, next_retry_at),
     CONSTRAINT fk_noti_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_noti_link FOREIGN KEY (link_id) REFERENCES guardian_links (link_id),
     CONSTRAINT fk_noti_transfer FOREIGN KEY (transfer_id) REFERENCES transfers (transfer_id)

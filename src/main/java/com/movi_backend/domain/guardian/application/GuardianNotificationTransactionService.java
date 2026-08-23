@@ -2,12 +2,14 @@ package com.movi_backend.domain.guardian.application;
 
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.guardian.application.model.QueuedGuardianNotification;
+import com.movi_backend.domain.guardian.config.NotificationRetryProperties;
 import com.movi_backend.domain.guardian.entity.GuardianLink;
 import com.movi_backend.domain.guardian.entity.Notification;
 import com.movi_backend.domain.guardian.repository.GuardianLinkRepository;
 import com.movi_backend.domain.guardian.repository.NotificationRepository;
 import com.movi_backend.domain.guardian.type.GuardianLinkStatus;
 import com.movi_backend.domain.guardian.type.NotificationChannel;
+import com.movi_backend.domain.guardian.type.NotificationStatus;
 import com.movi_backend.domain.transfer.entity.Transfer;
 import com.movi_backend.domain.transfer.repository.TransferRepository;
 import com.movi_backend.global.error.BusinessException;
@@ -16,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,7 @@ public class GuardianNotificationTransactionService {
     private final TransferRepository transferRepository;
     private final GuardianLinkRepository guardianLinkRepository;
     private final NotificationRepository notificationRepository;
+    private final NotificationRetryProperties retryProperties;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public List<QueuedGuardianNotification> queue(
@@ -76,7 +80,27 @@ public class GuardianNotificationTransactionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markFailed(final Long notificationId) {
-        findNotification(notificationId).markFailed();
+        findNotification(notificationId).recordFailure(
+                LocalDateTime.now(),
+                retryProperties.maxAttempts(),
+                retryProperties.delay()
+        );
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<QueuedGuardianNotification> findDueRetries(final LocalDateTime now) {
+        return notificationRepository.findDueRetries(
+                        NotificationStatus.QUEUED,
+                        now,
+                        PageRequest.of(0, retryProperties.batchSize())
+                ).stream()
+                .map(notification -> new QueuedGuardianNotification(
+                        notification.getId(),
+                        notification.getTargetPhone(),
+                        notification.getTemplateCode(),
+                        createRetryMessage(notification)
+                ))
+                .toList();
     }
 
     private Notification findNotification(final Long notificationId) {
@@ -103,5 +127,12 @@ public class GuardianNotificationTransactionService {
         }
         return "주의가 필요한 %,d원 이체가 완료되었습니다. 앱에서 확인해 주세요."
                 .formatted(transfer.getAmount());
+    }
+
+    private String createRetryMessage(final Notification notification) {
+        final RiskLevel riskLevel = BLOCKED_TRANSFER_ALERT.equals(notification.getTemplateCode())
+                ? RiskLevel.HIGH
+                : RiskLevel.MEDIUM;
+        return createMessage(notification.getTransfer(), riskLevel);
     }
 }

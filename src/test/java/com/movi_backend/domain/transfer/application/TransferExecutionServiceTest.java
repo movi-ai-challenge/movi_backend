@@ -45,8 +45,10 @@ import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -118,6 +120,33 @@ class TransferExecutionServiceTest {
         assertThat(transactionCaptor.getValue().getCounterpartyName()).isEqualTo("김영희");
         assertThat(transactionCaptor.getValue().getCounterpartyAccount())
                 .isEqualTo("encrypted-account");
+    }
+
+    @Test
+    @DisplayName("서버 기본 타임존이 UTC여도 FDS 요청 시각은 서울 오프셋을 사용한다")
+    void 서버_기본_타임존이_UTC여도_FDS_요청_시각은_서울_오프셋을_사용한다() {
+        // given
+        final TimeZone originalTimeZone = TimeZone.getDefault();
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+        try {
+            final ConfirmedTransferCommand command = givenCommand(50_000L);
+            givenFdsResponse(RiskLevel.LOW);
+            givenAssessmentSaved();
+            givenOpenBankingSuccess();
+            final TransferExecutionService service = createService();
+
+            // when
+            service.execute(command);
+
+            // then
+            final ArgumentCaptor<FdsAssessmentRequest> requestCaptor =
+                    ArgumentCaptor.forClass(FdsAssessmentRequest.class);
+            then(fdsAssessmentClient).should().assess(requestCaptor.capture());
+            assertThat(requestCaptor.getValue().requestedAt().getOffset())
+                    .isEqualTo(ZoneOffset.ofHours(9));
+        } finally {
+            TimeZone.setDefault(originalTimeZone);
+        }
     }
 
     @Test

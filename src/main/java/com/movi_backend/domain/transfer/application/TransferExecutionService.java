@@ -241,7 +241,10 @@ public class TransferExecutionService {
                 command.user().getId(),
                 BigDecimal.valueOf(command.amount()),
                 BigDecimal.valueOf(balanceSnapshot.getAvailableAmount()),
-                transfer.getRequestedAt().atZone(ZoneId.systemDefault()).toOffsetDateTime(),
+                transfer.getRequestedAt()
+                        .atZone(ZoneId.systemDefault())
+                        .withZoneSameInstant(BUSINESS_ZONE)
+                        .toOffsetDateTime(),
                 FdsRecipientFeature.of(
                         command.recipient().getTransferCount(),
                         command.recipient().isFirstTime()

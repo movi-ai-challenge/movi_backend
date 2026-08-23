@@ -45,6 +45,7 @@ import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -120,6 +121,65 @@ class TransferExecutionServiceTest {
         assertThat(transactionCaptor.getValue().getCounterpartyName()).isEqualTo("김영희");
         assertThat(transactionCaptor.getValue().getCounterpartyAccount())
                 .isEqualTo("encrypted-account");
+    }
+
+    @Test
+    @DisplayName("오픈뱅킹 이체 결과의 거래 시각과 잔액을 내부 거래에 반영한다")
+    void 오픈뱅킹_이체_결과의_거래_시각과_잔액을_내부_거래에_반영한다() {
+        // given
+        final LocalDateTime bankTransferTime = LocalDateTime.of(2026, 8, 24, 10, 30);
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        givenOpenBankingConnection();
+        given(openBankingClient.transfer(
+                any(OpenBankingTransferCommand.class),
+                eq(ACCESS_TOKEN)
+        )).willReturn(OpenBankingTransferResult.of(
+                "test-bank-tran-id",
+                bankTransferTime,
+                940_000L
+        ));
+        final TransferExecutionService service = createService();
+
+        // when
+        final TransferExecutionResult result = service.execute(command);
+
+        // then
+        assertThat(result.completedAt()).isEqualTo(bankTransferTime);
+        final ArgumentCaptor<Transaction> transactionCaptor =
+                ArgumentCaptor.forClass(Transaction.class);
+        then(transactionRepository).should().save(transactionCaptor.capture());
+        assertThat(transactionCaptor.getValue().getTranDatetime()).isEqualTo(bankTransferTime);
+        assertThat(transactionCaptor.getValue().getBalanceAfter()).isEqualTo(940_000L);
+    }
+
+    @Test
+    @DisplayName("오픈뱅킹 이체 결과에 잔액이 없으면 조회 잔액에서 이체 금액을 차감한다")
+    void 오픈뱅킹_이체_결과에_잔액이_없으면_조회_잔액에서_이체_금액을_차감한다() {
+        // given
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        givenOpenBankingConnection();
+        given(openBankingClient.transfer(
+                any(OpenBankingTransferCommand.class),
+                eq(ACCESS_TOKEN)
+        )).willReturn(OpenBankingTransferResult.of(
+                "test-bank-tran-id",
+                LocalDateTime.of(2026, 8, 24, 10, 30),
+                null
+        ));
+        final TransferExecutionService service = createService();
+
+        // when
+        service.execute(command);
+
+        // then
+        final ArgumentCaptor<Transaction> transactionCaptor =
+                ArgumentCaptor.forClass(Transaction.class);
+        then(transactionRepository).should().save(transactionCaptor.capture());
+        assertThat(transactionCaptor.getValue().getBalanceAfter()).isEqualTo(950_000L);
     }
 
     @Test

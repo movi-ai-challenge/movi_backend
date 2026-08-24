@@ -10,7 +10,8 @@ public record KakaoProperties(
         String authorizationUri,
         String tokenUri,
         String userInfoUri,
-        Boolean secureCookie
+        Boolean secureCookie,
+        String frontendRedirectUri
 ) {
 
     private static final String DEFAULT_AUTHORIZATION_URI = "https://kauth.kakao.com/oauth/authorize";

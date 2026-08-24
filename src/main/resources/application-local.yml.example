@@ -53,6 +53,8 @@ movi:
     client-secret: 카카오_Client_Secret_사용_시_입력
     redirect-uri: http://localhost:8080/api/v1/auth/kakao/callback
     secure-cookie: false
+    # 로그인 완료 후 브라우저를 돌려보낼 프론트엔드 콜백 주소. 토큰을 쿼리파라미터로 붙여 리다이렉트한다.
+    frontend-redirect-uri: http://localhost:3000/login/callback
   jwt:
     secret: 32바이트_이상의_로컬_JWT_서명_키를_입력하세요
   crypto:

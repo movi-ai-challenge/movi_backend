@@ -1,6 +1,7 @@
 package com.movi_backend.domain.account.controller;
 
 import com.movi_backend.domain.account.application.OpenBankingConnectService;
+import com.movi_backend.domain.account.controller.docs.OpenBankingApiDocs;
 import com.movi_backend.domain.account.dto.response.ConnectResultResponse;
 import com.movi_backend.domain.account.dto.response.ConnectStartResponse;
 import com.movi_backend.global.response.ApiResponse;
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/openbanking")
 @RequiredArgsConstructor
-public class OpenBankingController {
+public class OpenBankingController implements OpenBankingApiDocs {
 
     private static final String START_VOICE_MESSAGE = "은행 계좌를 연결할게요. 화면 안내를 따라 주세요.";
 

@@ -1,7 +1,5 @@
 package com.movi_backend.domain.auth.controller.docs;
 
-import com.movi_backend.domain.auth.dto.response.LoginResponse;
-import com.movi_backend.global.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -46,6 +44,10 @@ public interface KakaoAuthApiDocs {
             description = """
                     카카오가 인가 코드를 돌려주는 지점입니다. **프론트가 직접 호출하는 API가 아닙니다.**
 
+                    처리를 마치면 JSON을 반환하지 않고 **프론트엔드 주소로 302 리다이렉트**합니다.
+                    발급한 토큰과 사용자 정보는 쿼리 파라미터로 붙습니다. 돌려보낼 주소는
+                    `movi.kakao.frontend-redirect-uri` 로 설정하며, 값이 없으면 로그인 처리가 실패합니다.
+
                     백엔드는 다음을 처리합니다.
 
                     1. 쿼리 `state`와 쿠키 `state`를 대조 — 둘 중 하나라도 없거나 다르면 거부합니다
@@ -64,7 +66,8 @@ public interface KakaoAuthApiDocs {
     @SecurityRequirements
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "200", description = "로그인 성공. 토큰과 PIN 등록 여부를 반환한다"),
+                    responseCode = "302", content = @Content,
+                    description = "로그인 성공. `Location` 으로 프론트엔드에 토큰을 전달한다"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400", content = @Content,
                     description = "`AUTH_4003` state 불일치·누락 · `SRV_4000` 인가 코드 누락"),
@@ -72,7 +75,7 @@ public interface KakaoAuthApiDocs {
                     responseCode = "502", content = @Content,
                     description = "`AUTH_5000` 카카오 통신 실패")
     })
-    ResponseEntity<ApiResponse<LoginResponse>> callback(
+    ResponseEntity<Void> callback(
             @Parameter(description = "카카오가 발급한 인가 코드") String code,
             @Parameter(description = "인증 시작 때 발급한 위조 방지 값") String state,
             @Parameter(hidden = true) String stateCookie

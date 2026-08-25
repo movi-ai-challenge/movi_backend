@@ -5,7 +5,7 @@ import com.movi_backend.domain.auth.config.KakaoProperties;
 import com.movi_backend.domain.auth.controller.docs.KakaoAuthApiDocs;
 import com.movi_backend.domain.auth.dto.response.KakaoAuthorization;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
-import com.movi_backend.global.response.ApiResponse;
+import java.net.URI;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriComponentsBuilder;
 
 @RestController
 @RequiredArgsConstructor
@@ -45,7 +46,7 @@ public class KakaoAuthController implements KakaoAuthApiDocs {
     }
 
     @GetMapping("/kakao/callback")
-    public ResponseEntity<ApiResponse<LoginResponse>> callback(
+    public ResponseEntity<Void> callback(
             @RequestParam(required = false) final String code,
             @RequestParam(required = false) final String state,
             @CookieValue(name = OAUTH_STATE_COOKIE, required = false) final String stateCookie
@@ -58,9 +59,31 @@ public class KakaoAuthController implements KakaoAuthApiDocs {
                 .path(AUTH_PATH)
                 .maxAge(0)
                 .build();
-        return ResponseEntity.ok()
+        return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, buildFrontendRedirectUri(response).toString())
                 .header(HttpHeaders.SET_COOKIE, expiredStateCookie.toString())
-                .body(ApiResponse.success(response, "카카오 로그인이 완료됐어요."));
+                .build();
+    }
+
+    private URI buildFrontendRedirectUri(final LoginResponse response) {
+        return UriComponentsBuilder.fromUriString(requiredFrontendRedirectUri())
+                .queryParam("accessToken", response.accessToken())
+                .queryParam("refreshToken", response.refreshToken())
+                .queryParam("userId", response.userId())
+                .queryParam("newUser", response.newUser())
+                .queryParam("tokenType", response.tokenType())
+                .queryParam("accessTokenExpiresIn", response.accessTokenExpiresIn())
+                .build()
+                .encode()
+                .toUri();
+    }
+
+    private String requiredFrontendRedirectUri() {
+        final String frontendRedirectUri = kakaoProperties.frontendRedirectUri();
+        if (frontendRedirectUri == null || frontendRedirectUri.isBlank()) {
+            throw new IllegalStateException("카카오 프론트엔드 Redirect URI 설정이 필요합니다.");
+        }
+        return frontendRedirectUri;
     }
 
 }

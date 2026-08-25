@@ -9,6 +9,8 @@ import static org.mockito.Mockito.mock;
 
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
+import com.movi_backend.domain.auth.entity.User;
+import com.movi_backend.domain.transfer.dto.response.TransactionDetailResponse;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.Transaction;
 import com.movi_backend.domain.transfer.repository.TransactionRepository;
@@ -142,6 +144,91 @@ class TransactionQueryServiceTest {
                 .isEqualTo(ErrorCode.BAD_REQUEST);
         then(accountRepository).shouldHaveNoInteractions();
         then(transactionRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("본인 거래 1건을 상세 조회하면 잔액과 메모까지 반환한다")
+    void 본인_거래_1건을_상세_조회하면_잔액과_메모까지_반환한다() {
+        // given
+        final Transaction transaction = transaction();
+        final User user = mock(User.class);
+        given(user.getId()).willReturn(USER_ID);
+        given(account.getUser()).willReturn(user);
+        given(account.getId()).willReturn(ACCOUNT_ID);
+        given(transactionRepository.findById(101L)).willReturn(Optional.of(transaction));
+        final TransactionQueryService service =
+                new TransactionQueryService(accountRepository, transactionRepository);
+
+        // when
+        final TransactionDetailResponse result = service.findOne(USER_ID, 101L);
+
+        // then
+        assertThat(result.transactionId()).isEqualTo(101L);
+        assertThat(result.amount()).isEqualTo(50_000L);
+        assertThat(result.balanceAfter()).isEqualTo(950_000L);
+        assertThat(result.counterpartyName()).isEqualTo("김영희");
+        assertThat(result.memo()).isEqualTo("용돈");
+    }
+
+    @Test
+    @DisplayName("상세 음성 안내는 금액과 잔액을 한국어로 읽는다")
+    void 상세_음성_안내는_금액과_잔액을_한국어로_읽는다() {
+        // given
+        final Transaction transaction = transaction();
+        final User user = mock(User.class);
+        given(user.getId()).willReturn(USER_ID);
+        given(account.getUser()).willReturn(user);
+        given(account.getId()).willReturn(ACCOUNT_ID);
+        given(transactionRepository.findById(101L)).willReturn(Optional.of(transaction));
+        final TransactionQueryService service =
+                new TransactionQueryService(accountRepository, transactionRepository);
+
+        // when
+        final String voiceMessage = service.findOne(USER_ID, 101L).toVoiceMessage();
+
+        // then
+        assertThat(voiceMessage)
+                .contains("8월 24일")
+                .contains("김영희 님에게 5만원 보냈어요")
+                .contains("거래 뒤 잔액은 95만원이에요")
+                .contains("메모는 용돈이에요");
+        assertThat(voiceMessage).doesNotContain("50000");
+        assertThat(voiceMessage).doesNotContain("950000");
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 거래는 상세 조회할 수 없다")
+    void 다른_사용자의_거래는_상세_조회할_수_없다() {
+        // given — 소유권에서 걸러지므로 거래 상세 값은 읽히지 않는다
+        final Transaction transaction = mock(Transaction.class);
+        final User otherUser = mock(User.class);
+        given(otherUser.getId()).willReturn(99L);
+        given(account.getUser()).willReturn(otherUser);
+        given(transaction.getAccount()).willReturn(account);
+        given(transactionRepository.findById(101L)).willReturn(Optional.of(transaction));
+        final TransactionQueryService service =
+                new TransactionQueryService(accountRepository, transactionRepository);
+
+        // expect
+        assertThatThrownBy(() -> service.findOne(USER_ID, 101L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.TRANSACTION_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 거래를 상세 조회하면 거래내역 없음으로 응답한다")
+    void 존재하지_않는_거래를_상세_조회하면_거래내역_없음으로_응답한다() {
+        // given
+        given(transactionRepository.findById(404L)).willReturn(Optional.empty());
+        final TransactionQueryService service =
+                new TransactionQueryService(accountRepository, transactionRepository);
+
+        // expect
+        assertThatThrownBy(() -> service.findOne(USER_ID, 404L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.TRANSACTION_NOT_FOUND);
     }
 
     private Transaction transaction() {

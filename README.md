@@ -107,7 +107,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 | 음성 세션 | ✅ | 업로드 검증, 슬롯 저장·병합, 재질문, 확인·취소, 만료·재시도 제한 |
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
 | FDS | ✅ | Mock/HTTP Client, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치 |
-| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회 |
+| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 단건 상세, 음성 안내 |
 | 보호자 위험 알림 | ✅ | 활성 보호자 조회, 알림 이력, 송금과 트랜잭션 분리, 최대 3회 재시도 |
 | 민감정보 보호 | ✅ | 전화번호·토큰·수취 계좌번호 암호화, 로그·응답 마스킹 |
 | AI Voice staging | 🧪 | HTTP Client 구현 완료, 실제 모바일 음성과 staging 계약 검증 필요 |
@@ -164,6 +164,8 @@ ACTIVE
 - 실제 오픈뱅킹 결과의 거래 시각·잔액을 내부 거래에 반영
 - 수취 계좌번호는 외부 이체 요청 생성 시에만 복호화
 - 이체 성공 후 수취인 누적 횟수와 출금 거래내역 갱신
+- 거래내역 목록은 건수만, 상세는 금액·잔액·메모를 음성으로 안내
+- 없는 거래와 남의 거래를 같은 응답으로 처리해 ID 훑기를 막음
 
 ```text
 PENDING → RISK_REVIEW → COMPLETED
@@ -243,6 +245,7 @@ AI와 금융 Sandbox 승인은 개발 일정과 독립적인 외부 변수입니
 | `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금 |
 | `GET` | `/api/transfers/status` | 멱등성 키로 송금 상태 복구 |
 | `GET` | `/api/transactions` | 거래내역 필터·페이징 조회 |
+| `GET` | `/api/transactions/{transactionId}` | 거래내역 단건 상세 조회 |
 
 API 계약과 요청·응답 예시는 [통합 명세](docs/integration-spec.md), [API 응답 규약](docs/api-response.md)을 참고합니다.
 

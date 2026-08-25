@@ -17,7 +17,6 @@ import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.security.JwtTokenPair;
 import com.movi_backend.global.security.JwtTokenProvider;
-import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,9 +41,6 @@ class KakaoLoginServiceTest {
     @Mock
     private JwtTokenProvider jwtTokenProvider;
 
-    @Mock
-    private SensitiveDataCrypto sensitiveDataCrypto;
-
     @InjectMocks
     private KakaoLoginService kakaoLoginService;
 
@@ -63,23 +59,18 @@ class KakaoLoginServiceTest {
     }
 
     @Test
-    @DisplayName("처음 카카오 로그인하면 사용자를 생성하고 JWT를 반환한다")
-    void 처음_카카오_로그인하면_사용자와_JWT를_반환한다() {
+    @DisplayName("처음 카카오 로그인하면 전화번호 없이 사용자를 생성하고 JWT를 반환한다")
+    void 처음_카카오_로그인하면_전화번호_없이_사용자와_JWT를_반환한다() {
         // given
         final String state = "matching-state";
         final KakaoTokenResponse kakaoToken =
                 new KakaoTokenResponse("kakao-access", "bearer", null, 3600L);
         final KakaoUserInfo kakaoUser = new KakaoUserInfo(
                 12345L,
-                new KakaoUserInfo.KakaoAccount(
-                        "+82 10-1234-5678",
-                        new KakaoUserInfo.Profile("사용자")
-                )
+                new KakaoUserInfo.KakaoAccount(new KakaoUserInfo.Profile("사용자"))
         );
         final User savedUser = User.builder()
                 .name("사용자")
-                .phone("encrypted-phone")
-                .phoneHash("phone-hash")
                 .userType(UserType.GENERAL)
                 .build();
         ReflectionTestUtils.setField(savedUser, "id", 7L);
@@ -89,9 +80,6 @@ class KakaoLoginServiceTest {
         given(kakaoOAuthClient.requestUserInfo("kakao-access")).willReturn(kakaoUser);
         given(oauthAccountRepository.findByProviderAndProviderUserId(any(), any()))
                 .willReturn(Optional.empty());
-        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
-        given(sensitiveDataCrypto.encrypt("01012345678")).willReturn("encrypted-phone");
-        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.empty());
         given(userRepository.save(any(User.class))).willReturn(savedUser);
         given(jwtTokenProvider.issueTokenPair(any())).willReturn(tokenPair);
 
@@ -107,5 +95,7 @@ class KakaoLoginServiceTest {
         assertThat(response.newUser()).isTrue();
         assertThat(response.accessToken()).isEqualTo("access-jwt");
         assertThat(response.refreshToken()).isEqualTo("refresh-jwt");
+        assertThat(savedUser.getPhone()).isNull();
+        assertThat(savedUser.getPhoneHash()).isNull();
     }
 }

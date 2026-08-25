@@ -26,9 +26,6 @@ logging:
 #   인증 필터 구현 전 다른 파트가 API를 개발·테스트하기 위한 장치이며,
 #   운영 환경에서는 반드시 false 여야 한다.
 movi:
-  openbanking:
-    mode: mock
-    redirect-uri: http://localhost:8080/api/openbanking/callback
   auth:
     dev-mode: true
     dev-user-id: 1
@@ -43,8 +40,6 @@ movi:
 
   # 외부 연동은 테스트에서 전부 mock을 쓴다.
   guardian:
-    invitation-expire-hours: 24
-    invite-url: http://localhost:3000/guardian/invite
     default-receive-alert: true
   sms:
     provider: mock
@@ -55,7 +50,11 @@ movi:
     mock-medium-amount: 300000
   openbanking:
     mode: mock
+    redirect-uri: http://localhost:8080/api/openbanking/callback
     mock-balance: 1000000
 
   transfer:
     confirmation-expire-minutes: 5
+    minimum-amount: 1
+    per-transfer-limit: 1000000
+    daily-limit: 3000000

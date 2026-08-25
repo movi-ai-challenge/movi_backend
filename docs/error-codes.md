@@ -75,6 +75,7 @@
 | AUTH_4021 | `PIN_LOCKED` | 403 | 비밀번호 입력 제한 횟수를 초과했습니다. | 비밀번호를 여러 번 잘못 입력하셨어요. 잠시 후 다시 시도해 주세요. |
 | AUTH_4022 | `PIN_NOT_REGISTERED` | 400 | 등록된 비밀번호가 없습니다. | 비밀번호를 먼저 등록해 주세요. |
 | AUTH_4090 | `PIN_ALREADY_REGISTERED` | 409 | 비밀번호가 이미 등록되어 있습니다. | 비밀번호가 이미 등록되어 있어요. |
+| AUTH_4091 | `PHONE_ALREADY_REGISTERED` | 409 | 이미 다른 계정에 등록된 전화번호입니다. | 이미 다른 계정에서 쓰고 있는 전화번호예요. |
 | AUTH_4023 | `BIOMETRIC_NOT_ENABLED` | 400 | 생체인증이 설정되어 있지 않습니다. | 지문이나 얼굴 인식이 설정되어 있지 않아요. |
 | AUTH_4030 | `FORBIDDEN` | 403 | 접근 권한이 없습니다. | 이 기능을 사용할 수 없어요. |
 | AUTH_4040 | `USER_NOT_FOUND` | 404 | 회원을 찾을 수 없습니다. | 회원 정보를 찾을 수 없어요. |
@@ -85,7 +86,6 @@
 |---|---|---|---|---|
 | KAKAO_4000 | `KAKAO_TOKEN_IS_BLANK` | 400 | 카카오 토큰이 비어 있습니다. | 로그인에 실패했어요. 다시 시도해 주세요. |
 | KAKAO_4001 | `KAKAO_AUTHORIZATION_FAILED` | 400 | 카카오 인가 처리에 실패했습니다. | 카카오 로그인을 처음부터 다시 시도해 주세요. |
-| KAKAO_4002 | `KAKAO_REQUIRED_INFO_MISSING` | 400 | 카카오 필수 회원 정보가 없습니다. | 전화번호 제공에 동의한 뒤 다시 로그인해 주세요. |
 | KAKAO_5000 | `KAKAO_COMMUNICATION_ERROR` | 502 | 카카오 통신에 실패하였습니다. | 카카오 로그인이 지금 안 돼요. 잠시 후 다시 시도해 주세요. |
 
 ### ACCOUNT — 계좌
@@ -164,14 +164,9 @@
 | 코드 | Enum | HTTP | message | voiceMessage |
 |---|---|---|---|---|
 | GUARDIAN_4001 | `ALREADY_LINKED` | 400 | 이미 연결된 보호자입니다. | 이미 연결된 분이에요. |
-| GUARDIAN_4002 | `INVITE_EXPIRED` | 400 | 초대 링크가 만료되었습니다. | 초대가 만료됐어요. 다시 요청해 주세요. |
-| GUARDIAN_4003 | `INVALID_INVITE_TOKEN` | 400 | 유효하지 않은 초대 링크입니다. | 초대 정보가 올바르지 않아요. |
 | GUARDIAN_4004 | `SELF_LINK_NOT_ALLOWED` | 400 | 본인을 보호자로 등록할 수 없습니다. | 본인은 보호자로 등록할 수 없어요. |
 | GUARDIAN_4030 | `GUARDIAN_NO_PERMISSION` | 403 | 보호자 권한이 없습니다. | 이 정보를 볼 권한이 없어요. |
-| GUARDIAN_4040 | `GUARDIAN_LINK_NOT_FOUND` | 404 | 보호자 연결 정보를 찾을 수 없습니다. | 연결된 보호자가 없어요. |
 | GUARDIAN_4005 | `INVALID_GUARDIAN_RELATION` | 400 | 지원하지 않는 보호자 관계입니다. | 보호자 관계 정보를 다시 확인해 주세요. |
-| GUARDIAN_4090 | `DUPLICATE_GUARDIAN_REQUEST` | 409 | 이미 처리 중인 보호자 연결 요청입니다. | 이미 보호자 연결을 요청했어요. |
-| GUARDIAN_4091 | `GUARDIAN_LINK_ALREADY_PROCESSED` | 409 | 이미 처리된 보호자 연결 요청입니다. | 이미 처리된 보호자 연결 요청이에요. |
 
 ### NOTI — 알림
 

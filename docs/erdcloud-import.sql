@@ -6,7 +6,7 @@
 CREATE TABLE users (
     user_id    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '사용자 ID',
     name       VARCHAR(50)  NOT NULL COMMENT '이름',
-    phone      VARCHAR(255) NOT NULL COMMENT '전화번호(AES 암호화)',
+    phone      VARCHAR(255) NULL COMMENT '전화번호(AES 암호화). 카카오 가입 시점엔 없고 PIN 등록 시 채움',
     phone_hash VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date DATE         NULL COMMENT '생년월일',
     user_type  VARCHAR(30)  NOT NULL COMMENT 'SENIOR/VISUALLY_IMPAIRED/GENERAL',
@@ -266,19 +266,15 @@ CREATE TABLE user_transfer_profiles (
 CREATE TABLE guardian_links (
     link_id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '연결 ID',
     protectee_user_id BIGINT       NOT NULL COMMENT '피보호자 사용자 ID',
-    guardian_user_id  BIGINT       NULL COMMENT '보호자 사용자 ID(가입 후 바인딩)',
+    guardian_user_id  BIGINT       NULL COMMENT '보호자 사용자 ID(Movi 회원이면 바인딩)',
     guardian_name     VARCHAR(50)  NOT NULL COMMENT '보호자명',
     guardian_phone    VARCHAR(255) NOT NULL COMMENT '보호자 전화번호(암호화)',
     guardian_phone_hash VARCHAR(64) NULL COMMENT '보호자 전화번호 중복 확인용 해시',
     relation          VARCHAR(30)  NULL COMMENT '관계(CHILD/SPOUSE/SOCIAL_WORKER/OTHER)',
-    status            VARCHAR(20)  NOT NULL COMMENT 'REQUESTED/ACTIVE/REJECTED/REVOKED',
-    invite_token      VARCHAR(64)  NOT NULL COMMENT '초대 토큰',
-    invite_expires_at DATETIME     NOT NULL COMMENT '초대 만료일시',
+    status            VARCHAR(20)  NOT NULL COMMENT 'ACTIVE/REVOKED',
     permission_scope  JSON         NULL COMMENT '권한 범위',
-    requested_at      DATETIME     NOT NULL COMMENT '요청일시',
-    accepted_at       DATETIME     NULL COMMENT '수락일시',
+    linked_at         DATETIME     NOT NULL COMMENT '연결일시',
     PRIMARY KEY (link_id),
-    UNIQUE KEY uk_glink_token (invite_token),
     CONSTRAINT fk_glink_protectee FOREIGN KEY (protectee_user_id) REFERENCES users (user_id),
     CONSTRAINT fk_glink_guardian FOREIGN KEY (guardian_user_id) REFERENCES users (user_id)
 ) COMMENT '보호자 연결';

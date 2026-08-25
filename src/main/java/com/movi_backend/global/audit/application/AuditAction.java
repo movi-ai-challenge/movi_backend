@@ -7,9 +7,7 @@ package com.movi_backend.global.audit.application;
  */
 public final class AuditAction {
 
-    public static final String GUARDIAN_LINK_REQUESTED = "GUARDIAN_LINK_REQUESTED";
-    public static final String GUARDIAN_LINK_APPROVED = "GUARDIAN_LINK_APPROVED";
-    public static final String GUARDIAN_LINK_REJECTED = "GUARDIAN_LINK_REJECTED";
+    public static final String GUARDIAN_LINK_REGISTERED = "GUARDIAN_LINK_REGISTERED";
     public static final String TRANSFER_COMPLETED = "TRANSFER_COMPLETED";
     /** 고위험으로 감지해 본인 확인을 요청함 */
     public static final String TRANSFER_HELD = "TRANSFER_HELD";

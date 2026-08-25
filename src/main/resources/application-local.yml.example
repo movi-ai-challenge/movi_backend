@@ -61,13 +61,16 @@ movi:
 
   # 보호자 연결
   guardian:
-    invitation-expire-hours: 24
-    invite-url: http://localhost:3000/guardian/invite
     default-receive-alert: true
 
-  # SMS — 계약 전까지 mock. 실제 발송 없이 로그만 남는다.
+  # SMS — 기본은 mock(실제 발송 없이 로그만 남음). 실제로 보내보려면 provider를 solapi로 바꾸고
+  # 아래 값을 채운다. api-secret은 절대 커밋하지 않는다(이 파일은 gitignore 대상).
   sms:
     provider: mock
+    solapi:
+      api-key: 솔라피_API_키
+      api-secret: 솔라피_API_시크릿
+      sender-phone: 사전등록한_발신번호
 
   # FDS — AI 파트 추론 API가 열리면 mode를 http로 바꾸고 base-url을 채운다.
   fds:
@@ -84,3 +87,6 @@ movi:
   # 이체 — 고위험 감지 후 본인 재확인 대기 시간(분)
   transfer:
     confirmation-expire-minutes: 5
+    minimum-amount: 1
+    per-transfer-limit: 1000000
+    daily-limit: 3000000

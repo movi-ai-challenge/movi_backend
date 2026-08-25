@@ -21,15 +21,7 @@ public record KakaoUserInfo(
         return kakaoAccount.profile().nickname();
     }
 
-    public String phoneNumber() {
-        if (kakaoAccount == null) {
-            return null;
-        }
-        return kakaoAccount.phoneNumber();
-    }
-
     public record KakaoAccount(
-            @JsonProperty("phone_number") String phoneNumber,
             Profile profile
     ) {
     }

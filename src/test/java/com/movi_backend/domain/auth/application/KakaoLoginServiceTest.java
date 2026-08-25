@@ -71,15 +71,10 @@ class KakaoLoginServiceTest {
                 new KakaoTokenResponse("kakao-access", "bearer", null, 3600L);
         final KakaoUserInfo kakaoUser = new KakaoUserInfo(
                 12345L,
-                new KakaoUserInfo.KakaoAccount(
-                        "+82 10-1234-5678",
-                        new KakaoUserInfo.Profile("사용자")
-                )
+                new KakaoUserInfo.KakaoAccount(new KakaoUserInfo.Profile("사용자"))
         );
         final User savedUser = User.builder()
                 .name("사용자")
-                .phone("encrypted-phone")
-                .phoneHash("phone-hash")
                 .userType(UserType.GENERAL)
                 .build();
         ReflectionTestUtils.setField(savedUser, "id", 7L);
@@ -89,9 +84,6 @@ class KakaoLoginServiceTest {
         given(kakaoOAuthClient.requestUserInfo("kakao-access")).willReturn(kakaoUser);
         given(oauthAccountRepository.findByProviderAndProviderUserId(any(), any()))
                 .willReturn(Optional.empty());
-        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
-        given(sensitiveDataCrypto.encrypt("01012345678")).willReturn("encrypted-phone");
-        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.empty());
         given(userRepository.save(any(User.class))).willReturn(savedUser);
         given(jwtTokenProvider.issueTokenPair(any())).willReturn(tokenPair);
 
@@ -107,5 +99,7 @@ class KakaoLoginServiceTest {
         assertThat(response.newUser()).isTrue();
         assertThat(response.accessToken()).isEqualTo("access-jwt");
         assertThat(response.refreshToken()).isEqualTo("refresh-jwt");
+        assertThat(savedUser.getPhone()).isNull();
+        assertThat(savedUser.getPhoneHash()).isNull();
     }
 }

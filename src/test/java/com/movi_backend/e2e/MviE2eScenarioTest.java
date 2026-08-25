@@ -64,6 +64,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -176,9 +178,13 @@ class MviE2eScenarioTest {
     private Account account;
     private TransferRecipient recipient;
 
+    /** 확인 대기 응답으로 받은 값. 확인 발화에 그대로 되돌려 줘야 한다. */
+    private String confirmationId;
+
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+        confirmationId = null;
         Mockito.reset(fdsAssessmentClient);
         willCallRealMethod().given(fdsAssessmentClient).assess(any());
         resetMockBalances();
@@ -541,10 +547,16 @@ class MviE2eScenarioTest {
 
     private void awaitConfirmation(final Long sessionId) throws Exception {
         final MvcResult result = mockMvc.perform(voiceCommand(sessionId, null)).andReturn();
+        final String body = result.getResponse().getContentAsString();
         assertThat(result.getResponse().getStatus())
-                .withFailMessage("확인 대기 실패: %s", result.getResponse().getContentAsString())
+                .withFailMessage("확인 대기 실패: %s", body)
                 .isEqualTo(200);
-        assertThat(result.getResponse().getContentAsString()).contains("AWAITING_CONFIRMATION");
+        assertThat(body).contains("AWAITING_CONFIRMATION");
+        final Matcher matcher = Pattern.compile("\"confirmationId\":\"([^\"]+)\"").matcher(body);
+        assertThat(matcher.find())
+                .withFailMessage("확인 응답에 confirmationId 가 없습니다: %s", body)
+                .isTrue();
+        confirmationId = matcher.group(1);
     }
 
     private MockMultipartHttpServletRequestBuilder voiceCommand(
@@ -554,6 +566,12 @@ class MviE2eScenarioTest {
         final MockMultipartHttpServletRequestBuilder builder =
                 multipart("/api/voice/sessions/{id}/commands", sessionId);
         builder.file(audioFile()).header("X-Dev-User-Id", user.getId());
+        if (idempotencyKey != null && confirmationId != null) {
+            builder.file(new MockMultipartFile(
+                    "confirmationId", "", "text/plain",
+                    confirmationId.getBytes(StandardCharsets.UTF_8)
+            ));
+        }
         if (idempotencyKey != null) {
             builder.file(new MockMultipartFile(
                     "idempotencyKey",

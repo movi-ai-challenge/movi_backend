@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.account.application.BalanceInquiryService;
 import com.movi_backend.domain.account.dto.response.BalanceResponse;
@@ -367,6 +368,7 @@ class VoiceCommandServiceTest {
                 USER_ID,
                 SESSION_ID,
                 createAudio(),
+                "confirmation-123",
                 idempotencyKey
         );
 
@@ -377,6 +379,97 @@ class VoiceCommandServiceTest {
         assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
         assertThat(session.getPendingSlots()).isNull();
         then(transferExecutionService).should().execute(any(ConfirmedTransferCommand.class));
+    }
+
+    @Test
+    @DisplayName("확인 발화에 확인 ID가 없으면 이체를 실행하지 않는다")
+    void 확인_발화에_확인_ID가_없으면_이체를_실행하지_않는다() throws Exception {
+        // given
+        final VoiceSession session = createAwaitingConfirmationSession();
+        final String idempotencyKey = UUID.randomUUID().toString();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(transferExecutionService.findCompletedResult(USER_ID, idempotencyKey))
+                .willReturn(Optional.empty());
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createConfirmationAnalysis());
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(
+                USER_ID,
+                SESSION_ID,
+                createAudio(),
+                null,
+                idempotencyKey
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_CONFIRMATION_ID);
+        then(transferExecutionService).should(never()).execute(any());
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+    }
+
+    @Test
+    @DisplayName("서버 세션과 다른 확인 ID를 보내면 이체를 실행하지 않는다")
+    void 서버_세션과_다른_확인_ID를_보내면_이체를_실행하지_않는다() throws Exception {
+        // given
+        final VoiceSession session = createAwaitingConfirmationSession();
+        final String idempotencyKey = UUID.randomUUID().toString();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(transferExecutionService.findCompletedResult(USER_ID, idempotencyKey))
+                .willReturn(Optional.empty());
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createConfirmationAnalysis());
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(
+                USER_ID,
+                SESSION_ID,
+                createAudio(),
+                "different-confirmation-id",
+                idempotencyKey
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_CONFIRMATION_ID);
+        then(transferExecutionService).should(never()).execute(any());
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+    }
+
+    @Test
+    @DisplayName("완료된 멱등 요청은 확인 ID 없이도 저장된 이체 결과를 반환한다")
+    void 완료된_멱등_요청은_확인_ID_없이도_저장된_이체_결과를_반환한다() {
+        // given
+        final VoiceSession session = createSession();
+        final String idempotencyKey = UUID.randomUUID().toString();
+        final TransferExecutionResult completedResult = new TransferExecutionResult(
+                101L,
+                TransferStatus.COMPLETED,
+                RiskLevel.LOW,
+                50_000L,
+                "김영희",
+                LocalDateTime.now()
+        );
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(transferExecutionService.findCompletedResult(USER_ID, idempotencyKey))
+                .willReturn(Optional.of(completedResult));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(
+                USER_ID,
+                SESSION_ID,
+                createAudio(),
+                null,
+                idempotencyKey
+        );
+
+        // then
+        assertThat(response.transferId()).isEqualTo(101L);
+        assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
+        then(voiceAnalysisClient).shouldHaveNoInteractions();
+        then(transferExecutionService).should(never()).execute(any());
     }
 
     @Test
@@ -827,6 +920,38 @@ class VoiceCommandServiceTest {
 
     private VoiceSession createSession() {
         return createSession(USER_ID);
+    }
+
+    private VoiceSession createAwaitingConfirmationSession() throws Exception {
+        final VoiceSession session = createSession();
+        session.awaitConfirmation(
+                VoiceIntent.TRANSFER,
+                new ObjectMapper().writeValueAsString(PendingTransferSlots.awaitingConfirmation(
+                        50_000L,
+                        "엄마",
+                        null,
+                        8L,
+                        12L,
+                        "confirmation-123"
+                )),
+                LocalDateTime.now()
+        );
+        return session;
+    }
+
+    private VoiceAnalysisResponse createConfirmationAnalysis() {
+        return VoiceAnalysisResponse.of(
+                "voice-confirm",
+                SESSION_ID,
+                "응 보내줘",
+                HIGH_CONFIDENCE,
+                VoiceIntent.CONFIRM,
+                HIGH_CONFIDENCE,
+                VoiceEntities.transfer(null, null, null),
+                VoiceEntityConfidences.transfer(null, null, null),
+                List.of(),
+                75
+        );
     }
 
     private VoiceSession createSession(final Long userId) {

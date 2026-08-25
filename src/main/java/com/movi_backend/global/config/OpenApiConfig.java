@@ -5,6 +5,8 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.servers.Server;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -19,6 +21,8 @@ public class OpenApiConfig {
 
     private static final String BEARER_SCHEME = "bearerAuth";
     private static final String DEV_USER_SCHEME = "devUser";
+
+    private static final String LOCAL_SERVER_URL = "http://localhost:8080";
 
     private static final String DESCRIPTION = """
             시각장애인·시니어가 화면을 보지 않고 음성만으로 잔액을 확인하고 송금하는 Voice-First 뱅킹 API입니다.
@@ -68,10 +72,27 @@ public class OpenApiConfig {
                         .title("Movi Backend API")
                         .version("v1")
                         .description(DESCRIPTION))
+                .servers(servers())
                 .components(new Components()
                         .addSecuritySchemes(BEARER_SCHEME, bearerScheme())
                         .addSecuritySchemes(DEV_USER_SCHEME, devUserScheme()))
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME));
+    }
+
+    /**
+     * 요청을 보낼 서버 목록.
+     *
+     * <p>첫 항목을 절대 주소가 아닌 {@code /} 로 둔다. 문서를 연 주소가 그대로 요청 주소가 되므로
+     * 배포 주소가 바뀌거나 HTTPS 가 붙어도 이 코드를 고칠 필요가 없다. 배포 주소를 문자열로
+     * 박아 두면 그 시점마다 함께 고쳐야 하고, 잊으면 문서가 조용히 틀린 주소를 가리킨다.
+     *
+     * <p>로컬 서버를 따로 두는 이유는 <b>배포 문서에서 내 로컬 서버로 시험</b>하기 위해서다.
+     */
+    private List<Server> servers() {
+        return List.of(
+                new Server().url("/").description("현재 문서를 연 서버"),
+                new Server().url(LOCAL_SERVER_URL).description("로컬 개발 서버")
+        );
     }
 
     private SecurityScheme bearerScheme() {

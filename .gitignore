@@ -50,9 +50,8 @@ out/
 
 ### 설정 파일 ###
 # yml 에 DB 비밀번호·API 키를 직접 적으므로 커밋하지 않는다.
-# 팀 공유는 *.yml.example 템플릿으로 하고, 각자 복사해서 값을 채운다.
+# 템플릿 파일(.example)은 쓰지 않는다. 필요한 설정값은 팀 채널(Notion/카톡)에서 공유한다.
 *.yml
-!*.yml.example
 # CI 워크플로는 인증정보가 없으므로 커밋 대상
 !.github/**/*.yml
 src/main/resources/application-secret.yml

@@ -250,13 +250,7 @@ API 계약과 요청·응답 예시는 [통합 명세](docs/integration-spec.md)
 
 ### 1. 설정 파일 준비
 
-실제 설정 파일은 인증정보 보호를 위해 Git에서 제외합니다. `.example` 파일을 복사한 뒤 로컬 값을 입력합니다.
-
-```bash
-cp src/main/resources/application.yml.example src/main/resources/application.yml
-cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
-cp src/test/resources/application-test.yml.example src/test/resources/application-test.yml
-```
+실제 설정 파일은 인증정보 보호를 위해 Git에서 제외합니다. `.example` 템플릿은 쓰지 않으므로 `application.yml`, `application-local.yml`, `application-test.yml`을 직접 만들고, 채워야 할 값(DB 비밀번호·API 키 등)은 팀 채널(Notion/카톡)에서 확인합니다.
 
 암호화·JWT 키 예시는 다음처럼 생성할 수 있습니다.
 

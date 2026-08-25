@@ -33,13 +33,7 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 
 ### 최초 세팅
 
-`*.yml`은 gitignore 대상이라 clone 직후에는 설정 파일이 없습니다. 템플릿을 복사해서 만듭니다.
-
-```bash
-cp src/main/resources/application.yml.example       src/main/resources/application.yml
-cp src/main/resources/application-local.yml.example  src/main/resources/application-local.yml
-cp src/test/resources/application-test.yml.example   src/test/resources/application-test.yml
-```
+`*.yml`은 gitignore 대상이라 clone 직후에는 설정 파일이 없습니다. **`.example` 템플릿은 쓰지 않습니다** — `application.yml`, `application-local.yml`, `application-test.yml`을 직접 만들고, 채워야 할 값(DB 비밀번호·API 키 등)은 팀 채널(Notion/카톡)에서 확인하세요.
 
 그다음 `application-local.yml`의 `password`를 본인 로컬 MySQL 비밀번호로 채우고, DB를 준비합니다.
 
@@ -80,6 +74,14 @@ com.movi_backend/
 | `voice` | 음성 세션, 명령 기록, 슬롯 필링 | `voice_sessions`, `voice_commands` |
 | `fds` | 위험도 평가, 룰 관리 | `fds_assessments`, `fds_rules`, `user_transfer_profiles` |
 | `guardian` | 보호자 연결, 알림 발송 | `guardian_links`, `notifications` |
+
+### 도메인 설명 문서 — `domain-note.md`
+
+각 도메인 패키지 루트(`domain/{도메인}/domain-note.md`)에 그 도메인을 설명하는 문서를 둡니다.
+
+- **내용**: 해당 도메인의 책임·주요 클래스와 흐름·지켜야 할 불변식·규칙 요약 + 주요 변경 이력(무엇을 왜 바꿨는지, 시간순)
+- **갱신 시점**: 새로 쓰는 문서가 아니라, 도메인 구조나 규칙이 실제로 바뀌어 문서가 현재 코드와 어긋나게 될 때마다 갱신합니다. 코드만 건드리고 구조·규칙에 변화가 없으면 갱신하지 않아도 됩니다
+- 도메인 전반의 불변식·설계 계약은 [docs/domain-guide.md](docs/domain-guide.md)에 정리되어 있으니, `domain-note.md`는 이를 대체하지 않고 그 도메인 패키지 내부 관점의 보충 설명으로 씁니다
 
 ## 도메인 규칙 (반드시 지킬 것)
 
@@ -144,7 +146,7 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 | FDS 서비스 | 위험도 평가 | AI 파트 제공. 요청/응답 스키마를 문서로 합의 후 Mock으로 선개발 |
 | SMS | 보호자 알림 | Twilio는 국내 발신 제약 있음 — 국내 서비스(NHN Toast, 알리고) 대안 검토 |
 
-외부 인증정보는 `application-local.yml`에 직접 적습니다. **이 파일들(`*.yml`)은 gitignore 대상이라 커밋되지 않습니다.** 팀 공유는 `*.yml.example` 템플릿으로 하고, 템플릿에는 실제 값 대신 플레이스홀더만 둡니다.
+외부 인증정보는 `application-local.yml`에 직접 적습니다. **이 파일들(`*.yml`)은 gitignore 대상이라 커밋되지 않습니다.** `.example` 템플릿은 쓰지 않으며, 필요한 값은 팀 채널(Notion/카톡)에서 공유합니다.
 
 **Java 코드에는 어떤 인증정보도 하드코딩하지 않습니다.** `@Value`나 `@ConfigurationProperties`로 설정에서 주입받으세요.
 
@@ -163,8 +165,9 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 1. 관련 문서 확인 — [docs/ERD.md](docs/ERD.md)에서 해당 도메인의 테이블·관계 파악
 2. 변경 계획과 완료 조건 작성 — 어떤 파일을 왜 고치는지, "무엇이 되면 done"인지 검증 가능한 기준으로
 3. 코드 수정
-4. 테스트 — `./gradlew test`
-5. 스키마 변경 시 [docs/schema.sql](docs/schema.sql)과 [docs/ERD.md](docs/ERD.md)를 함께 갱신 (ERDCloud 임포트용 SQL도 같이)
+4. 도메인 구조·규칙이 바뀌었다면 해당 패키지의 `domain-note.md` 갱신 (신규 도메인이면 새로 작성)
+5. 테스트 — `./gradlew test`
+6. 스키마 변경 시 [docs/schema.sql](docs/schema.sql)과 [docs/ERD.md](docs/ERD.md)를 함께 갱신 (ERDCloud 임포트용 SQL도 같이)
 
 ## 작업 흐름 — 이슈부터 판다
 

@@ -363,7 +363,7 @@ chore/ncp-deployment
 6. `./gradlew build` 통과
 7. 기능 단위 커밋과 `develop` 대상 PR
 8. 소비 파트가 staging 또는 Mock에서 실제 호출
-9. 새 설정이 있으면 `.yml.example`도 갱신
+9. 새 설정이 있으면 팀 채널(Notion/카톡)에도 공유
 10. 스키마 변경이면 DDL·ERD가 일치
 
 ---

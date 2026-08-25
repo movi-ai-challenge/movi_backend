@@ -91,6 +91,18 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 | Delivery | Docker, GitHub Actions, Nginx, AWS EC2 |
 | Security | JWT, BCrypt, AES-GCM, HMAC-SHA256 |
 
+## 배포 주소
+
+| 구분 | 주소 |
+|---|---|
+| API | `https://moviback.duckdns.org` |
+| API 문서 | `https://moviback.duckdns.org/swagger-ui/index.html` |
+| 헬스 체크 | `https://moviback.duckdns.org/actuator/health` |
+
+`develop` 에 머지되면 GitHub Actions 가 자동 배포한다.
+
+**CORS 허용 오리진은 `CorsProperties` 한 곳에서만 관리한다.** 프론트 주소가 늘면 이 클래스만 고치면 되고, 서버 설정은 건드리지 않는다. nginx 에도 CORS 를 두면 헤더가 두 번 나가 브라우저가 응답을 거부한다(이슈 #82).
+
 ## 구현 진행 상황
 
 상태 표기는 다음 기준을 사용합니다.

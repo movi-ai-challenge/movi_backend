@@ -37,6 +37,8 @@ public enum ErrorCode {
             "비밀번호를 먼저 등록해 주세요."),
     PIN_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_4090", "비밀번호가 이미 등록되어 있습니다.",
             "비밀번호가 이미 등록되어 있어요."),
+    PHONE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_4091", "이미 다른 계정에 등록된 전화번호입니다.",
+            "이미 다른 계정에서 쓰고 있는 전화번호예요."),
     BIOMETRIC_NOT_ENABLED(HttpStatus.BAD_REQUEST, "AUTH_4023", "생체인증이 설정되어 있지 않습니다.",
             "지문이나 얼굴 인식이 설정되어 있지 않아요."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "AUTH_4030", "접근 권한이 없습니다.",

@@ -1,5 +1,6 @@
 package com.movi_backend.domain.voice.dto.response;
 
+import com.movi_backend.domain.account.dto.response.BalanceResponse;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
@@ -30,7 +31,8 @@ public record VoiceCommandResponse(
         TransferStatus status,
         RiskLevel riskLevel,
         LocalDateTime completedAt,
-        History history
+        History history,
+        BalanceResponse balance
 ) {
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
@@ -63,6 +65,7 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -88,6 +91,7 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -103,6 +107,7 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 session.getExpiresAt(),
+                null,
                 null,
                 null,
                 null,
@@ -130,7 +135,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                history
+                history,
+                null
         );
     }
 
@@ -149,11 +155,39 @@ public record VoiceCommandResponse(
                 result.status(),
                 result.riskLevel(),
                 result.completedAt(),
+                null,
                 null
         );
     }
 
+    /** 잔액조회 결과. 조회는 돈을 움직이지 않으므로 세션을 이어서 쓸 수 있게 열어 둔다. */
+    public static VoiceCommandResponse balance(
+            final VoiceSession session,
+            final BalanceResponse balance
+    ) {
+        return new VoiceCommandResponse(
+                session.getId(),
+                session.getStatus(),
+                VoiceIntent.BALANCE,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                session.getExpiresAt(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                balance
+        );
+    }
+
     public String toVoiceMessage() {
+        if (this.balance != null) {
+            return this.balance.toVoiceMessage();
+        }
         if (this.history != null) {
             return this.history.toVoiceMessage();
         }

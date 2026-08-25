@@ -27,6 +27,8 @@ public enum ErrorCode {
             "다시 로그인해 주세요."),
     INVALID_OAUTH_STATE(HttpStatus.UNAUTHORIZED, "AUTH_4014", "로그인 요청 상태가 유효하지 않습니다.",
             "로그인을 처음부터 다시 시도해 주세요."),
+    INVALID_LOGIN_CODE(HttpStatus.UNAUTHORIZED, "AUTH_4015", "로그인 교환 코드가 유효하지 않습니다.",
+            "로그인을 처음부터 다시 시도해 주세요."),
     PIN_MISMATCH(HttpStatus.UNAUTHORIZED, "AUTH_4020", "비밀번호가 일치하지 않습니다.",
             "비밀번호가 맞지 않아요. 다시 입력해 주세요."),
     PIN_LOCKED(HttpStatus.FORBIDDEN, "AUTH_4021", "비밀번호 입력 제한 횟수를 초과했습니다.",

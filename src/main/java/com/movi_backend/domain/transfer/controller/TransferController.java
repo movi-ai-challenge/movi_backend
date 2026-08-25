@@ -1,6 +1,7 @@
 package com.movi_backend.domain.transfer.controller;
 
 import com.movi_backend.domain.transfer.application.TransferQueryService;
+import com.movi_backend.domain.transfer.controller.docs.TransferApiDocs;
 import com.movi_backend.domain.transfer.dto.response.TransferStatusResponse;
 import com.movi_backend.global.response.ApiResponse;
 import com.movi_backend.global.security.AuthUser;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/transfers")
 @RequiredArgsConstructor
-public class TransferController {
+public class TransferController implements TransferApiDocs {
 
     private final TransferQueryService transferQueryService;
 

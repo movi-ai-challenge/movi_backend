@@ -8,6 +8,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.account.dto.response.BalanceResponse;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.auth.entity.User;
@@ -85,6 +87,9 @@ class VoiceCommandServiceTest {
 
     @Mock
     private TransactionQueryService transactionQueryService;
+
+    @Mock
+    private BalanceInquiryService balanceInquiryService;
 
     @Mock
     private AccountRepository accountRepository;
@@ -203,6 +208,7 @@ class VoiceCommandServiceTest {
                 transferValidationService,
                 transferExecutionService,
                 transactionQueryService,
+                balanceInquiryService,
                 accountRepository,
                 transferRecipientRepository,
                 objectMapper,
@@ -610,6 +616,159 @@ class VoiceCommandServiceTest {
         then(transactionQueryService).shouldHaveNoInteractions();
     }
 
+    @Test
+    @DisplayName("잔액 음성 명령을 처리하면 기본 계좌 잔액을 한국어로 안내한다")
+    void 잔액_음성_명령을_처리하면_기본_계좌_잔액을_한국어로_안내한다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createBalanceAnalysis(null, null));
+        given(balanceInquiryService.inquire(USER_ID, null)).willReturn(new BalanceResponse(
+                12L,
+                "국민은행",
+                "생활비 통장",
+                53_000L,
+                53_000L,
+                LocalDateTime.of(2026, 8, 25, 10, 0)
+        ));
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(response.intent()).isEqualTo(VoiceIntent.BALANCE);
+        assertThat(response.state()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(response.balance().balanceAmount()).isEqualTo(53_000L);
+        assertThat(response.toVoiceMessage()).isEqualTo("국민은행 생활비 통장에 5만 3천원 있어요.");
+        assertThat(response.toVoiceMessage()).doesNotContain("53000");
+    }
+
+    @Test
+    @DisplayName("별칭을 말하면 해당 계좌의 잔액을 조회한다")
+    void 별칭을_말하면_해당_계좌의_잔액을_조회한다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createBalanceAnalysis("월급통장", HIGH_CONFIDENCE));
+        given(balanceInquiryService.inquire(USER_ID, "월급통장")).willReturn(new BalanceResponse(
+                13L,
+                "신한은행",
+                "월급통장",
+                1_200_000L,
+                1_200_000L,
+                LocalDateTime.of(2026, 8, 25, 10, 0)
+        ));
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(response.balance().accountId()).isEqualTo(13L);
+        assertThat(response.toVoiceMessage()).contains("월급통장").contains("1백20만원");
+        then(balanceInquiryService).should().inquire(USER_ID, "월급통장");
+    }
+
+    @Test
+    @DisplayName("계좌 별칭 신뢰도가 낮으면 조회하지 않고 재발화를 요청한다")
+    void 계좌_별칭_신뢰도가_낮으면_조회하지_않고_재발화를_요청한다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createBalanceAnalysis("월급통장", new BigDecimal("0.42")));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, createAudio()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.LOW_CONFIDENCE);
+        then(balanceInquiryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("잔액조회가 실패하면 0원으로 안내하지 않고 실패를 그대로 알린다")
+    void 잔액조회가_실패하면_0원으로_안내하지_않고_실패를_그대로_알린다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createBalanceAnalysis(null, null));
+        given(balanceInquiryService.inquire(USER_ID, null))
+                .willThrow(new BusinessException(ErrorCode.BALANCE_INQUIRY_FAILED));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, createAudio()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BALANCE_INQUIRY_FAILED);
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("재질문 중 잔액을 물으면 이전 송금 슬롯을 폐기하고 명령 대기로 돌아간다")
+    void 재질문_중_잔액을_물으면_이전_송금_슬롯을_폐기하고_명령_대기로_돌아간다() throws Exception {
+        // given
+        final VoiceSession session = createSession();
+        session.clarify(
+                VoiceIntent.TRANSFER,
+                new ObjectMapper().writeValueAsString(
+                        PendingTransferSlots.clarifying(50000L, null, null)
+                ),
+                LocalDateTime.now()
+        );
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createBalanceAnalysis(null, null));
+        given(balanceInquiryService.inquire(USER_ID, null)).willReturn(new BalanceResponse(
+                12L,
+                "국민은행",
+                "생활비 통장",
+                53_000L,
+                53_000L,
+                LocalDateTime.of(2026, 8, 25, 10, 0)
+        ));
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(session.getPendingSlots()).isNull();
+        assertThat(session.getPendingIntent()).isNull();
+        assertThat(session.getRetryCount()).isZero();
+    }
+
+    private VoiceAnalysisResponse createBalanceAnalysis(
+            final String sourceAccountAlias,
+            final BigDecimal aliasConfidence
+    ) {
+        return VoiceAnalysisResponse.of(
+                "voice-balance",
+                SESSION_ID,
+                "잔액 알려줘",
+                HIGH_CONFIDENCE,
+                VoiceIntent.BALANCE,
+                HIGH_CONFIDENCE,
+                new VoiceEntities(null, null, sourceAccountAlias, null, null, null),
+                new VoiceEntityConfidences(null, null, aliasConfidence, null, null, null),
+                List.of(),
+                85
+        );
+    }
+
     private VoiceAnalysisResponse createHistoryAnalysis(
             final LocalDate startDate,
             final LocalDate endDate
@@ -658,6 +817,7 @@ class VoiceCommandServiceTest {
                 transferValidationService,
                 transferExecutionService,
                 transactionQueryService,
+                balanceInquiryService,
                 accountRepository,
                 transferRecipientRepository,
                 new ObjectMapper(),

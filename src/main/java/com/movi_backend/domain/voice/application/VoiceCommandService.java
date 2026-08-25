@@ -1,5 +1,7 @@
 package com.movi_backend.domain.voice.application;
 
+import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.account.dto.response.BalanceResponse;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.transfer.application.TransactionQueryService;
@@ -76,6 +78,7 @@ public class VoiceCommandService {
     private final TransferValidationService transferValidationService;
     private final TransferExecutionService transferExecutionService;
     private final TransactionQueryService transactionQueryService;
+    private final BalanceInquiryService balanceInquiryService;
     private final AccountRepository accountRepository;
     private final TransferRecipientRepository transferRecipientRepository;
     private final ObjectMapper objectMapper;
@@ -121,6 +124,9 @@ public class VoiceCommandService {
         }
         if (analysis.intent() == VoiceIntent.HISTORY) {
             return queryHistory(session, analysis, now);
+        }
+        if (analysis.intent() == VoiceIntent.BALANCE) {
+            return queryBalance(session, analysis, now);
         }
         validateIntent(analysis.intent());
 
@@ -255,6 +261,34 @@ public class VoiceCommandService {
      * 슬롯이 남아 있으면 폐기한다 — 사용자가 화제를 바꾼 것이고, 남겨 두면 뒤이은 발화가
      * 옛 슬롯과 병합돼 엉뚱한 이체로 이어진다.
      */
+    /**
+     * 잔액을 조회해 음성으로 안내한다.
+     *
+     * <p>거래내역 조회와 같은 성격이다 — 돈이 움직이지 않으므로 확인 단계를 두지 않고 바로
+     * 답하고, 앞선 송금 슬롯이 남아 있으면 폐기한다.
+     *
+     * <p>계좌 별칭은 잘못 들으면 엉뚱한 계좌 잔액을 읽어 준다. 화면으로 확인할 수 없는
+     * 사용자에게는 정정할 방법이 없으므로 송금과 같은 신뢰도 기준을 적용한다.
+     */
+    private VoiceCommandResponse queryBalance(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final LocalDateTime now
+    ) {
+        validateSourceAccountConfidence(analysis.entities(), analysis.entityConfidences());
+        final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
+        final BalanceResponse balance = balanceInquiryService.inquire(
+                session.getUser().getId(),
+                analysis.entities().sourceAccountAlias()
+        );
+
+        session.resumeActive(now);
+        final VoiceCommandResponse response = VoiceCommandResponse.balance(session, balance);
+        voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
+        voiceCommandRepository.save(voiceCommand);
+        return response;
+    }
+
     private VoiceCommandResponse queryHistory(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,

@@ -44,6 +44,7 @@ class OpenApiDocumentTest {
             "/api/v1/auth/kakao/authorize",
             "/api/v1/auth/kakao/callback",
             "/api/transactions",
+            "/api/transactions/{transactionId}",
             "/api/transfers/status",
             "/api/voice/sessions",
             "/api/voice/sessions/{voiceSessionId}/commands"

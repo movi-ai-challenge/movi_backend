@@ -107,7 +107,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 | 음성 세션 | ✅ | 업로드 검증, 슬롯 저장·병합, 재질문, 확인·취소, 만료·재시도 제한 |
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
 | FDS | ✅ | Mock/HTTP Client, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치 |
-| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회 |
+| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 음성 조회(HISTORY) |
 | 보호자 위험 알림 | ✅ | 활성 보호자 조회, 알림 이력, 송금과 트랜잭션 분리, 최대 3회 재시도 |
 | 민감정보 보호 | ✅ | 전화번호·토큰·수취 계좌번호 암호화, 로그·응답 마스킹 |
 | AI Voice staging | 🧪 | HTTP Client 구현 완료, 실제 모바일 음성과 staging 계약 검증 필요 |
@@ -145,6 +145,8 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 - 재질문·확인 대기 60초, 동일 슬롯 재질문 최대 3회
 - 확인 정보가 달라지면 기존 확인 정보 폐기
 - 직접 계좌번호를 말하는 송금은 거부하고 등록 수취인만 사용
+- 거래내역 조회는 확인 단계 없이 응답하고, 기간은 AI가 준 값을 재검증해 사용
+- 송금 슬롯을 채우는 중 다른 의도가 오면 기존 슬롯 폐기 후 명령 대기로 복귀
 
 ```text
 ACTIVE
@@ -240,7 +242,7 @@ AI와 금융 Sandbox 승인은 개발 일정과 독립적인 외부 변수입니
 | `PATCH` | `/api/accounts/{accountId}/alias` | 계좌 별칭 변경 |
 | `GET` | `/api/accounts/balance` | 기본 또는 별칭 계좌 잔액조회 |
 | `POST` | `/api/voice/sessions` | 음성 세션 시작 |
-| `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금 |
+| `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금·거래내역 조회 |
 | `GET` | `/api/transfers/status` | 멱등성 키로 송금 상태 복구 |
 | `GET` | `/api/transactions` | 거래내역 필터·페이징 조회 |
 

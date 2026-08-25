@@ -106,6 +106,17 @@ public class Account extends BaseCreatedEntity {
         this.alias = alias;
     }
 
+    /**
+     * 음성으로 읽어 줄 계좌 이름. 사용자가 붙인 별칭이 있으면 그것을 쓴다 —
+     * "국민은행 계좌"보다 "생활비 통장"이 듣는 사람에게 어느 계좌인지 분명하다.
+     */
+    public String toVoiceName() {
+        if (this.alias == null || this.alias.isBlank()) {
+            return this.bankName + " 계좌";
+        }
+        return this.alias;
+    }
+
     public void designateAsPrimary() {
         this.primary = true;
     }

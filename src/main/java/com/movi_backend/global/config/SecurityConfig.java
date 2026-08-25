@@ -31,7 +31,12 @@ public class SecurityConfig {
             "/api/v1/auth/token/refresh",
             "/actuator/health",
             "/actuator/info",
-            "/actuator/prometheus"
+            "/actuator/prometheus",
+            // API 문서. 인증정보를 담지 않고 계약만 노출한다
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/v3/api-docs",
+            "/v3/api-docs/**"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

@@ -1,6 +1,7 @@
 package com.movi_backend.domain.transfer.controller;
 
 import com.movi_backend.domain.transfer.application.TransactionQueryService;
+import com.movi_backend.domain.transfer.controller.docs.TransactionApiDocs;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.global.response.ApiResponse;
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/transactions")
 @RequiredArgsConstructor
-public class TransactionController {
+public class TransactionController implements TransactionApiDocs {
 
     private final TransactionQueryService transactionQueryService;
 

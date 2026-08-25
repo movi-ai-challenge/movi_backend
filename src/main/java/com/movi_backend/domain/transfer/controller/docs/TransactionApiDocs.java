@@ -1,5 +1,6 @@
 package com.movi_backend.domain.transfer.controller.docs;
 
+import com.movi_backend.domain.transfer.dto.response.TransactionDetailResponse;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.global.response.PageResponse;
@@ -52,5 +53,32 @@ public interface TransactionApiDocs {
             @Parameter(description = "IN은 입금, OUT은 출금. 생략하면 전체") TransactionType type,
             @Parameter(description = "0부터 시작하는 페이지 번호", example = "0") int page,
             @Parameter(description = "페이지당 건수. 최대 100", example = "20") int size
+    );
+
+    @Operation(
+            summary = "거래내역 상세 조회",
+            description = """
+                    거래 한 건의 상세를 반환합니다. 목록에서 본 거래의 **거래 후 잔액·메모·분류**를
+                    확인할 때 씁니다.
+
+                    `voiceMessage`에 날짜·상대방·금액과 거래 뒤 잔액이 한국어로 담깁니다 —
+                    "8월 24일 김영희 님에게 5만원 보냈어요. 거래 뒤 잔액은 95만원이에요."
+                    상세를 여는 이유가 대개 "그래서 남은 게 얼마인가"라서 잔액까지 읽어 줍니다.
+
+                    **없는 거래와 남의 거래에 같은 응답을 줍니다.** 구분해서 알려주면 ID를 훑어
+                    남의 거래가 존재하는지 알아낼 수 있기 때문입니다.
+
+                    **상대방 계좌번호는 포함하지 않습니다.** 음성으로 읽어 줄 값이 아니고,
+                    사용자에게 쓸모없이 주변에만 들립니다.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "404", content = @Content,
+                    description = "`TRANSFER_4042` 거래가 없거나 본인 것이 아님")
+    })
+    com.movi_backend.global.response.ApiResponse<TransactionDetailResponse> getTransaction(
+            @Parameter(hidden = true) AuthUser authUser,
+            @Parameter(description = "조회할 거래 ID", example = "101") Long transactionId
     );
 }

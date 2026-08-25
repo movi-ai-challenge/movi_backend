@@ -103,11 +103,11 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 |---|:---:|---|
 | 인증 | ✅ | 카카오 OAuth, PIN 로그인·등록, Access/Refresh JWT, 갱신·로그아웃, 운영 JWT 필터 |
 | 계좌 연결·관리 | ✅ | 오픈뱅킹 연결·콜백, 계좌 목록, 기본 계좌, 계좌 별칭 |
-| 잔액조회 | ✅ | 기본/별칭 계좌 조회, 실시간 재조회, BalanceSnapshot 저장, Mock/실 API Adapter |
+| 잔액조회 | ✅ | 기본/별칭 계좌 조회, 실시간 재조회, BalanceSnapshot 저장, Mock/실 API Adapter, 음성 조회(BALANCE) |
 | 음성 세션 | ✅ | 업로드 검증, 슬롯 저장·병합, 재질문, 확인·취소, 만료·재시도 제한 |
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
 | FDS | ✅ | Mock/HTTP Client, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치 |
-| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회 |
+| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 단건 상세, 음성 안내, 음성 조회(HISTORY) |
 | 보호자 위험 알림 | ✅ | 활성 보호자 조회, 알림 이력, 송금과 트랜잭션 분리, 최대 3회 재시도 |
 | 민감정보 보호 | ✅ | 전화번호·토큰·수취 계좌번호 암호화, 로그·응답 마스킹 |
 | AI Voice staging | 🧪 | HTTP Client 구현 완료, 실제 모바일 음성과 staging 계약 검증 필요 |
@@ -145,6 +145,9 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 - 재질문·확인 대기 60초, 동일 슬롯 재질문 최대 3회
 - 확인 정보가 달라지면 기존 확인 정보 폐기
 - 직접 계좌번호를 말하는 송금은 거부하고 등록 수취인만 사용
+- 거래내역·잔액 조회는 확인 단계 없이 응답하고, 기간은 AI가 준 값을 재검증해 사용
+- 계좌 별칭은 송금과 같은 신뢰도 기준으로 검증 — 엉뚱한 계좌를 읽어 주면 정정할 수 없음
+- 송금 슬롯을 채우는 중 다른 의도가 오면 기존 슬롯 폐기 후 명령 대기로 복귀
 
 ```text
 ACTIVE
@@ -164,6 +167,8 @@ ACTIVE
 - 실제 오픈뱅킹 결과의 거래 시각·잔액을 내부 거래에 반영
 - 수취 계좌번호는 외부 이체 요청 생성 시에만 복호화
 - 이체 성공 후 수취인 누적 횟수와 출금 거래내역 갱신
+- 거래내역 목록은 건수만, 상세는 금액·잔액·메모를 음성으로 안내
+- 없는 거래와 남의 거래를 같은 응답으로 처리해 ID 훑기를 막음
 
 ```text
 PENDING → RISK_REVIEW → COMPLETED
@@ -240,9 +245,10 @@ AI와 금융 Sandbox 승인은 개발 일정과 독립적인 외부 변수입니
 | `PATCH` | `/api/accounts/{accountId}/alias` | 계좌 별칭 변경 |
 | `GET` | `/api/accounts/balance` | 기본 또는 별칭 계좌 잔액조회 |
 | `POST` | `/api/voice/sessions` | 음성 세션 시작 |
-| `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금 |
+| `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금·거래내역·잔액 조회 |
 | `GET` | `/api/transfers/status` | 멱등성 키로 송금 상태 복구 |
 | `GET` | `/api/transactions` | 거래내역 필터·페이징 조회 |
+| `GET` | `/api/transactions/{transactionId}` | 거래내역 단건 상세 조회 |
 
 API 계약과 요청·응답 예시는 [통합 명세](docs/integration-spec.md), [API 응답 규약](docs/api-response.md)을 참고합니다.
 

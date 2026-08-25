@@ -127,6 +127,7 @@
 | TRANSFER_4031 | `TRANSFER_BLOCKED` | 403 | 위험 거래로 차단된 이체입니다. | 안전을 위해 이번 송금을 멈췄어요. 보호자에게 알려 드렸어요. |
 | TRANSFER_4040 | `TRANSFER_NOT_FOUND` | 404 | 이체 내역을 찾을 수 없습니다. | 송금 내역을 찾을 수 없어요. |
 | TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 다시 말씀해 주세요. |
+| TRANSFER_4042 | `TRANSACTION_NOT_FOUND` | 404 | 거래내역을 찾을 수 없습니다. | 그 거래를 찾지 못했어요. 다시 말씀해 주세요. |
 | TRANSFER_4090 | `DUPLICATE_TRANSFER` | 409 | 이미 처리 중인 이체 요청입니다. | 방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요. |
 
 ### VOICE — 음성 인식·재질문

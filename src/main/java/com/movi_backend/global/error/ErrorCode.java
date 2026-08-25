@@ -99,6 +99,8 @@ public enum ErrorCode {
             "송금 내역을 찾을 수 없어요."),
     RECIPIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "TRANSFER_4041", "등록된 수취인을 찾을 수 없습니다.",
             "그런 이름으로 저장된 분이 없어요. 다시 말씀해 주세요."),
+    TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND, "TRANSFER_4042", "거래내역을 찾을 수 없습니다.",
+            "그 거래를 찾지 못했어요. 다시 말씀해 주세요."),
     DUPLICATE_TRANSFER(HttpStatus.CONFLICT, "TRANSFER_4090", "이미 처리 중인 이체 요청입니다.",
             "방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요."),
 

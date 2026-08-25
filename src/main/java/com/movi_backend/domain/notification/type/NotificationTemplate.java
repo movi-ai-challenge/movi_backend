@@ -21,11 +21,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum NotificationTemplate {
 
-    /** 보호자 연결 초대. 초대 링크가 들어가므로 수신자 외에는 노출되지 않아야 한다. */
-    GUARDIAN_INVITE(
+    /** 보호자 등록 통보. 확인 절차 없이 이미 연결이 끝난 뒤 보내는 안내다. */
+    GUARDIAN_LINK_REGISTERED(
             NotificationChannel.SMS,
-            "[Movi] {protecteeName} 님이 회원님을 보호자로 연결하려 합니다. "
-                    + "아래 링크에서 요청 내용을 확인해 주세요. {inviteUrl}"
+            "[Movi] {protecteeName} 님이 회원님을 보호자로 등록했습니다. "
+                    + "앞으로 이상 거래가 감지되면 문자로 알려드립니다."
     ),
 
     /** 고위험 감지 → 보호자에게. 아직 이체는 나가지 않았고 본인 확인을 기다리는 중이다. */

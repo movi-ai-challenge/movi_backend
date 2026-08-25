@@ -16,15 +16,19 @@ import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.security.AuthUser;
 import com.movi_backend.global.security.JwtTokenPair;
 import com.movi_backend.global.security.JwtTokenProvider;
-import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 카카오 로그인·최초 가입.
+ *
+ * <p>카카오는 전화번호를 회원 정보로 주지 않는다 — {@code users.phone}은 여기서 채우지 않고
+ * PIN 등록 시점({@link AuthenticationService#registerPin})에 채운다.
+ */
 @Service
 @RequiredArgsConstructor
 public class KakaoLoginService {
@@ -35,7 +39,6 @@ public class KakaoLoginService {
     private final OauthAccountRepository oauthAccountRepository;
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
-    private final SensitiveDataCrypto sensitiveDataCrypto;
 
     public KakaoAuthorization createAuthorization() {
         final String state = jwtTokenProvider.issueOauthState();
@@ -71,24 +74,13 @@ public class KakaoLoginService {
             return LoginUser.existing(existingAccount.getUser());
         }
 
-        final String normalizedPhone = normalizePhone(kakaoUser.phoneNumber());
-        final String phoneHash = sensitiveDataCrypto.hash(normalizedPhone);
-        final Optional<User> existingUser = userRepository.findByPhoneHash(phoneHash);
-        final User user;
-        final boolean newUser;
-        if (existingUser.isPresent()) {
-            user = existingUser.get();
-            newUser = false;
-        } else {
-            user = createUser(kakaoUser.nickname(), normalizedPhone, phoneHash);
-            newUser = true;
-        }
+        final User user = createUser(kakaoUser.nickname());
         oauthAccountRepository.save(OauthAccount.builder()
                 .user(user)
                 .provider(OauthProvider.KAKAO)
                 .providerUserId(providerUserId)
                 .build());
-        return LoginUser.of(user, newUser);
+        return LoginUser.of(user, true);
     }
 
     private void validateStateCookie(final String state, final String stateCookie) {
@@ -104,37 +96,12 @@ public class KakaoLoginService {
         }
     }
 
-    private User createUser(
-            final String nickname,
-            final String normalizedPhone,
-            final String phoneHash
-    ) {
+    private User createUser(final String nickname) {
         final User user = User.builder()
                 .name(resolveName(nickname))
-                .phone(sensitiveDataCrypto.encrypt(normalizedPhone))
-                .phoneHash(phoneHash)
                 .userType(UserType.GENERAL)
                 .build();
         return userRepository.save(user);
-    }
-
-    private String normalizePhone(final String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.isBlank()) {
-            throw new BusinessException(ErrorCode.KAKAO_REQUIRED_INFO_MISSING);
-        }
-        final String compact = phoneNumber.replaceAll("[^0-9+]", "");
-        final String normalized;
-        if (compact.startsWith("+82")) {
-            normalized = "0" + compact.substring(3);
-        } else if (compact.startsWith("82")) {
-            normalized = "0" + compact.substring(2);
-        } else {
-            normalized = compact;
-        }
-        if (!normalized.matches("^01[016789][0-9]{7,8}$")) {
-            throw new BusinessException(ErrorCode.KAKAO_REQUIRED_INFO_MISSING);
-        }
-        return normalized;
     }
 
     private String resolveName(final String nickname) {

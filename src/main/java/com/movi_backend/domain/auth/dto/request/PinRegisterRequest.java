@@ -5,6 +5,9 @@ import jakarta.validation.constraints.Pattern;
 
 public record PinRegisterRequest(
         @NotBlank
+        String phoneNumber,
+
+        @NotBlank
         @Pattern(regexp = "[0-9]{6}")
         String pin
 ) {

@@ -1,388 +1,143 @@
 # 7.4 관계 정보 · 7.7 중복 연결 방지
 
-버전: `v1.0`  
-대상: Spring Backend  
+버전: `v2.0`
+대상: Spring Backend
 기능 ID: `7.4 관계 정보 입력`, `7.7 중복 연결 방지`
 
 ---
 
 ## 1. 목적
 
-보호자 연결 관계의 의미를 `relation`에 저장하고,
-동일한 이용자와 보호자가 중복해서 연결되거나
-동일 보호자에게 중복 초대가 생성되는 것을 차단한다.
+보호자 연결 관계의 의미를 `relation`에 저장하고, 동일한 이용자·보호자 쌍이 중복해서
+연결되는 것을 차단한다.
 
-관련 테이블:
+`v1.0`은 등록 요청(`REQUESTED`) → 초대 → 승인(`ACTIVE`) 흐름을 전제로 "요청 중복"과
+"활성 중복"을 따로 다뤘다. `07-01-guardian-registration-request.md` v2에서 확인 절차를
+없애고 즉시 `ACTIVE`로 생성하는 방식으로 바뀌면서, 중복 정의도 하나로 단순해졌다.
 
-```text
-guardian_links
-```
+관련 테이블: `guardian_links`
 
 ---
 
 ## 2. 관계 정보
 
-사용 컬럼:
-
 ```text
 guardian_links.relation VARCHAR(30)
 ```
 
-기능명세의 예:
-
-```text
-자녀
-배우자
-사회복지사
-```
-
-현재 DB가 ENUM이 아니라 VARCHAR이므로
-백엔드에서 허용값을 enum으로 관리하는 것을 권장한다.
-
-예:
+`domain/guardian/type/GuardianRelation`에 이미 정의되어 있다.
 
 ```java
 public enum GuardianRelation {
-    CHILD,
-    SPOUSE,
-    SOCIAL_WORKER,
-    OTHER
+    CHILD, SPOUSE, SOCIAL_WORKER, OTHER
 }
 ```
 
-단, 실제 기존 `domain/guardian/type/`에 관련 enum이 이미 있는지 먼저 확인한다.
-있다면 새 enum을 만들지 않는다.
-
-프론트 표시용 한국어 이름과 DB 저장값을 분리할 수 있다.
+프론트 표시용 한국어 이름(`displayNameOrNull`)과 DB 저장값(enum name)을 분리한다.
+관계는 등록 시 입력한 값을 그대로 유지한다 — 이후 별도로 바꾸는 기능은 없다.
 
 ---
 
-## 3. 관계 입력 시점
+## 3. 중복의 정의
 
-MVP 기본 흐름:
-
-```text
-이용자
-  -> 보호자 등록 요청
-  -> relation 입력
-  -> guardian_links.relation 저장
-  -> 보호자 SMS
-  -> 보호자 확인
-  -> 연결 승인
-```
-
-즉, 관계는 7.1 등록 요청 시 입력하고
-7.3 승인 후에도 동일한 관계값을 유지한다.
-
-보호자가 관계를 임의로 변경하지 않는다.
-
----
-
-## 4. 관계 검증
-
-Request 예:
-
-```json
-{
-  "guardianName": "김보호",
-  "guardianPhone": "01012345678",
-  "relation": "CHILD"
-}
-```
-
-검증:
-
-```text
-- null 금지
-- 빈 문자열 금지
-- 허용된 관계값만 허용
-```
-
-`OTHER`를 지원한다면 별도 relationDetail 컬럼이 현재 스키마에 없으므로
-상세 자유입력 기능은 임의로 추가하지 않는다.
-
----
-
-## 5. 중복의 정의
-
-### Case A. 이미 활성 관계
-
-다음 관계가 존재하면 새로운 연결을 생성하지 않는다.
+동일한 피보호자-보호자(전화번호 기준) 쌍이 이미 `ACTIVE`면 새로운 연결을 생성하지 않는다.
 
 ```text
 protectee_user_id = 현재 사용자
-guardian_user_id  = 동일 보호자
-status            = ACTIVE
+guardian_phone_hash = HMAC(정규화된 보호자 전화번호)
+status = ACTIVE
 ```
 
-### Case B. 처리 중인 동일 요청
+`REVOKED`(해제됨)는 중복으로 보지 않는다. 보호자를 해제한 뒤 같은 번호로 다시 등록할 수
+있어야 한다.
 
-다음 요청이 있으면 새로운 초대를 생성하지 않는다.
-
-```text
-protectee_user_id = 현재 사용자
-동일한 보호자 전화번호
-status            = REQUESTED
-invite_expires_at > now
-```
-
-### Case C. 만료된 REQUESTED 요청
-
-초대가 만료되었다면 새 요청을 허용할 수 있다.
-
-기존 행을 덮어쓸지 새 행을 생성할지는 명세가 고정하지 않았으므로
-MVP에서는 **새 행 생성**을 권장한다.
-
-이력 추적이 쉬우며 기존 요청을 보존할 수 있다.
-
-### Case D. REJECTED / REVOKED
-
-과거 거절 또는 해제된 관계에 대한 재요청 허용 여부는
-프로젝트 정책이 필요하다.
-
-기본 권장:
-
-```text
-REJECTED -> 재요청 허용
-REVOKED  -> 재요청 허용
-```
-
-단, 최종 정책이 다르면 기능명세를 먼저 수정한다.
+`REQUESTED`/`REJECTED` 상태는 더 이상 존재하지 않는다 — 등록은 검증을 통과하면 즉시
+`ACTIVE`가 되므로 "처리 중인 요청"이라는 중간 상태 자체가 없다.
 
 ---
 
-## 6. 현재 스키마의 중복 검증 한계
+## 4. 중복 검증이 암호문 비교로는 안 되는 이유
 
-현재 `guardian_links`:
-
-```text
-guardian_phone VARCHAR(255)  -- AES 암호화
-```
-
-만 존재한다.
-
-정상적인 AES 암호화가 랜덤 IV를 사용하면:
-
-```text
-같은 전화번호
-    ↓
-암호화할 때마다 다른 암호문 가능
-```
-
-따라서 다음과 같은 비교는 하면 안 된다.
+`guardian_phone`은 AES-GCM으로 저장하며 무작위 IV를 쓴다. 같은 전화번호도 암호화할 때마다
+암호문이 달라지므로, 다음과 같은 비교는 항상 틀린 답을 낼 수 있다.
 
 ```java
+// 하면 안 되는 방식
 guardianLinkRepository.existsByGuardianPhone(encryptedPhone);
 ```
 
-암호화 결과가 같은지 비교해서 중복을 판별하는 설계는 안전하지 않다.
+그래서 `users.phone_hash`와 같은 원칙으로 검색 전용 HMAC-SHA256 컬럼
+`guardian_phone_hash`를 둔다. 저장은 암호문(`guardian_phone`)과 해시(`guardian_phone_hash`)를
+같이 남기고, 조회는 해시로만 한다.
+
+이 컬럼과 인덱스(`idx_glink_protectee_phone_status`)는 이미 스키마에 반영되어 있다
+(`docs/migrations/20260819_add_guardian_links_phone_hash.sql`).
 
 ---
 
-## 7. 권장 스키마 보완
-
-7.7 중복 방지를 정확하게 구현하려면
-전화번호 중복 검색 전용 HMAC 컬럼을 추가하는 것이 가장 일관적이다.
-
-`users.phone_hash`와 동일한 원칙을 적용한다.
-
-권장 컬럼:
-
-```sql
-ALTER TABLE guardian_links
-ADD COLUMN guardian_phone_hash VARCHAR(64) NULL
-COMMENT '보호자 전화번호 중복 확인용 HMAC-SHA256';
-
-CREATE INDEX idx_glink_protectee_phone_status
-ON guardian_links (
-    protectee_user_id,
-    guardian_phone_hash,
-    status
-);
-```
-
-저장:
-
-```text
-guardian_phone      = AES(normalizedPhone)
-guardian_phone_hash = HMAC_SHA256(normalizedPhone)
-```
-
-조회:
-
-```text
-protectee_user_id
-+ guardian_phone_hash
-+ status
-```
-
-를 사용한다.
-
-### 주의
-
-스키마 변경을 실제 적용한다면 AGENTS.md 규칙에 따라 반드시 함께 수정한다.
-
-```text
-docs/schema.sql
-docs/ERD.md
-ERDCloud용 SQL
-관련 JPA Entity
-```
-
-현재 `ddl-auto: validate`이므로 DB와 Entity가 불일치하면 애플리케이션 기동이 실패한다.
-
----
-
-## 8. 중복 검증 Repository
-
-스키마 보완 후 권장 쿼리 의미:
-
-```text
-exists active/requested guardian link
-where
-    protecteeUserId = ?
-    guardianPhoneHash = ?
-    status in (REQUESTED, ACTIVE)
-```
-
-Repository 메서드 예시:
+## 5. Repository
 
 ```java
-boolean existsByProtecteeUserIdAndGuardianPhoneHashAndStatusIn(
+boolean existsByProtecteeUserIdAndGuardianPhoneHashAndStatus(
         Long protecteeUserId,
         String guardianPhoneHash,
-        Collection<GuardianLinkStatus> statuses
+        GuardianLinkStatus status
 );
 ```
 
-정확한 네이밍은 기존 Repository 컨벤션을 따른다.
+`GuardianLinkService.validateNotDuplicated()`가 이 메서드로 `ACTIVE` 여부만 확인한다.
+승인 단계가 없으므로 2차 중복 검사(과거 `guardian_user_id` 기준)도 필요 없다.
 
 ---
 
-## 9. 동시 요청 방지
+## 6. 동시 등록
 
-Application 레벨 `exists()` 검사만으로는 다음 경쟁 조건이 가능하다.
-
-```text
-Request A -> exists false
-Request B -> exists false
-Request A -> insert
-Request B -> insert
-```
-
-해커톤 MVP라도 동일 사용자 요청이 동시에 들어갈 가능성이 있으므로
-가능하면 DB 제약 또는 락을 고려한다.
-
-단, MySQL에서 상태가 REQUESTED/ACTIVE일 때만 적용되는 partial unique index를
-직접 만들 수 없으므로 단순 UNIQUE 제약으로 모든 이력을 제한하면
-REJECTED/REVOKED 이후 재요청이 어려워진다.
-
-따라서 MVP 권장:
-
-```text
-1. Service 중복 검사
-2. 필요한 경우 protectee 단위 락 또는 트랜잭션
-3. 승인 시 guardian_user_id 기준 재중복 검사
-```
-
-운영 단계에서는 별도 active-link 모델 또는 generated column 기반 제약을 검토한다.
+같은 사용자가 동시에 같은 보호자 번호로 두 번 요청하면, `Service` 레벨의 `exists()` 검사만으로는
+경쟁 조건이 발생할 수 있다(A가 확인 → B가 확인 → A 저장 → B 저장). MVP에서는 이 확률을
+감수하고, 운영 단계에서 필요하면 `(protectee_user_id, guardian_phone_hash)` 부분 유니크
+제약이나 애플리케이션 락을 추가로 검토한다. `REVOKED` 이후 재등록을 허용해야 하므로 단순
+전체 UNIQUE 제약은 쓸 수 없다.
 
 ---
 
-## 10. 승인 시 2차 중복 검사
+## 7. 자기 자신 등록 방지
 
-7.3 연결 승인 시에는 `guardian_user_id`가 확정되므로
-다시 한 번 확인한다.
-
-```text
-protectee_user_id = link.protectee_user_id
-guardian_user_id  = authUser.userId
-status            = ACTIVE
-```
-
-이미 존재하면 승인하지 않는다.
-
-이 검사는 7.1의 전화번호 기반 검사와 별개로 반드시 수행한다.
+`07-01-guardian-registration-request.md` §8 참조. 암호문이 아니라 `users.phone_hash`와
+정규화된 보호자 전화번호의 HMAC을 비교한다.
 
 ---
 
-## 11. 에러
-
-필요 의미:
+## 8. 에러
 
 ```text
-INVALID_GUARDIAN_RELATION
-DUPLICATE_GUARDIAN_REQUEST
-GUARDIAN_ALREADY_LINKED
+INVALID_GUARDIAN_RELATION  -> "보호자 관계 정보를 다시 확인해 주세요."
+ALREADY_LINKED             -> "이미 연결된 분이에요."
+SELF_LINK_NOT_ALLOWED      -> "본인은 보호자로 등록할 수 없어요."
 ```
 
-기존 `ErrorCode` 59개를 먼저 검색한다.
-
-없을 때만 추가하고:
-
-```text
-global/error/ErrorCode
-docs/error-codes.md
-```
-
-를 함께 수정한다.
-
-예시 voiceMessage:
-
-```text
-INVALID_GUARDIAN_RELATION
--> "보호자 관계 정보를 다시 확인해 주세요."
-
-DUPLICATE_GUARDIAN_REQUEST
--> "이미 보호자 연결을 요청했습니다."
-
-GUARDIAN_ALREADY_LINKED
--> "이미 연결된 보호자입니다."
-```
+`DUPLICATE_GUARDIAN_REQUEST`, `GUARDIAN_LINK_ALREADY_PROCESSED`는 요청/승인 중간 상태가
+사라지면서 함께 제거했다.
 
 ---
 
-## 12. 필수 테스트
+## 9. 필수 테스트
 
 ```text
-관계_정보를_입력하면_guardian_link에_저장된다
 허용되지_않은_관계값은_거부한다
-
-동일_전화번호의_REQUESTED_요청이_있으면_중복_요청을_거부한다
-동일_보호자와_ACTIVE_관계가_있으면_중복_연결을_거부한다
-만료된_REQUESTED_요청만_있으면_재요청할_수_있다
-REJECTED_관계_재요청_정책을_명세대로_적용한다
-REVOKED_관계_재요청_정책을_명세대로_적용한다
-
-승인_시점에_동일_guardian_user_id_ACTIVE_관계가_있으면_거부한다
+자기_전화번호를_보호자로_입력하면_거부한다
+이미_ACTIVE인_보호자를_다시_등록하면_거부한다
 ```
+
+`GuardianLinkServiceTest`에 구현되어 있다.
 
 ---
 
-## 13. Specification Gap
+## 10. 완료 조건
 
-현재 기능명세와 스키마만으로 최종 결정되지 않은 부분:
-
-```text
-1. relation의 최종 허용 enum 목록
-2. REJECTED 이후 재요청 허용 여부
-3. REVOKED 이후 재요청 허용 여부
-4. guardian_phone_hash 컬럼 추가 여부
-```
-
-이 중 **guardian_phone_hash는 7.7 구현을 위해 추가하는 것을 권장**한다.
-
----
-
-## 14. 완료 조건
-
-- [ ] 관계값을 서버에서 검증한다.
-- [ ] 관계값이 `guardian_links.relation`에 저장된다.
-- [ ] 자기 자신 연결을 차단한다.
-- [ ] REQUESTED 중복 요청을 차단한다.
-- [ ] ACTIVE 중복 관계를 차단한다.
-- [ ] 승인 시 guardian_user_id 기준으로 다시 중복 검사한다.
-- [ ] AES 암호문 직접 비교로 중복을 판별하지 않는다.
-- [ ] 스키마 변경 시 Entity/DDL/ERD를 함께 갱신한다.
-- [ ] 관련 단위 테스트가 통과한다.
-- [ ] `./gradlew build`가 통과한다.
+- [x] 관계값을 서버에서 검증한다.
+- [x] 관계값이 `guardian_links.relation`에 저장된다.
+- [x] 자기 자신 연결을 차단한다.
+- [x] ACTIVE 중복 관계를 차단한다.
+- [x] AES 암호문 직접 비교로 중복을 판별하지 않는다.
+- [x] 관련 단위 테스트가 통과한다.
+- [x] `./gradlew build`가 통과한다.

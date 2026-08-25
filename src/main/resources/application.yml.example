@@ -60,20 +60,21 @@ movi:
     hash-key: ${DATA_HASH_KEY}
 
   # 보호자 연결
-  #   invitation-expire-hours: 초대 링크 유효 시간. 코드에 하드코딩하지 않는다.
-  #   invite-url: 프론트 초대 확인 페이지. 뒤에 ?token=... 이 붙는다.
   #   default-receive-alert: permission_scope가 비어 있는 과거 데이터의 알림 수신 기본값.
   #                          기능명세가 확정하지 않은 값이라 설정으로 뺐다.
   guardian:
-    invitation-expire-hours: ${GUARDIAN_INVITE_EXPIRE_HOURS:24}
-    invite-url: ${GUARDIAN_INVITE_URL:http://localhost:3000/guardian/invite}
     default-receive-alert: ${GUARDIAN_DEFAULT_RECEIVE_ALERT:true}
 
   # SMS 발송
-  #   provider: mock | (계약 후 실제 Provider 추가)
-  #   Twilio는 국내 발신 제약이 있어 NHN Toast·알리고 등 국내 서비스를 검토 중이다.
+  #   provider: mock | solapi
+  #   Twilio는 국내 발신 제약이 있어 솔라피(Solapi)로 정했다.
   sms:
     provider: ${SMS_PROVIDER:mock}
+    # provider: solapi 로 바꿀 때만 필요하다. api-secret은 서명에만 쓰고 로그에 남기지 않는다.
+    solapi:
+      api-key: ${SOLAPI_API_KEY:}
+      api-secret: ${SOLAPI_API_SECRET:}
+      sender-phone: ${SOLAPI_SENDER_PHONE:}
 
   # 이상거래 탐지
   #   mode: mock이면 금액 기준 내부 규칙으로 판정한다. AI 파트 API가 열리면 http로 바꾼다.
@@ -96,6 +97,9 @@ movi:
   #                                지나면 차단으로 확정한다. 무기한 열어 두지 않는다.
   transfer:
     confirmation-expire-minutes: ${TRANSFER_CONFIRMATION_EXPIRE_MINUTES:5}
+    minimum-amount: ${TRANSFER_MINIMUM_AMOUNT:1}
+    per-transfer-limit: ${TRANSFER_PER_TRANSFER_LIMIT:1000000}
+    daily-limit: ${TRANSFER_DAILY_LIMIT:3000000}
 
   voice:
     client-type: ${VOICE_CLIENT_TYPE:mock}

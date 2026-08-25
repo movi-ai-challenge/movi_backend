@@ -1,6 +1,6 @@
 package com.movi_backend.domain.transfer.infrastructure;
 
-import com.movi_backend.domain.transfer.config.OpenBankingProperties;
+import com.movi_backend.domain.transfer.config.TransferOpenBankingProperties;
 import com.movi_backend.domain.transfer.dto.OpenBankingTransferCommand;
 import com.movi_backend.domain.transfer.dto.OpenBankingTransferResult;
 import java.util.UUID;
@@ -19,12 +19,12 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(prefix = "movi.openbanking", name = "mode", havingValue = OpenBankingProperties.MODE_MOCK, matchIfMissing = true)
-public class MockOpenBankingClient implements OpenBankingClient {
+@ConditionalOnProperty(prefix = "movi.openbanking", name = "mode", havingValue = TransferOpenBankingProperties.MODE_MOCK, matchIfMissing = true)
+public class TransferMockOpenBankingClient implements OpenBankingClient {
 
     private static final String MOCK_TRANSACTION_ID_PREFIX = "mock-tran-";
 
-    private final OpenBankingProperties openBankingProperties;
+    private final TransferOpenBankingProperties openBankingProperties;
 
     @Override
     public long inquireBalance(final String fintechUseNum) {

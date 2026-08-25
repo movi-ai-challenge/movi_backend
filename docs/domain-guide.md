@@ -15,6 +15,9 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 ### `auth` — 인증
 
 - 최초 계정 연결은 카카오 OAuth로 처리하고, 이후에는 전화번호 + PIN으로도 로그인할 수 있다
+- 카카오는 전화번호를 회원 정보로 주지 않는다. 카카오 최초 가입 시점에는 `users.phone`이 비어 있고,
+  PIN 최초 등록(`POST /api/v1/auth/pin/register`)에서 전화번호를 함께 받아 채운다 — PIN 로그인이
+  이 값으로 사용자를 찾으므로 PIN 등록과 전화번호 등록은 한 번에 묶여 있다
 - 카카오 로그인 후 PIN을 최초 등록하며, 두 로그인 방식 모두 자체 Access/Refresh JWT를 발급한다
 - 로그아웃 시 `users.token_version`을 증가시켜 기존 Access/Refresh JWT를 즉시 무효화한다
 - 토큰: Access(단기, `Bearer`) / Refresh

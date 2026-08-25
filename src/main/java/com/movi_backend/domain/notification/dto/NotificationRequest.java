@@ -24,8 +24,8 @@ public record NotificationRequest(
         Map<String, String> variables
 ) {
 
-    /** 보호자 초대 문자 */
-    public static NotificationRequest guardianInvite(
+    /** 보호자 등록 통보 문자 */
+    public static NotificationRequest guardianLinkRegistered(
             final Long recipientUserId,
             final Long guardianLinkId,
             final String normalizedPhone,
@@ -35,7 +35,7 @@ public record NotificationRequest(
                 recipientUserId,
                 guardianLinkId,
                 null,
-                NotificationTemplate.GUARDIAN_INVITE,
+                NotificationTemplate.GUARDIAN_LINK_REGISTERED,
                 normalizedPhone,
                 variables
         );

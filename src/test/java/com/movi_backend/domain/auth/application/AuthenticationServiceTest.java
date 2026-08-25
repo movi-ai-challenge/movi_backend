@@ -2,8 +2,10 @@ package com.movi_backend.domain.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
@@ -151,6 +153,69 @@ class AuthenticationServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_REFRESH_TOKEN);
+    }
+
+    @Test
+    @DisplayName("PIN을 등록하면 전화번호를 채우고 자격증명을 생성한다")
+    void PIN을_등록하면_전화번호를_채우고_자격증명을_생성한다() {
+        // given
+        final User user = userWithoutPhone(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(sensitiveDataCrypto.encrypt("01012345678")).willReturn("encrypted-phone");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.empty());
+        given(passwordEncoder.encode("123456")).willReturn("encoded-pin");
+
+        // when
+        authenticationService.registerPin(1L, "010-1234-5678", "123456");
+
+        // then
+        assertThat(user.getPhone()).isEqualTo("encrypted-phone");
+        assertThat(user.getPhoneHash()).isEqualTo("phone-hash");
+        then(userCredentialRepository).should().save(any(UserCredential.class));
+    }
+
+    @Test
+    @DisplayName("이미 다른 계정이 쓰는 전화번호로 PIN을 등록하면 거부한다")
+    void 이미_다른_계정이_쓰는_전화번호로_PIN을_등록하면_거부한다() {
+        // given
+        final User user = userWithoutPhone(1L);
+        final User otherUser = userWithoutPhone(2L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.of(otherUser));
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.registerPin(1L, "01012345678", "123456"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PHONE_ALREADY_REGISTERED);
+        then(userCredentialRepository).should(never()).save(any(UserCredential.class));
+    }
+
+    @Test
+    @DisplayName("이미 PIN이 등록되어 있으면 다시 등록할 수 없다")
+    void 이미_PIN이_등록되어_있으면_다시_등록할_수_없다() {
+        // given
+        final User user = userWithoutPhone(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(userCredentialRepository.existsByUserId(1L)).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.registerPin(1L, "01012345678", "123456"))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PIN_ALREADY_REGISTERED);
+        then(userRepository).should(never()).findByPhoneHash(any());
+    }
+
+    private User userWithoutPhone(final Long userId) {
+        final User user = User.builder()
+                .name("사용자")
+                .userType(UserType.GENERAL)
+                .build();
+        ReflectionTestUtils.setField(user, "id", userId);
+        return user;
     }
 
     private User user(final Long userId) {

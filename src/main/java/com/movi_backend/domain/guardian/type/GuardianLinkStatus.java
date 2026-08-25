@@ -5,12 +5,8 @@ package com.movi_backend.domain.guardian.type;
  */
 public enum GuardianLinkStatus {
 
-    /** 요청됨 */
-    REQUESTED,
-    /** 연결됨 */
+    /** 연결됨. 회원가입 시 보호자 전화번호를 입력하면 확인 절차 없이 바로 이 상태로 생성된다. */
     ACTIVE,
-    /** 거절됨 */
-    REJECTED,
     /** 해제됨 */
     REVOKED
 }

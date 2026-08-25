@@ -61,7 +61,7 @@ public class Notification extends BaseCreatedEntity {
     @Column(name = "channel", nullable = false, length = 20)
     private NotificationChannel channel;
 
-    /** GUARDIAN_INVITE / RISK_TRANSFER_ALERT / BLOCKED_TRANSFER_ALERT */
+    /** GUARDIAN_LINK_REGISTERED / RISK_TRANSFER_ALERT / BLOCKED_TRANSFER_ALERT */
     @Column(name = "template_code", nullable = false, length = 50)
     private String templateCode;
 

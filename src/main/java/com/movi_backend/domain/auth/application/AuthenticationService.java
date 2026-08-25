@@ -12,6 +12,7 @@ import com.movi_backend.global.security.AuthUser;
 import com.movi_backend.global.security.JwtTokenPair;
 import com.movi_backend.global.security.JwtTokenProvider;
 import com.movi_backend.global.security.SensitiveDataCrypto;
+import com.movi_backend.global.util.PhoneNumberNormalizer;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -44,18 +45,34 @@ public class AuthenticationService {
         return LoginResponse.of(user.getId(), false, tokenPair);
     }
 
+    /**
+     * PIN 최초 등록. 카카오 가입 시점에는 전화번호를 받지 않으므로, PIN 로그인이 사용할
+     * 전화번호를 이 시점에 함께 받아 {@code users.phone}을 채운다.
+     */
     @Transactional
-    public void registerPin(final Long userId, final String pin) {
+    public void registerPin(final Long userId, final String phoneNumber, final String pin) {
         final User user = findActiveUser(userId);
         if (userCredentialRepository.existsByUserId(userId)) {
             throw new BusinessException(ErrorCode.PIN_ALREADY_REGISTERED);
         }
+        registerPhone(user, phoneNumber);
         final UserCredential credential = UserCredential.builder()
                 .user(user)
                 .pinHash(passwordEncoder.encode(pin))
                 .biometricEnabled(false)
                 .build();
         userCredentialRepository.save(credential);
+    }
+
+    private void registerPhone(final User user, final String phoneNumber) {
+        final String normalizedPhone = PhoneNumberNormalizer.normalize(phoneNumber);
+        final String phoneHash = sensitiveDataCrypto.hash(normalizedPhone);
+        userRepository.findByPhoneHash(phoneHash).ifPresent(existing -> {
+            if (!existing.getId().equals(user.getId())) {
+                throw new BusinessException(ErrorCode.PHONE_ALREADY_REGISTERED);
+            }
+        });
+        user.registerPhone(sensitiveDataCrypto.encrypt(normalizedPhone), phoneHash);
     }
 
     @Transactional(readOnly = true)

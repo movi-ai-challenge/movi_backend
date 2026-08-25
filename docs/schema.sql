@@ -10,7 +10,7 @@ SET NAMES utf8mb4;
 CREATE TABLE users (
     user_id      BIGINT       NOT NULL AUTO_INCREMENT,
     name         VARCHAR(50)  NOT NULL,
-    phone        VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
+    phone        VARCHAR(255) NULL     COMMENT 'AES 암호화. 카카오 가입 시점엔 없고 PIN 등록 시 채움',
     phone_hash   VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date   DATE         NULL,
     user_type    VARCHAR(30)  NOT NULL DEFAULT 'GENERAL' COMMENT 'SENIOR/VISUALLY_IMPAIRED/GENERAL',
@@ -309,20 +309,16 @@ CREATE TABLE user_transfer_profiles (
 CREATE TABLE guardian_links (
     link_id            BIGINT       NOT NULL AUTO_INCREMENT,
     protectee_user_id  BIGINT       NOT NULL COMMENT '피보호자 (앱 주 사용자)',
-    guardian_user_id   BIGINT       NULL     COMMENT '보호자 가입 후 바인딩',
+    guardian_user_id   BIGINT       NULL     COMMENT '보호자가 Movi 회원이면 바인딩. 아니면 NULL',
     guardian_name      VARCHAR(50)  NOT NULL,
     guardian_phone     VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
     guardian_phone_hash VARCHAR(64) NULL     COMMENT '보호자 전화번호 중복 확인용 HMAC-SHA256',
     relation           VARCHAR(30)  NULL     COMMENT 'CHILD/SPOUSE/SOCIAL_WORKER/OTHER',
-    status             VARCHAR(20)  NOT NULL DEFAULT 'REQUESTED'
-                       COMMENT 'REQUESTED/ACTIVE/REJECTED/REVOKED',
-    invite_token       VARCHAR(64)  NOT NULL,
-    invite_expires_at  DATETIME     NOT NULL,
+    status             VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'
+                       COMMENT 'ACTIVE/REVOKED',
     permission_scope   JSON         NULL COMMENT '{"view_balance":true,"receive_alert":true}',
-    requested_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    accepted_at        DATETIME     NULL,
+    linked_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (link_id),
-    UNIQUE KEY uk_glink_token (invite_token),
     KEY idx_glink_protectee (protectee_user_id, status),
     KEY idx_glink_protectee_phone_status (protectee_user_id, guardian_phone_hash, status),
     KEY idx_glink_guardian (guardian_user_id, status),

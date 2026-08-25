@@ -59,7 +59,7 @@ class NotificationServiceTest {
                 .willReturn(SmsSendResult.success("provider-message-1"));
 
         // when
-        final NotificationStatus status = notificationService.send(inviteRequest());
+        final NotificationStatus status = notificationService.send(registrationNoticeRequest());
 
         // then
         assertThat(status).isEqualTo(NotificationStatus.SENT);
@@ -73,7 +73,7 @@ class NotificationServiceTest {
         given(smsProvider.send(any(SmsMessage.class))).willReturn(SmsSendResult.failure());
 
         // when
-        final NotificationStatus status = notificationService.send(inviteRequest());
+        final NotificationStatus status = notificationService.send(registrationNoticeRequest());
 
         // then
         assertThat(status).isEqualTo(NotificationStatus.FAILED);
@@ -88,7 +88,7 @@ class NotificationServiceTest {
                 .given(smsProvider).send(any(SmsMessage.class));
 
         // when
-        final NotificationStatus status = notificationService.send(inviteRequest());
+        final NotificationStatus status = notificationService.send(registrationNoticeRequest());
 
         // then
         assertThat(status).isEqualTo(NotificationStatus.FAILED);
@@ -103,7 +103,7 @@ class NotificationServiceTest {
                 .willReturn(SmsSendResult.success("provider-message-1"));
 
         // when
-        notificationService.send(inviteRequest());
+        notificationService.send(registrationNoticeRequest());
 
         // then
         final ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
@@ -139,12 +139,12 @@ class NotificationServiceTest {
                 });
     }
 
-    private NotificationRequest inviteRequest() {
-        return NotificationRequest.guardianInvite(
+    private NotificationRequest registrationNoticeRequest() {
+        return NotificationRequest.guardianLinkRegistered(
                 null,
                 LINK_ID,
                 NORMALIZED_PHONE,
-                Map.of("protecteeName", "홍길동", "guardianName", "김보호", "inviteUrl", "https://movi.example")
+                Map.of("protecteeName", "홍길동")
         );
     }
 

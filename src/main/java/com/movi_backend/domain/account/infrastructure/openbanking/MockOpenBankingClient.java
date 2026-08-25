@@ -89,6 +89,11 @@ public class MockOpenBankingClient implements OpenBankingClient {
      * Mock 내부 잔액. 잔액조회 Port가 아니라 <b>테스트·시연 검증용</b>이다.
      * 실제 잔액조회는 {@code BalanceInquiryPort}가 담당한다.
      */
+    /** 이 어댑터가 잔액을 들고 있는 계좌인지. 실 계좌 번호는 여기 없다. */
+    public boolean knows(final String fintechUseNum) {
+        return balances.containsKey(fintechUseNum);
+    }
+
     public long currentBalanceOf(final String fintechUseNum) {
         return findBalance(fintechUseNum).get();
     }

@@ -63,7 +63,16 @@ class JwtTokenProviderTest {
         // given
         final JwtTokenProvider provider = provider(Duration.ofMinutes(30));
         final String state = provider.issueOauthState();
-        final String tampered = state.substring(0, state.length() - 1) + "x";
+        // 마지막 글자를 무조건 다른 값으로 바꾼다. "x" 로 고정하면 원래 글자가 "x" 일 때
+        // 변조가 일어나지 않아 테스트가 간헐적으로 통과한다 (base64url 이라 약 1/64).
+        final char lastCharacter = state.charAt(state.length() - 1);
+        final char replacement;
+        if (lastCharacter == 'x') {
+            replacement = 'y';
+        } else {
+            replacement = 'x';
+        }
+        final String tampered = state.substring(0, state.length() - 1) + replacement;
 
         // when & then
         assertThatThrownBy(() -> provider.validateOauthState(tampered))

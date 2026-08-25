@@ -35,7 +35,7 @@ public class AuthController implements AuthApiDocs {
             @CurrentUser final AuthUser authUser,
             @Valid @RequestBody final PinRegisterRequest request
     ) {
-        authenticationService.registerPin(authUser.userId(), request.pin());
+        authenticationService.registerPin(authUser.userId(), request.phoneNumber(), request.pin());
         return ApiResponse.successWithVoice("비밀번호를 등록했어요.");
     }
 

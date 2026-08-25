@@ -1,6 +1,7 @@
 package com.movi_backend.domain.transfer.controller;
 
 import com.movi_backend.domain.transfer.application.TransactionQueryService;
+import com.movi_backend.domain.transfer.controller.docs.TransactionApiDocs;
 import com.movi_backend.domain.transfer.dto.response.TransactionDetailResponse;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.type.TransactionType;
@@ -20,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/transactions")
 @RequiredArgsConstructor
-public class TransactionController {
+public class TransactionController implements TransactionApiDocs {
 
     private static final String EMPTY_LIST_VOICE_MESSAGE = "그 기간에는 거래 내역이 없어요.";
 

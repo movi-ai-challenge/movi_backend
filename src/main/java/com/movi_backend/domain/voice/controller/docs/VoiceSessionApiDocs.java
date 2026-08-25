@@ -59,9 +59,12 @@ public interface VoiceSessionApiDocs {
 
                     ## 확인과 멱등성
 
-                    `AWAITING_CONFIRMATION`을 받으면 프론트가 UUID를 하나 만들고, **확인 발화를 올릴 때
-                    `idempotencyKey`로 함께 보냅니다.** 타임아웃으로 재시도할 때도 **같은 키**를 씁니다.
-                    새 키를 만들면 중복 이체가 됩니다.
+                    `AWAITING_CONFIRMATION` 응답에는 `confirmationId`가 들어 있습니다. **확인 발화를 올릴 때
+                    이 값을 그대로 되돌려 보내야** 합니다. 백엔드가 "지금 확인하려는 것이 방금 안내한 그 송금이
+                    맞는지" 대조하는 값이라, 확인 대기 중 금액이나 수취인이 바뀌면 기존 값은 폐기됩니다.
+
+                    함께 프론트가 UUID를 하나 만들어 `idempotencyKey`로 보냅니다. 타임아웃으로 재시도할 때도
+                    **같은 키**를 씁니다. 새 키를 만들면 중복 이체가 됩니다.
 
                     응답을 못 받았다면 `GET /api/transfers/status?idempotencyKey=...`로 결과를 확인하세요.
 
@@ -90,6 +93,7 @@ public interface VoiceSessionApiDocs {
                     description = "`VOICE_4003` 알 수 없는 의도 · `VOICE_4004` 낮은 인식 신뢰도 "
                             + "· `VOICE_4005` 세션 만료 · `VOICE_4006` 재질문 횟수 초과 "
                             + "· `VOICE_4007` 처리할 수 없는 세션 상태 · `VOICE_4009` 15초 초과 "
+                            + "· `VOICE_4011` 확인 정보 불일치 "
                             + "· `TRANSFER_4001` 한도 초과 · `TRANSFER_4002` 잔액 부족"),
             @ApiResponse(responseCode = "403", content = @Content,
                     description = "`FDS_4031` 고위험으로 차단(이체 미실행) · `SRV_4030` 다른 사용자의 세션"),
@@ -109,6 +113,8 @@ public interface VoiceSessionApiDocs {
             @Parameter(description = "음성 세션 ID", example = "15") Long voiceSessionId,
             @Parameter(description = "녹음 파일. WebM/Opus 또는 WAV, 최대 5MB·15초")
             MultipartFile audio,
+            @Parameter(description = "확인 발화에만 보낸다. 확인 대기 응답으로 받은 값을 그대로 되돌려 준다")
+            String confirmationId,
             @Parameter(description = "확인 발화에만 보낸다. 확인 화면에서 만든 UUID를 재시도에도 그대로 쓴다")
             String idempotencyKey
     );

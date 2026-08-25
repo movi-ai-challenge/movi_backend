@@ -89,7 +89,7 @@ public class VoiceCommandService {
             final Long voiceSessionId,
             final MultipartFile audio
     ) {
-        return process(userId, voiceSessionId, audio, null);
+        return process(userId, voiceSessionId, audio, null, null);
     }
 
     @Transactional
@@ -97,6 +97,17 @@ public class VoiceCommandService {
             final Long userId,
             final Long voiceSessionId,
             final MultipartFile audio,
+            final String idempotencyKey
+    ) {
+        return process(userId, voiceSessionId, audio, null, idempotencyKey);
+    }
+
+    @Transactional
+    public VoiceCommandResponse process(
+            final Long userId,
+            final Long voiceSessionId,
+            final MultipartFile audio,
+            final String confirmationId,
             final String idempotencyKey
     ) {
         validateAudio(audio);
@@ -118,6 +129,7 @@ public class VoiceCommandService {
                     session,
                     analysis,
                     previousSlots,
+                    confirmationId,
                     idempotencyKey,
                     now
             );
@@ -333,6 +345,7 @@ public class VoiceCommandService {
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
             final PendingTransferSlots pendingSlots,
+            final String confirmationId,
             final String idempotencyKey,
             final LocalDateTime now
     ) {
@@ -340,7 +353,14 @@ public class VoiceCommandService {
             return cancel(session, analysis, now);
         }
         if (analysis.intent() == VoiceIntent.CONFIRM) {
-            return confirm(session, analysis, pendingSlots, idempotencyKey, now);
+            return confirm(
+                    session,
+                    analysis,
+                    pendingSlots,
+                    confirmationId,
+                    idempotencyKey,
+                    now
+            );
         }
         throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
     }
@@ -362,11 +382,13 @@ public class VoiceCommandService {
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
             final PendingTransferSlots pendingSlots,
+            final String confirmationId,
             final String idempotencyKey,
             final LocalDateTime now
     ) {
         validateIdempotencyKey(idempotencyKey);
         validateConfirmationSlots(pendingSlots);
+        validateConfirmationId(pendingSlots, confirmationId);
         final Account account = findOwnedAccount(
                 session.getUser().getId(),
                 pendingSlots.fromAccountId()
@@ -415,6 +437,18 @@ public class VoiceCommandService {
                 || pendingSlots.fromAccountId() == null
                 || pendingSlots.confirmationId() == null) {
             throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
+        }
+    }
+
+    private void validateConfirmationId(
+            final PendingTransferSlots pendingSlots,
+            final String confirmationId
+    ) {
+        if (confirmationId == null || confirmationId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_CONFIRMATION_ID, "확인 ID 누락");
+        }
+        if (!Objects.equals(pendingSlots.confirmationId(), confirmationId.trim())) {
+            throw new BusinessException(ErrorCode.INVALID_CONFIRMATION_ID, "확인 ID 불일치");
         }
     }
 

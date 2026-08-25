@@ -14,6 +14,7 @@ import com.movi_backend.domain.voice.type.VoiceIntent;
 import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.global.security.AuthProperties;
 import com.movi_backend.global.security.CurrentUserArgumentResolver;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -106,7 +107,8 @@ class VoiceSessionControllerTest {
                 org.mockito.ArgumentMatchers.eq(userId),
                 org.mockito.ArgumentMatchers.eq(sessionId),
                 org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.isNull()
+                org.mockito.ArgumentMatchers.eq("confirmation-123"),
+                org.mockito.ArgumentMatchers.eq("550e8400-e29b-41d4-a716-446655440000")
         )).willReturn(response);
         final CurrentUserArgumentResolver resolver = new CurrentUserArgumentResolver(
                 new AuthProperties(true, 1L)
@@ -124,6 +126,15 @@ class VoiceSessionControllerTest {
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .multipart("/api/voice/sessions/{voiceSessionId}/commands", sessionId)
                         .file(audio)
+                        .part(new org.springframework.mock.web.MockPart(
+                                "confirmationId",
+                                "confirmation-123".getBytes(StandardCharsets.UTF_8)
+                        ))
+                        .part(new org.springframework.mock.web.MockPart(
+                                "idempotencyKey",
+                                "550e8400-e29b-41d4-a716-446655440000"
+                                        .getBytes(StandardCharsets.UTF_8)
+                        ))
                         .header("X-Dev-User-Id", userId)
         );
 

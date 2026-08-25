@@ -141,6 +141,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 - WebM/WAV, 최대 5MB·15초 검증
 - AI Voice 응답의 request/session ID, confidence, 필수 필드 검증
+- 최종 확인 발화의 `confirmationId`를 서버 세션 값과 대조
 - 금액·수취인 누락 시 기존 슬롯과 후속 발화 병합
 - 재질문·확인 대기 60초, 동일 슬롯 재질문 최대 3회
 - 확인 정보가 달라지면 기존 확인 정보 폐기
@@ -381,6 +382,7 @@ src/main/java/com/movi_backend
 - [도메인 가이드](docs/domain-guide.md)
 - [프론트·AI·백엔드 통합 명세](docs/integration-spec.md)
 - [AI Voice·FDS API 계약](docs/ai-api-contract.md)
+- [AI·Frontend·Backend 통합 회의록 및 조치 목록](docs/ai-backend-integration-gaps.md)
 - [API 응답 규약](docs/api-response.md)
 - [에러 코드](docs/error-codes.md)
 - [ERD](docs/ERD.md)

@@ -1,6 +1,6 @@
 # 프론트·AI·백엔드 통합 명세
 
-버전: `v1.0`
+버전: `v1.1-draft`
 
 기준일: `2026-08-14`
 
@@ -159,6 +159,7 @@ Content-Type: multipart/form-data
 | 이름 | 형식 | 필수 | 제약 |
 |---|---|---:|---|
 | `audio` | file | 예 | WebM/Opus 또는 WAV, 최대 5MB·15초 |
+| `confirmationId` | string | 확인 발화만 | 확인 대기 응답에서 받은 동일 값 반환 |
 | `idempotencyKey` | UUID string | 확인 발화만 | 확인 화면에서 생성한 동일 키 재사용 |
 
 백엔드는 현재 사용자의 세션인지 확인한 뒤 AI Voice API를 호출한다.
@@ -209,7 +210,9 @@ Content-Type: multipart/form-data
 }
 ```
 
-프론트는 이 응답을 받은 시점에 UUID `idempotencyKey` 하나를 만들고 확인 재시도 동안 유지한다.
+프론트는 이 응답의 `confirmationId`를 보관하고 UUID `idempotencyKey` 하나를 만든다. 최종 확인
+발화에는 두 값을 모두 보내며, 확인 재시도 동안 같은 값을 유지한다. 백엔드는 세션에 저장된
+`confirmationId`와 요청 값이 다르면 `VOICE_4010`으로 거부하고 이체를 실행하지 않는다.
 
 ### 5.5 확인 완료 응답
 
@@ -282,7 +285,24 @@ ACTIVE
 
 ### 6.4 확인 정보 불변성
 
-`AWAITING_CONFIRMATION` 이후 금액·출금계좌·수취인이 바뀌면 기존 `confirmationId`와 `idempotencyKey`를 폐기하고 확인 문장을 새로 생성한다.
+`AWAITING_CONFIRMATION` 이후 금액·출금계좌·수취인이 바뀌면 기존 `confirmationId`와
+`idempotencyKey`, 음성 일회용 코드와 거래 바인딩 재인증 증명을 폐기하고 확인 문장을 새로 생성한다.
+최종 확인 요청은 새 확인 문장에 포함된 `confirmationId`를 그대로 반환해야 한다.
+
+### 6.5 음성 거래 확인과 추가 인증
+
+음성으로 일회용 숫자를 따라 읽는 절차는 사용자가 안내받은 거래를 직접 승인했다는 **거래 의사
+확인**이다. 같은 기기에서 안내하고 녹음하는 것만으로는 PIN·생체인증·Passkey와 같은 독립적인
+본인 재인증으로 취급하지 않는다. 사용자의 고정 PIN을 음성으로 입력받지 않는다.
+
+Backend가 발급할 음성 일회용 코드는 사용자·음성 세션·`confirmationId`·금액·수취인·출금 계좌에
+묶고, 짧은 만료 시간·1회 사용·시도 횟수 제한을 적용한다. AI의 Streaming STT에서는 `final` 숫자
+결과만 검증에 사용하며 코드 원문을 로그나 장기 대화 문맥에 남기지 않는다.
+
+추가 인증은 위험 기반으로 적용한다. 신규 수취인, 고액, 비신뢰·변경 기기, 오래된 로그인 세션 등
+정책 조건에 해당하면 Frontend의 PIN·생체·Passkey 검증으로 얻은 거래 바인딩 `reauthProof`가
+필요하다. `HIGH`·`CRITICAL` 차단 결정은 추가 인증만으로 우회하지 않는다. 구체 임계값과 증명
+형식은 파트 공동 정책 확정 전까지 구현 대기 상태다.
 
 ### 6.5 BALANCE 슬롯
 

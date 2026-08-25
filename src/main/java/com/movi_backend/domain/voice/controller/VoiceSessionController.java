@@ -44,6 +44,8 @@ public class VoiceSessionController implements VoiceSessionApiDocs {
             @CurrentUser final AuthUser authUser,
             @PathVariable final Long voiceSessionId,
             @RequestPart("audio") final MultipartFile audio,
+            @RequestPart(value = "confirmationId", required = false)
+            final String confirmationId,
             @RequestPart(value = "idempotencyKey", required = false)
             final String idempotencyKey
     ) {
@@ -51,6 +53,7 @@ public class VoiceSessionController implements VoiceSessionApiDocs {
                 authUser.userId(),
                 voiceSessionId,
                 audio,
+                confirmationId,
                 idempotencyKey
         );
         throwIfTransferWasNotExecuted(response);

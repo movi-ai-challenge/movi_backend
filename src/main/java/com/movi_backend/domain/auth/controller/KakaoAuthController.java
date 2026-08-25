@@ -2,6 +2,7 @@ package com.movi_backend.domain.auth.controller;
 
 import com.movi_backend.domain.auth.application.KakaoLoginService;
 import com.movi_backend.domain.auth.config.KakaoProperties;
+import com.movi_backend.domain.auth.controller.docs.KakaoAuthApiDocs;
 import com.movi_backend.domain.auth.dto.response.KakaoAuthorization;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
 import java.net.URI;
@@ -20,7 +21,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/auth")
-public class KakaoAuthController {
+public class KakaoAuthController implements KakaoAuthApiDocs {
 
     private static final String OAUTH_STATE_COOKIE = "KAKAO_OAUTH_STATE";
     private static final String AUTH_PATH = "/api/v1/auth";

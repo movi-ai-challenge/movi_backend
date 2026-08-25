@@ -174,6 +174,21 @@ public class VoiceSession {
         this.expiresAt = now.plusMinutes(SESSION_TIMEOUT_MINUTES);
     }
 
+    /**
+     * 의도가 바뀌어 명령 대기로 돌아간다.
+     *
+     * <p>송금 슬롯을 채우는 중에 사용자가 거래내역을 물으면 앞선 송금은 포기된 것으로 본다.
+     * 슬롯을 남겨 두면 뒤이은 발화가 옛 슬롯과 병합돼 사용자가 의도하지 않은 이체가 나간다.
+     * 이미 {@code ACTIVE}면 유효시간만 늘린다.
+     */
+    public void resumeActive(final LocalDateTime now) {
+        if (this.status != VoiceSessionStatus.ACTIVE) {
+            transitionTo(VoiceSessionStatus.ACTIVE);
+            clearSlots();
+        }
+        this.expiresAt = now.plusMinutes(SESSION_TIMEOUT_MINUTES);
+    }
+
     public void complete(final LocalDateTime now) {
         transitionTo(VoiceSessionStatus.COMPLETED);
         clearSlots();

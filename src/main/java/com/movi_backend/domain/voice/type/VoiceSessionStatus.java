@@ -7,7 +7,7 @@ import java.util.Set;
  *
  * <pre>
  * ACTIVE
- * ├─ CLARIFYING
+ * ├─ CLARIFYING ─ (의도 전환) → ACTIVE
  * ├─ AWAITING_CONFIRMATION
  * │  ├─ PROCESSING → COMPLETED
  * │  └─ CANCELED
@@ -42,9 +42,15 @@ public enum VoiceSessionStatus {
     private static final Set<VoiceSessionStatus> FROM_ACTIVE =
             Set.of(CLARIFYING, AWAITING_CONFIRMATION, COMPLETED, CANCELED, EXPIRED);
 
-    /** 같은 슬롯을 반복해서 물을 수 있으므로 자기 자신으로의 전이를 허용한다 */
+    /**
+     * 같은 슬롯을 반복해서 물을 수 있으므로 자기 자신으로의 전이를 허용한다.
+     *
+     * <p>{@code ACTIVE}로 되돌아가는 전이는 <b>의도 전환</b>용이다. 송금 슬롯을 채우는 중에
+     * 사용자가 거래내역을 물으면 앞선 송금은 포기된 것으로 보고 슬롯을 폐기한 뒤 명령 대기로
+     * 돌아간다. 남겨 두면 뒤이은 발화가 옛 슬롯과 병합돼 엉뚱한 이체로 이어진다.
+     */
     private static final Set<VoiceSessionStatus> FROM_CLARIFYING =
-            Set.of(CLARIFYING, AWAITING_CONFIRMATION, COMPLETED, CANCELED, EXPIRED);
+            Set.of(ACTIVE, CLARIFYING, AWAITING_CONFIRMATION, COMPLETED, CANCELED, EXPIRED);
 
     private static final Set<VoiceSessionStatus> FROM_AWAITING_CONFIRMATION =
             Set.of(PROCESSING, CLARIFYING, CANCELED, EXPIRED);

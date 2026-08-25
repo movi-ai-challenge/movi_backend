@@ -2,6 +2,7 @@ package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
+import com.movi_backend.domain.transfer.dto.response.TransactionDetailResponse;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.Transaction;
 import com.movi_backend.domain.transfer.repository.TransactionRepository;
@@ -11,6 +12,7 @@ import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.response.PageResponse;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -63,6 +65,22 @@ public class TransactionQueryService {
                 size,
                 transactions.getTotalElements()
         );
+    }
+
+    /**
+     * 거래 1건을 조회한다.
+     *
+     * <p>거래는 계좌에 매달려 있고 계좌는 사용자에 매달려 있다. 다른 사람의 거래 ID를
+     * 넣어도 열리지 않도록 계좌 소유자까지 확인한다.
+     */
+    @Transactional(readOnly = true)
+    public TransactionDetailResponse findOne(final Long userId, final Long transactionId) {
+        final Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.TRANSACTION_NOT_FOUND));
+        if (!Objects.equals(transaction.getAccount().getUser().getId(), userId)) {
+            throw new BusinessException(ErrorCode.TRANSACTION_NOT_FOUND);
+        }
+        return TransactionDetailResponse.from(transaction);
     }
 
     private Account findAccount(final Long userId, final Long accountId) {

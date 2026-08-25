@@ -21,7 +21,7 @@ import org.springframework.web.client.RestClient;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "movi.openbanking.mode", havingValue = "real")
+@ConditionalOnProperty(name = "movi.openbanking.balance-mode", havingValue = "real")
 public class OpenBankingBalanceApiClient implements BalanceInquiryPort {
 
     private static final String SUCCESS_CODE = "A0000";

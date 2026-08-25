@@ -46,8 +46,23 @@ public class KakaoLoginService {
         return KakaoAuthorization.of(authorizationUri, state);
     }
 
+    /**
+     * 카카오 인가 코드로 사용자를 인증한다. <b>토큰은 발급하지 않는다.</b>
+     *
+     * <p>토큰을 여기서 만들면 리다이렉트로 넘길 때까지 어딘가에 들고 있어야 한다.
+     * 교환 시점({@link #issueTokens})에 만들면 그 전까지는 존재하지 않는다.
+     */
     @Transactional
-    public LoginResponse login(
+    public LoginHandoffStore.Handoff authenticate(
+            final String authorizationCode,
+            final String state,
+            final String stateCookie
+    ) {
+        final LoginUser loginUser = resolveUser(authorizationCode, state, stateCookie);
+        return new LoginHandoffStore.Handoff(loginUser.user().getId(), loginUser.newUser());
+    }
+
+    private LoginUser resolveUser(
             final String authorizationCode,
             final String state,
             final String stateCookie
@@ -59,9 +74,34 @@ public class KakaoLoginService {
 
         final LoginUser loginUser = findOrCreateUser(kakaoUser);
         validateActive(loginUser.user());
+        return loginUser;
+    }
 
-        final AuthUser authUser = toAuthUser(loginUser.user());
-        final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(authUser);
+    /** 인증된 사용자에게 토큰을 발급한다. 교환 코드를 소비한 직후에 호출한다. */
+    @Transactional(readOnly = true)
+    public LoginResponse issueTokens(final Long userId, final boolean newUser) {
+        final User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        validateActive(user);
+        final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
+        return LoginResponse.of(user.getId(), newUser, tokenPair);
+    }
+
+    /**
+     * 인증과 토큰 발급을 한 번에 한다.
+     *
+     * @deprecated 리다이렉트 URL 에 토큰을 실어 보내는 기존 방식 전용이다.
+     *     프런트가 교환 코드로 옮겨오면 이 메서드와 호출부를 함께 지운다.
+     */
+    @Deprecated
+    @Transactional
+    public LoginResponse login(
+            final String authorizationCode,
+            final String state,
+            final String stateCookie
+    ) {
+        final LoginUser loginUser = resolveUser(authorizationCode, state, stateCookie);
+        final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(loginUser.user()));
         return LoginResponse.of(loginUser.user().getId(), loginUser.newUser(), tokenPair);
     }
 

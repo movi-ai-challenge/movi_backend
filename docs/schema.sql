@@ -10,7 +10,7 @@ SET NAMES utf8mb4;
 CREATE TABLE users (
     user_id      BIGINT       NOT NULL AUTO_INCREMENT,
     name         VARCHAR(50)  NOT NULL,
-    phone        VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
+    phone        VARCHAR(255) NULL     COMMENT 'AES 암호화. 카카오 가입 시점엔 없고 PIN 등록 시 채움',
     phone_hash   VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date   DATE         NULL,
     user_type    VARCHAR(30)  NOT NULL DEFAULT 'GENERAL' COMMENT 'SENIOR/VISUALLY_IMPAIRED/GENERAL',

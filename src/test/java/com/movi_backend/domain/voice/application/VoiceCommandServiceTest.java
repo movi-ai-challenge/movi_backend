@@ -3,6 +3,8 @@ package com.movi_backend.domain.voice.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -10,6 +12,7 @@ import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.type.UserType;
+import com.movi_backend.domain.transfer.application.TransactionQueryService;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
 import com.movi_backend.domain.transfer.application.TransferExecutionService;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
@@ -17,8 +20,10 @@ import com.movi_backend.domain.transfer.application.model.TransferClarification;
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.application.model.ValidatedTransferCommand;
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
+import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
 import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
+import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.domain.fds.type.RiskLevel;
@@ -39,6 +44,7 @@ import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.domain.voice.type.VoiceSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.response.PageResponse;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -76,6 +82,9 @@ class VoiceCommandServiceTest {
 
     @Mock
     private TransferExecutionService transferExecutionService;
+
+    @Mock
+    private TransactionQueryService transactionQueryService;
 
     @Mock
     private AccountRepository accountRepository;
@@ -193,6 +202,7 @@ class VoiceCommandServiceTest {
                 voiceAnalysisClient,
                 transferValidationService,
                 transferExecutionService,
+                transactionQueryService,
                 accountRepository,
                 transferRecipientRepository,
                 objectMapper,
@@ -454,6 +464,191 @@ class VoiceCommandServiceTest {
         then(voiceAnalysisClient).shouldHaveNoInteractions();
     }
 
+    @Test
+    @DisplayName("거래내역 음성 명령을 처리하면 기본 계좌 내역을 조회해 음성으로 안내한다")
+    void 거래내역_음성_명령을_처리하면_기본_계좌_내역을_조회해_음성으로_안내한다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createHistoryAnalysis(null, null));
+        given(account.getId()).willReturn(12L);
+        given(account.isActive()).willReturn(true);
+        given(account.toVoiceName()).willReturn("생활비 통장");
+        given(accountRepository.findByUserIdAndPrimaryTrue(USER_ID))
+                .willReturn(Optional.of(account));
+        given(transactionQueryService.findAll(
+                eq(USER_ID), eq(12L), any(), any(), eq(null), eq(0), anyInt()
+        )).willReturn(PageResponse.of(
+                List.of(
+                        createTransaction(1L, TransactionType.OUT, 50000L, "엄마", 24),
+                        createTransaction(2L, TransactionType.IN, 3000000L, "회사", 20)
+                ),
+                0,
+                5,
+                2L
+        ));
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(response.intent()).isEqualTo(VoiceIntent.HISTORY);
+        assertThat(response.state()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(response.history().totalCount()).isEqualTo(2L);
+        assertThat(response.history().items()).hasSize(2);
+        assertThat(response.toVoiceMessage())
+                .contains("생활비 통장")
+                .contains("거래가 2건 있어요")
+                .contains("엄마 님에게 5만원 보냈어요")
+                .contains("회사 님에게서 3백만원 받았어요");
+        assertThat(response.toVoiceMessage()).doesNotContain("50000");
+    }
+
+    @Test
+    @DisplayName("조회 기간에 거래가 없으면 오류가 아니라 내역이 없다고 안내한다")
+    void 조회_기간에_거래가_없으면_오류가_아니라_내역이_없다고_안내한다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createHistoryAnalysis(null, null));
+        given(account.getId()).willReturn(12L);
+        given(account.isActive()).willReturn(true);
+        given(account.toVoiceName()).willReturn("생활비 통장");
+        given(accountRepository.findByUserIdAndPrimaryTrue(USER_ID))
+                .willReturn(Optional.of(account));
+        given(transactionQueryService.findAll(
+                eq(USER_ID), eq(12L), any(), any(), eq(null), eq(0), anyInt()
+        )).willReturn(PageResponse.of(List.of(), 0, 5, 0L));
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        final VoiceCommandResponse response = service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(response.history().items()).isEmpty();
+        assertThat(response.toVoiceMessage()).contains("거래 내역이 없어요");
+    }
+
+    @Test
+    @DisplayName("재질문 중 거래내역을 물으면 이전 송금 슬롯을 폐기하고 명령 대기로 돌아간다")
+    void 재질문_중_거래내역을_물으면_이전_송금_슬롯을_폐기하고_명령_대기로_돌아간다() throws Exception {
+        // given
+        final VoiceSession session = createSession();
+        session.clarify(
+                VoiceIntent.TRANSFER,
+                new ObjectMapper().writeValueAsString(
+                        PendingTransferSlots.clarifying(50000L, null, null)
+                ),
+                LocalDateTime.now()
+        );
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createHistoryAnalysis(null, null));
+        given(account.getId()).willReturn(12L);
+        given(account.isActive()).willReturn(true);
+        given(account.toVoiceName()).willReturn("생활비 통장");
+        given(accountRepository.findByUserIdAndPrimaryTrue(USER_ID))
+                .willReturn(Optional.of(account));
+        given(transactionQueryService.findAll(
+                eq(USER_ID), eq(12L), any(), any(), eq(null), eq(0), anyInt()
+        )).willReturn(PageResponse.of(List.of(), 0, 5, 0L));
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        final VoiceCommandService service = createService();
+
+        // when
+        service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(session.getPendingSlots()).isNull();
+        assertThat(session.getPendingIntent()).isNull();
+        assertThat(session.getRetryCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("미래 기간의 거래내역을 요청하면 조회하지 않고 거부한다")
+    void 미래_기간의_거래내역을_요청하면_조회하지_않고_거부한다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createHistoryAnalysis(LocalDate.now().plusDays(1), null));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, createAudio()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.HISTORY_PERIOD_INVALID);
+        then(transactionQueryService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("기본 계좌가 없으면 거래내역을 조회하지 않는다")
+    void 기본_계좌가_없으면_거래내역을_조회하지_않는다() {
+        // given
+        final VoiceSession session = createSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class)))
+                .willReturn(createHistoryAnalysis(null, null));
+        given(accountRepository.findByUserIdAndPrimaryTrue(USER_ID)).willReturn(Optional.empty());
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, createAudio()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.PRIMARY_ACCOUNT_NOT_SET);
+        then(transactionQueryService).shouldHaveNoInteractions();
+    }
+
+    private VoiceAnalysisResponse createHistoryAnalysis(
+            final LocalDate startDate,
+            final LocalDate endDate
+    ) {
+        return VoiceAnalysisResponse.of(
+                "voice-history",
+                SESSION_ID,
+                "거래내역 알려줘",
+                HIGH_CONFIDENCE,
+                VoiceIntent.HISTORY,
+                HIGH_CONFIDENCE,
+                new VoiceEntities(null, null, null, null, startDate, endDate),
+                VoiceEntityConfidences.transfer(null, null, null),
+                List.of(),
+                90
+        );
+    }
+
+    private TransactionResponse createTransaction(
+            final Long transactionId,
+            final TransactionType type,
+            final Long amount,
+            final String counterpartyName,
+            final int dayOfMonth
+    ) {
+        return new TransactionResponse(
+                transactionId,
+                12L,
+                type,
+                amount,
+                null,
+                counterpartyName,
+                null,
+                LocalDateTime.of(2026, 8, dayOfMonth, 10, 0),
+                null,
+                null
+        );
+    }
+
     private VoiceCommandService createService() {
         return new VoiceCommandService(
                 voiceSessionRepository,
@@ -462,6 +657,7 @@ class VoiceCommandServiceTest {
                 voiceAnalysisClient,
                 transferValidationService,
                 transferExecutionService,
+                transactionQueryService,
                 accountRepository,
                 transferRecipientRepository,
                 new ObjectMapper(),

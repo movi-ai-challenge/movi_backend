@@ -125,6 +125,8 @@ public enum ErrorCode {
             "음성은 15초 안으로 말씀해 주세요."),
     HISTORY_PERIOD_INVALID(HttpStatus.BAD_REQUEST, "VOICE_4010", "조회할 수 없는 기간입니다.",
             "언제부터 언제까지 찾아 드릴지 다시 말씀해 주세요."),
+    INVALID_CONFIRMATION_ID(HttpStatus.BAD_REQUEST, "VOICE_4011", "송금 확인 정보가 유효하지 않습니다.",
+            "송금 정보를 다시 확인해 주세요."),
     VOICE_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "VOICE_4040", "음성 세션을 찾을 수 없습니다.",
             "처음부터 다시 말씀해 주세요."),
     STT_FAILED(HttpStatus.BAD_GATEWAY, "VOICE_5000", "음성 인식에 실패했습니다.",

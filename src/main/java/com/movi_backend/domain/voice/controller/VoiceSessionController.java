@@ -3,11 +3,12 @@ package com.movi_backend.domain.voice.controller;
 import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.domain.voice.application.VoiceSessionService;
+import com.movi_backend.domain.voice.controller.docs.VoiceSessionApiDocs;
 import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
 import com.movi_backend.domain.voice.dto.response.VoiceSessionStartResponse;
-import com.movi_backend.global.response.ApiResponse;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.response.ApiResponse;
 import com.movi_backend.global.security.AuthUser;
 import com.movi_backend.global.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/voice/sessions")
 @RequiredArgsConstructor
-public class VoiceSessionController {
+public class VoiceSessionController implements VoiceSessionApiDocs {
 
     private static final String START_VOICE_MESSAGE = "무엇을 도와드릴까요?";
 

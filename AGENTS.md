@@ -73,12 +73,9 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 
 ### 최초 세팅
 
-`*.yml`은 gitignore 대상이라 clone 직후에는 설정 파일이 없습니다.
+`*.yml`은 gitignore 대상이라 clone 직후에는 설정 파일이 없습니다. `.example` 템플릿은 쓰지 않으므로 `application.yml`, `application-local.yml`, `application-test.yml`을 직접 만들고, 채워야 할 값은 팀 채널(Notion/카톡)에서 확인합니다.
 
 ```bash
-cp src/main/resources/application.yml.example       src/main/resources/application.yml
-cp src/main/resources/application-local.yml.example  src/main/resources/application-local.yml
-cp src/test/resources/application-test.yml.example   src/test/resources/application-test.yml
 mysql -u root -p -e "CREATE DATABASE movi CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 mysql -u root -p movi < docs/schema.sql
 ```
@@ -219,8 +216,8 @@ Co-Authored-By: Codex <codex@openai.com>
 
 ## Security
 
-- **`*.yml`은 전부 gitignore 대상입니다.** DB 비밀번호·API 키를 파일에 직접 적기 때문입니다. 팀 공유는 `*.yml.example` 템플릿으로 하고, 템플릿에는 플레이스홀더만 둡니다.
-- 설정 항목을 추가·변경했다면 **`.example`도 함께 갱신**합니다. 안 그러면 다른 팀원이 기동에 실패합니다.
+- **`*.yml`은 전부 gitignore 대상입니다.** DB 비밀번호·API 키를 파일에 직접 적기 때문입니다. `.example` 템플릿은 쓰지 않으며, 필요한 값은 팀 채널(Notion/카톡)에서 공유합니다.
+- 설정 항목을 추가·변경했다면 팀 채널에도 함께 공유합니다. 안 그러면 다른 팀원이 기동에 실패합니다.
 - **Java 코드에 인증정보를 하드코딩하지 않습니다.** `@Value` / `@ConfigurationProperties`로 주입받습니다.
 - AES 암호화 대상: `users.phone`, `transfers.to_account_num`, `guardian_links.guardian_phone`, 모든 토큰
 - **`movi.auth.dev-mode`는 인증 필터 구현 전 개발용 장치입니다.** 운영 환경에서는 반드시 `false`여야 합니다.

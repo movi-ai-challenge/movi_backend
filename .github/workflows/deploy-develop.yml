@@ -40,8 +40,118 @@ jobs:
 
       - name: Set up application configuration for CI
         run: |
-          cp src/main/resources/application.yml.example src/main/resources/application.yml
-          cp src/test/resources/application-test.yml.example src/test/resources/application-test.yml
+          cat > src/main/resources/application.yml <<'EOF'
+          spring:
+            application:
+              name: Movi_backend
+
+            profiles:
+              default: local
+
+            jpa:
+              open-in-view: false
+              properties:
+                hibernate:
+                  format_sql: true
+                  default_batch_fetch_size: 100
+
+          logging:
+            level:
+              com.movi_backend: debug
+
+          # API 문서. 운영에서는 SWAGGER_ENABLED=false 로 끈다.
+          springdoc:
+            api-docs:
+              enabled: ${SWAGGER_ENABLED:true}
+            swagger-ui:
+              enabled: ${SWAGGER_ENABLED:true}
+              path: /swagger-ui.html
+              operations-sorter: method
+              tags-sorter: alpha
+              display-request-duration: true
+
+          movi:
+            fds:
+              client-type: ${FDS_CLIENT_TYPE:mock}
+              base-url: ${FDS_API_BASE_URL:http://localhost:8000}
+              connect-timeout: 1s
+              response-timeout: 3s
+            voice:
+              client-type: ${VOICE_CLIENT_TYPE:mock}
+              base-url: ${VOICE_API_BASE_URL:http://localhost:8000}
+              connect-timeout: 1s
+              response-timeout: 10s
+            transfer:
+              minimum-amount: 1
+              per-transfer-limit: 1000000
+              daily-limit: 3000000
+            notification:
+              retry:
+                enabled: true
+                max-attempts: 3
+                delay: 1m
+                batch-size: 100
+                scan-interval: 30s
+          management:
+            endpoints:
+              web:
+                exposure:
+                  include: health,info,prometheus
+            endpoint:
+              health:
+                probes:
+                  enabled: true
+                show-details: never
+            health:
+              db:
+                enabled: true
+            metrics:
+              tags:
+                application: ${spring.application.name}
+          EOF
+
+          cat > src/test/resources/application-test.yml <<'EOF'
+          spring:
+            datasource:
+              url: jdbc:h2:mem:movi;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+              username: sa
+              password:
+              driver-class-name: org.h2.Driver
+
+            jpa:
+              hibernate:
+                ddl-auto: create-drop
+              properties:
+                hibernate:
+                  dialect: org.hibernate.dialect.H2Dialect
+
+          logging:
+            level:
+              org.hibernate.SQL: debug
+
+          movi:
+            openbanking:
+              mode: mock
+              client-use-code: M000000000
+              redirect-uri: http://localhost:8080/api/openbanking/callback
+            auth:
+              dev-mode: true
+              dev-user-id: 1
+            transfer:
+              minimum-amount: 1
+              per-transfer-limit: 1000000
+              daily-limit: 3000000
+            voice:
+              client-type: mock
+              base-url: http://localhost:8000
+              connect-timeout: 1s
+              response-timeout: 10s
+            fds:
+              client-type: mock
+            notification:
+              retry:
+                enabled: false
+          EOF
 
       - name: Grant execute permission to Gradle wrapper
         run: chmod +x gradlew

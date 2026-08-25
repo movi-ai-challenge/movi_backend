@@ -127,6 +127,7 @@
 | TRANSFER_4031 | `TRANSFER_BLOCKED` | 403 | 위험 거래로 차단된 이체입니다. | 안전을 위해 이번 송금을 멈췄어요. 보호자에게 알려 드렸어요. |
 | TRANSFER_4040 | `TRANSFER_NOT_FOUND` | 404 | 이체 내역을 찾을 수 없습니다. | 송금 내역을 찾을 수 없어요. |
 | TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 다시 말씀해 주세요. |
+| TRANSFER_4042 | `TRANSACTION_NOT_FOUND` | 404 | 거래내역을 찾을 수 없습니다. | 그 거래를 찾지 못했어요. 다시 말씀해 주세요. |
 | TRANSFER_4090 | `DUPLICATE_TRANSFER` | 409 | 이미 처리 중인 이체 요청입니다. | 방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요. |
 
 ### VOICE — 음성 인식·재질문
@@ -142,7 +143,8 @@
 | VOICE_4007 | `INVALID_SESSION_STATE` | 400 | 처리할 수 없는 음성 세션 상태입니다. | 지금은 처리할 수 없어요. 처음부터 다시 말씀해 주세요. |
 | VOICE_4008 | `AUDIO_DURATION_INVALID` | 400 | 음성 파일 재생 시간을 확인할 수 없습니다. | 음성 파일을 확인하지 못했어요. 다시 녹음해 주세요. |
 | VOICE_4009 | `AUDIO_DURATION_EXCEEDED` | 400 | 음성 파일은 15초 이하여야 합니다. | 음성은 15초 안으로 말씀해 주세요. |
-| VOICE_4010 | `INVALID_CONFIRMATION_ID` | 400 | 송금 확인 정보가 유효하지 않습니다. | 송금 정보를 다시 확인해 주세요. |
+| VOICE_4010 | `HISTORY_PERIOD_INVALID` | 400 | 조회할 수 없는 기간입니다. | 언제부터 언제까지 찾아 드릴지 다시 말씀해 주세요. |
+| VOICE_4011 | `INVALID_CONFIRMATION_ID` | 400 | 송금 확인 정보가 유효하지 않습니다. | 송금 정보를 다시 확인해 주세요. |
 | VOICE_4040 | `VOICE_SESSION_NOT_FOUND` | 404 | 음성 세션을 찾을 수 없습니다. | 처음부터 다시 말씀해 주세요. |
 | VOICE_5000 | `STT_FAILED` | 502 | 음성 인식에 실패했습니다. | 소리를 알아듣지 못했어요. 다시 말씀해 주세요. |
 | VOICE_5001 | `TTS_FAILED` | 502 | 음성 합성에 실패했습니다. | — (음성 출력 자체가 실패한 상황이므로 화면·진동으로 대체) |

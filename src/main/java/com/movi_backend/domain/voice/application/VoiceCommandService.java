@@ -1,7 +1,10 @@
 package com.movi_backend.domain.voice.application;
 
+import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.account.dto.response.BalanceResponse;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
+import com.movi_backend.domain.transfer.application.TransactionQueryService;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
 import com.movi_backend.domain.transfer.application.TransferExecutionService;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
@@ -10,10 +13,12 @@ import com.movi_backend.domain.transfer.application.model.TransferExecutionResul
 import com.movi_backend.domain.transfer.application.model.TransferValidationResult;
 import com.movi_backend.domain.transfer.application.model.ValidatedTransferCommand;
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
+import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
 import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.domain.voice.application.model.PendingTransferSlots;
+import com.movi_backend.domain.voice.application.model.VoiceHistoryPeriod;
 import com.movi_backend.domain.voice.client.VoiceAnalysisClient;
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisRequest;
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisResponse;
@@ -29,6 +34,7 @@ import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.domain.voice.type.VoiceSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.response.PageResponse;
 import com.movi_backend.global.util.SensitiveTextMasker;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -50,6 +56,14 @@ public class VoiceCommandService {
 
     private static final long MAXIMUM_AUDIO_SIZE = 5L * 1024L * 1024L;
     private static final BigDecimal MINIMUM_CONFIDENCE = new BigDecimal("0.80");
+
+    /**
+     * 음성 거래내역 조회 1회에 가져올 건수.
+     *
+     * <p>REST 목록과 달리 페이지를 넘길 수단이 없다. 전부 가져와도 읽어 줄 수 없으므로
+     * 최근 몇 건만 확보하고 나머지는 총 건수로 안내한다.
+     */
+    private static final int HISTORY_PAGE_SIZE = 5;
     private static final List<String> SUPPORTED_AUDIO_TYPES = List.of(
             "audio/webm",
             "audio/wav",
@@ -63,6 +77,8 @@ public class VoiceCommandService {
     private final VoiceAnalysisClient voiceAnalysisClient;
     private final TransferValidationService transferValidationService;
     private final TransferExecutionService transferExecutionService;
+    private final TransactionQueryService transactionQueryService;
+    private final BalanceInquiryService balanceInquiryService;
     private final AccountRepository accountRepository;
     private final TransferRecipientRepository transferRecipientRepository;
     private final ObjectMapper objectMapper;
@@ -117,6 +133,12 @@ public class VoiceCommandService {
                     idempotencyKey,
                     now
             );
+        }
+        if (analysis.intent() == VoiceIntent.HISTORY) {
+            return queryHistory(session, analysis, now);
+        }
+        if (analysis.intent() == VoiceIntent.BALANCE) {
+            return queryBalance(session, analysis, now);
         }
         validateIntent(analysis.intent());
 
@@ -242,6 +264,81 @@ public class VoiceCommandService {
         if (intent != VoiceIntent.TRANSFER) {
             throw new BusinessException(ErrorCode.INTENT_UNKNOWN);
         }
+    }
+
+    /**
+     * 거래내역을 조회해 음성으로 안내한다.
+     *
+     * <p>조회는 돈을 움직이지 않으므로 확인 단계를 두지 않고 바로 답한다. 대신 앞선 송금
+     * 슬롯이 남아 있으면 폐기한다 — 사용자가 화제를 바꾼 것이고, 남겨 두면 뒤이은 발화가
+     * 옛 슬롯과 병합돼 엉뚱한 이체로 이어진다.
+     */
+    /**
+     * 잔액을 조회해 음성으로 안내한다.
+     *
+     * <p>거래내역 조회와 같은 성격이다 — 돈이 움직이지 않으므로 확인 단계를 두지 않고 바로
+     * 답하고, 앞선 송금 슬롯이 남아 있으면 폐기한다.
+     *
+     * <p>계좌 별칭은 잘못 들으면 엉뚱한 계좌 잔액을 읽어 준다. 화면으로 확인할 수 없는
+     * 사용자에게는 정정할 방법이 없으므로 송금과 같은 신뢰도 기준을 적용한다.
+     */
+    private VoiceCommandResponse queryBalance(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final LocalDateTime now
+    ) {
+        validateSourceAccountConfidence(analysis.entities(), analysis.entityConfidences());
+        final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
+        final BalanceResponse balance = balanceInquiryService.inquire(
+                session.getUser().getId(),
+                analysis.entities().sourceAccountAlias()
+        );
+
+        session.resumeActive(now);
+        final VoiceCommandResponse response = VoiceCommandResponse.balance(session, balance);
+        voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
+        voiceCommandRepository.save(voiceCommand);
+        return response;
+    }
+
+    private VoiceCommandResponse queryHistory(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final LocalDateTime now
+    ) {
+        final VoiceEntities entities = analysis.entities();
+        final VoiceHistoryPeriod period = VoiceHistoryPeriod.resolve(
+                entities.startDate(),
+                entities.endDate(),
+                now.toLocalDate()
+        );
+        final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
+        final Account account = findSourceAccount(session.getUser().getId(), null);
+        final PageResponse<TransactionResponse> transactions = transactionQueryService.findAll(
+                session.getUser().getId(),
+                account.getId(),
+                period.startDate(),
+                period.endDate(),
+                null,
+                0,
+                HISTORY_PAGE_SIZE
+        );
+
+        session.resumeActive(now);
+        final VoiceCommandResponse response = VoiceCommandResponse.history(
+                session,
+                VoiceCommandResponse.History.of(
+                        period.toVoicePhrase(now.toLocalDate()),
+                        account.toVoiceName(),
+                        transactions.totalElements(),
+                        transactions.content().stream()
+                                .map(VoiceCommandResponse.Item::from)
+                                .toList()
+                )
+        );
+        voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
+        voiceCommandRepository.save(voiceCommand);
+        return response;
     }
 
     private VoiceCommandResponse processConfirmationResponse(

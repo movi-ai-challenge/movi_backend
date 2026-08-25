@@ -40,6 +40,10 @@ jobs:
 
       - name: Set up application configuration for CI
         run: |
+          # *.yml 은 gitignore 대상이라 리소스 디렉터리가 비면 git 이 추적하지 않는다.
+          # 체크아웃 직후에는 경로 자체가 없으므로 먼저 만든다.
+          mkdir -p src/main/resources src/test/resources
+
           cat > src/main/resources/application.yml <<'EOF'
           spring:
             application:

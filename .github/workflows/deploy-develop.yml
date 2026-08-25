@@ -59,6 +59,17 @@ jobs:
             level:
               com.movi_backend: debug
 
+          # API 문서. 운영에서는 SWAGGER_ENABLED=false 로 끈다.
+          springdoc:
+            api-docs:
+              enabled: ${SWAGGER_ENABLED:true}
+            swagger-ui:
+              enabled: ${SWAGGER_ENABLED:true}
+              path: /swagger-ui.html
+              operations-sorter: method
+              tags-sorter: alpha
+              display-request-duration: true
+
           movi:
             fds:
               client-type: ${FDS_CLIENT_TYPE:mock}

@@ -1,6 +1,7 @@
 package com.movi_backend.domain.auth.controller;
 
 import com.movi_backend.domain.auth.application.AuthenticationService;
+import com.movi_backend.domain.auth.controller.docs.AuthApiDocs;
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinRegisterRequest;
 import com.movi_backend.domain.auth.dto.request.TokenRefreshRequest;
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/auth")
-public class AuthController {
+public class AuthController implements AuthApiDocs {
 
     private final AuthenticationService authenticationService;
 

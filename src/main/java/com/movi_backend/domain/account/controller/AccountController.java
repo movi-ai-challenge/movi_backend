@@ -2,6 +2,7 @@ package com.movi_backend.domain.account.controller;
 
 import com.movi_backend.domain.account.application.AccountService;
 import com.movi_backend.domain.account.application.BalanceInquiryService;
+import com.movi_backend.domain.account.controller.docs.AccountApiDocs;
 import com.movi_backend.domain.account.dto.request.AccountAliasChangeRequest;
 import com.movi_backend.domain.account.dto.response.AccountListResponse;
 import com.movi_backend.domain.account.dto.response.AccountResponse;
@@ -22,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/accounts")
 @RequiredArgsConstructor
-public class AccountController {
+public class AccountController implements AccountApiDocs {
 
     private final BalanceInquiryService balanceInquiryService;
     private final AccountService accountService;

@@ -2,12 +2,14 @@ package com.movi_backend.domain.auth.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.movi_backend.domain.auth.application.KakaoLoginService;
+import com.movi_backend.domain.auth.application.LoginHandoffStore;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
 import java.net.URI;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +55,9 @@ class KakaoAuthControllerCallbackTest {
         final LoginResponse response = new LoginResponse(
                 1L, true, "access-token-value", "refresh-token-value", "Bearer", 1800L
         );
-        given(kakaoLoginService.login(any(), any(), any())).willReturn(response);
+        given(kakaoLoginService.authenticate(any(), any(), any()))
+                .willReturn(new LoginHandoffStore.Handoff(1L, true));
+        given(kakaoLoginService.issueTokens(any(), anyBoolean())).willReturn(response);
 
         // when
         final MvcResult result = mockMvc.perform(get("/api/v1/auth/kakao/callback")
@@ -76,6 +80,7 @@ class KakaoAuthControllerCallbackTest {
         assertThat(params.getFirst("newUser")).isEqualTo("true");
         assertThat(params.getFirst("tokenType")).isEqualTo("Bearer");
         assertThat(params.getFirst("accessTokenExpiresIn")).isEqualTo("1800");
+        assertThat(params.getFirst("code")).isNotBlank();
     }
 
     @Test
@@ -85,7 +90,9 @@ class KakaoAuthControllerCallbackTest {
         final LoginResponse response = new LoginResponse(
                 1L, false, "access-token-value", "refresh-token-value", "Bearer", 1800L
         );
-        given(kakaoLoginService.login(any(), any(), any())).willReturn(response);
+        given(kakaoLoginService.authenticate(any(), any(), any()))
+                .willReturn(new LoginHandoffStore.Handoff(1L, false));
+        given(kakaoLoginService.issueTokens(any(), anyBoolean())).willReturn(response);
 
         // when & then
         mockMvc.perform(get("/api/v1/auth/kakao/callback")

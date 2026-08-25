@@ -14,13 +14,39 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 
 ### `auth` — 인증
 
-- 카카오 OAuth + PIN/생체인증 2단계. 소셜 로그인 후 PIN 검증까지 통과해야 금융 기능 접근 가능
+- 최초 계정 연결은 카카오 OAuth로 처리하고, 이후에는 전화번호 + PIN으로도 로그인할 수 있다
+- 카카오는 전화번호를 회원 정보로 주지 않는다. 카카오 최초 가입 시점에는 `users.phone`이 비어 있고,
+  PIN 최초 등록(`POST /api/v1/auth/pin/register`)에서 전화번호를 함께 받아 채운다 — PIN 로그인이
+  이 값으로 사용자를 찾으므로 PIN 등록과 전화번호 등록은 한 번에 묶여 있다
+- 카카오 로그인 후 PIN을 최초 등록하며, 두 로그인 방식 모두 자체 Access/Refresh JWT를 발급한다
+- 로그아웃 시 `users.token_version`을 증가시켜 기존 Access/Refresh JWT를 즉시 무효화한다
 - 토큰: Access(단기, `Bearer`) / Refresh
 - **불변식**
   - `oauth_accounts (provider, provider_user_id)` UNIQUE — 같은 카카오 계정으로 중복 가입 불가
   - `user_credentials.user_id` UNIQUE — 회원 1명당 PIN 1개
   - PIN 연속 실패 시 `failed_attempts` 증가, 임계치 초과 시 `locked_until` 설정. **잠금 중에는 검증 자체를 건너뛰고 즉시 거부한다**
 - `devices.is_trusted`는 FDS 피처로 쓰이므로, 신규 기기 로그인 시 반드시 기록
+
+#### 인증 컨텍스트 — `@CurrentUser`
+
+컨트롤러에서 현재 사용자는 `@CurrentUser`로 받는다. 각자 `HttpServletRequest`에서 꺼내거나 파라미터로 `userId`를 받지 않는다.
+
+```java
+@GetMapping("/accounts")
+public ApiResponse<List<AccountResponse>> getAccounts(@CurrentUser AuthUser authUser) {
+    return ApiResponse.success(accountService.findAll(authUser.userId()));
+}
+```
+
+**JWT 구현 전에도 개발할 수 있다.** `movi.auth.dev-mode=true`이면 인증 없이 헤더로 사용자를 지정한다.
+
+```bash
+curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
+```
+
+헤더가 없으면 `movi.auth.dev-user-id`(기본 1)를 쓴다. 인증 정보가 있으면 항상 그쪽이 우선한다.
+
+> **인증 담당자에게** — JWT 필터에서 `AuthUser`를 `Authentication`의 principal로 넣으면 리졸버가 그대로 동작한다. 별도 수정이 필요 없다. 필터가 완성되면 `dev-mode`를 끄고, **운영 환경에서는 반드시 false여야 한다.**
 
 ### `account` — 계좌·오픈뱅킹
 
@@ -31,12 +57,23 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
   - 사용자당 `is_primary=true` 계좌는 **최대 1개**. 기본 계좌 변경 시 기존 것을 먼저 해제한다
   - 토큰 만료(`expires_at`) 확인 후 갱신 — 만료된 토큰으로 호출하면 오픈뱅킹이 거부한다
 - **Mock 어댑터 우선** — 오픈뱅킹 Sandbox 승인은 외부 변수다. 인터페이스를 먼저 정의하고 Mock 구현체로 개발한 뒤 실 API로 교체한다
+
+- **오픈뱅킹 Port는 두 개다.** 역할이 겹치지 않으니 용도에 맞는 쪽을 쓴다
+
+  | Port | 담당 | Mock 어댑터 | 전환 방식 |
+  |---|---|---|---|
+  | `BalanceInquiryPort` | 잔액조회 | `MockBalanceInquiryAdapter` | `@Profile("local","test")` |
+  | `OpenBankingClient` | 계좌 목록·이체 | `MockOpenBankingClient` | `movi.openbanking.mode` |
+
+  잔액은 호출 빈도와 캐시 정책(`balance_snapshots`)이 달라 분리했다. **새 오퍼레이션을 추가할 때 어느 Port에 넣을지 먼저 정하고, 같은 기능을 양쪽에 만들지 않는다.**
+
+  `MockOpenBankingClient`는 잔액을 상태로 들고 이체할 때 차감한다. 고정값이면 잔액 부족 분기를 시연할 수 없기 때문이다. 같은 `tranId`로 재호출하면 새 이체를 만들지 않고 기존 결과를 돌려줘, 실제 오픈뱅킹의 멱등 동작을 Mock 단계에서 검증할 수 있다
 - `balance_snapshots`는 API 호출 비용 절감 + FDS 피처(잔액 대비 이체 비율)용. 조회할 때마다 남긴다
 
 ### `transfer` — 이체·거래내역
 
 - **상태 전이** (역방향 금지)
-  ```
+  ```text
   PENDING → RISK_REVIEW → COMPLETED
                         → BLOCKED
             → FAILED / CANCELED
@@ -57,22 +94,67 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
   - 재질문 문구는 **템플릿 고정**. 매번 달라지면 시각장애인 사용자가 혼란스럽다
 - **슬롯 세션 만료가 핵심**
   "엄마한테" 발화 후 3분 뒤 다른 말을 했을 때 이전 슬롯이 살아 있으면 엉뚱한 이체가 나간다.
-  대기 슬롯에는 반드시 만료 시각을 두고, 만료된 슬롯은 폐기 후 처음부터 다시 묻는다. (권장 60초)
+  `VoiceSession`이 슬롯의 **단일 소유자**이며 저장·병합·만료를 모두 책임진다. 프론트와 AI는 슬롯을 보관하지 않는다.
+
+  | 항목 | 값 | 상수 |
+  |---|---:|---|
+  | 일반 세션 유효시간 | 5분 | `SESSION_TIMEOUT_MINUTES` |
+  | 재질문·확인 대기 | 60초 | `PENDING_TIMEOUT_SECONDS` |
+  | 같은 슬롯 재질문 | 3회 | `MAX_RETRY_COUNT` |
+
+  만료 시 **슬롯을 전부 폐기한다. 일부만 살리지 않는다.** 3회를 넘기면 세션을 종료하고 `VOICE_4006`을 반환한다.
+
+- **세션 상태 전이** (`VoiceSessionStatus`)
+  ```text
+  ACTIVE ─┬─ CLARIFYING
+          ├─ AWAITING_CONFIRMATION ─┬─ PROCESSING → COMPLETED
+          │                         └─ CANCELED
+          └─ EXPIRED
+  ```
+  `PROCESSING` 중에는 확인 발화를 다시 받지 않는다 — 중복 이체를 막는 1차 방어선이다.
+
+- **확인 정보 불변성** — `AWAITING_CONFIRMATION` 이후 금액·출금계좌·수취인이 바뀌면 기존 `confirmationId`와 `idempotencyKey`를 폐기하고 확인 문장을 새로 만든다
 - `stt_confidence`는 FDS 피처로 전달된다 — 인식 신뢰도가 낮은 이체는 위험 신호
+- **신뢰도 기준** — 구간은 서로 겹치지 않는다
+
+  | 구간 | 처리 |
+  |---|---|
+  | `0.80` 이상 | 다음 백엔드 검증으로 진행 |
+  | `0.60` 이상 `0.80` 미만 | 자동 실행하지 않고 전체 발화 재요청 |
+  | `0.60` 미만 또는 null | `VOICE_4004`로 재발화 요청 |
+
+  `sttConfidence`와 `nluConfidence` 중 하나라도 기준 미만이면 더 낮은 구간을 따른다.
+  개별 슬롯 confidence가 `0.80` 미만이면 그 슬롯을 누락으로 처리한다.
 
 ### `fds` — 이상거래 탐지
 
 - Isolation Forest 기반. 모델·추론 API는 AI 파트 제공, 백엔드는 호출과 판정 반영을 담당
 - **분기**
-  ```
+  ```text
   LOW    → ALLOW             → 이체 완료
   MEDIUM → ALLOW_WITH_ALERT  → 이체 완료 + 보호자 SMS 통보
   HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보
   ```
 - **불변식**
   - `fds_assessments.transfer_id` UNIQUE — 이체 1건당 평가 1건
-  - `features` JSON에 모델 입력 스냅샷을 남긴다. 모델 교체 후 재평가·백테스트에 필요하다
-  - FDS 호출 실패 시 **이체를 통과시키지 않는다**. 평가 불가는 곧 위험이다
+  - `features` JSON에 모델 입력 스냅샷을 남긴다. 모델 교체 후 재평가·백테스트에 필요하다.
+    MVP에서는 `policyVersion`, `ruleScore`, `finalRiskScore`, `reasonCodes`도 이 JSON에 함께 담는다 (전용 컬럼은 운영 분석 요구가 생기면 별도 스키마 변경으로 추가)
+  - FDS 호출 실패 시 **이체를 통과시키지 않는다**. 평가 불가는 곧 위험이다.
+    타임아웃·통신 오류·역직렬화 실패·필수값 누락·정의되지 않은 위험도/결정 조합은 전부 평가 실패로 본다
+  - **임계값을 백엔드가 재계산하지 않는다.** AI가 반환한 위험도와 결정 조합만 검증한다
+  - 타임아웃은 **3초, 자동 재시도 없음**
+
+- **Cold start** — 최근 30일 성공 이체가 3건 미만이면 `coldStart=true`로 전달한다. 프로필이 비어 있으면 이상치 판정이 무의미하므로 AI가 룰 정책으로 최소 위험도를 상향한다
+
+- **이체 한도** (설정값으로 관리, 하드코딩 금지)
+
+  | 항목 | 값 |
+  |---|---:|
+  | 최소 금액 | 1원 |
+  | 1회 한도 | 1,000,000원 |
+  | 1일 누적 한도 | 3,000,000원 |
+
+  오픈뱅킹 한도가 더 낮으면 더 낮은 값을 적용한다.
 - `user_transfer_profiles`는 배치로 갱신. 프로필이 비어 있으면 이상치 판정이 무의미하므로, 신규 사용자는 별도 정책이 필요하다
 
 ### `guardian` — 보호자·알림
@@ -87,11 +169,17 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 
 ## 설정 · 외부 연동
 
-- **Profile**: `application.yaml`에 그룹(local/dev/test) 정의, 관심사별 `application-*.yaml` 분리 권장
-- **인증정보는 전부 환경변수**. `application.yaml`에 하드코딩 금지 — `.gitignore`에 로컬 설정 파일을 이미 등록해두었다
+- **설정 파일은 `.yml` 확장자를 쓴다.** `application.yml`(공통) / `application-local.yml`(로컬 MySQL) / `application-test.yml`(H2). 기본 프로파일은 `local`
+- **`*.yml`은 전부 gitignore 대상이다.** 인증정보를 파일에 직접 적기 때문이다. 팀 공유는 `*.yml.example` 템플릿으로 하며, 템플릿에는 플레이스홀더만 둔다
+  - clone 직후에는 설정 파일이 없다. `.example`을 복사해서 만들어야 기동된다
+  - 설정 항목을 추가·변경했다면 **`.example`도 함께 갱신**한다. 안 그러면 다른 팀원이 기동에 실패한다
+  - Java 코드에는 인증정보를 하드코딩하지 않는다. `@Value` / `@ConfigurationProperties`로 주입받는다
+- **`ddl-auto`**: local은 `validate`, test는 `create-drop`.
+  엔티티를 바꿨다면 [schema.sql](schema.sql)도 함께 고치고 DB에 반영해야 기동된다. `update`를 쓰지 않는 이유는 각자 엔티티를 고칠 때마다 로컬 DB가 조용히 달라져 "내 로컬에선 되는데"가 생기기 때문이다
 - **외부 연동**: 오픈뱅킹 API, 카카오 OAuth, Google Cloud STT/TTS(AI 파트), FDS 추론 서비스(AI 파트), SMS
 - **SMS 주의** — Twilio는 국내 발신 제약이 있다. 국내 서비스(NHN Toast, 알리고) 대안을 Week 1에 검증한다
-- **엔티티**: `BaseTimeEntity`로 `createdAt`/`updatedAt` 자동화. 테스트는 H2 in-memory
+- **엔티티**: `created_at`/`updated_at`을 가진 엔티티는 `BaseTimeEntity`를 상속한다 (`@EnableJpaAuditing`은 `JpaConfig`에 선언됨)
+- **보안 설정**: 현재 `SecurityConfig`는 모든 요청을 `permitAll`로 열어 둔 상태다. 의존성만 넣고 설정을 두지 않으면 전 엔드포인트가 기본 인증으로 잠겨 다른 파트가 막히기 때문이다. **인증 담당자가 JWT 필터와 함께 실제 인가 규칙으로 교체하며, 그 전까지 배포하지 않는다**
 
 ## 백엔드 코딩 주의사항
 
@@ -109,7 +197,7 @@ Movi 백엔드의 도메인 지도·불변식·코딩 주의사항입니다.
 
 ## 테스트 작성 규칙
 
-**프레임워크**: JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`), H2 in-memory (`application-test.yaml`).
+**프레임워크**: JUnit 5 + Mockito (`@ExtendWith(MockitoExtension.class)`), H2 in-memory (`application-test.yml`).
 
 1. **DAMP > DRY** — `@BeforeEach`로 상태 공유 금지. 반복 객체 생성은 Fixture 클래스로 분리해 각 테스트를 독립적으로 유지한다
 2. **결과를 검증한다** — `verify(...)` 같은 구현 호출이 아니라 상태 변화를 검증한다 (`assertEquals(TransferStatus.BLOCKED, transfer.getStatus())`)

@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **파트 간 통합 계약은 [docs/integration-spec.md](docs/integration-spec.md)가 최우선 기준입니다.** 다른 문서와 충돌하면 이 문서를 따르세요. AI 내부 API 규격은 [docs/ai-api-contract.md](docs/ai-api-contract.md), 일자별 실행계획은 [docs/execution-plan.md](docs/execution-plan.md)에 있습니다.
+>
+> 도구 무관 공통 규약은 [AGENTS.md](AGENTS.md)에 있습니다. 특히 **이미 만들어진 공용 자산(엔티티 20개·에러코드·공통 응답·인증 컨텍스트)을 중복 생성하지 않도록** 해당 절을 먼저 확인하세요.
+>
 > 도메인별 상세 로직·불변식·테스트 작성 규칙은 [docs/domain-guide.md](docs/domain-guide.md)를 먼저 확인하세요.
 >
 > 데이터 모델은 [docs/ERD.md](docs/ERD.md), DDL은 [docs/schema.sql](docs/schema.sql), 개발 일정과 담당 배분은 [docs/schedule-backend.md](docs/schedule-backend.md)를 참조하세요.
@@ -27,9 +31,20 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 ./gradlew clean build                                     # 클린 빌드
 ```
 
-DB 스키마 반영:
+### 최초 세팅
+
+`*.yml`은 gitignore 대상이라 clone 직후에는 설정 파일이 없습니다. 템플릿을 복사해서 만듭니다.
 
 ```bash
+cp src/main/resources/application.yml.example       src/main/resources/application.yml
+cp src/main/resources/application-local.yml.example  src/main/resources/application-local.yml
+cp src/test/resources/application-test.yml.example   src/test/resources/application-test.yml
+```
+
+그다음 `application-local.yml`의 `password`를 본인 로컬 MySQL 비밀번호로 채우고, DB를 준비합니다.
+
+```bash
+mysql -u root -p -e "CREATE DATABASE movi CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 mysql -u root -p movi < docs/schema.sql
 ```
 
@@ -85,7 +100,7 @@ AI가 금액을 환각으로 채워 넣거나 놓쳐도 이체 API에서 막혀�
 
 ### 3. FDS 분기는 세 갈래
 
-```
+```text
 LOW    → ALLOW             → 이체 완료
 MEDIUM → ALLOW_WITH_ALERT  → 이체 완료 + 보호자 SMS 통보
 HIGH   → BLOCK             → 이체 차단 + 보호자 SMS 통보
@@ -129,7 +144,9 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 | FDS 서비스 | 위험도 평가 | AI 파트 제공. 요청/응답 스키마를 문서로 합의 후 Mock으로 선개발 |
 | SMS | 보호자 알림 | Twilio는 국내 발신 제약 있음 — 국내 서비스(NHN Toast, 알리고) 대안 검토 |
 
-모든 외부 인증정보는 **환경변수로 분리**합니다. 코드나 `application.yaml`에 하드코딩 금지.
+외부 인증정보는 `application-local.yml`에 직접 적습니다. **이 파일들(`*.yml`)은 gitignore 대상이라 커밋되지 않습니다.** 팀 공유는 `*.yml.example` 템플릿으로 하고, 템플릿에는 실제 값 대신 플레이스홀더만 둡니다.
+
+**Java 코드에는 어떤 인증정보도 하드코딩하지 않습니다.** `@Value`나 `@ConfigurationProperties`로 설정에서 주입받으세요.
 
 ## 코드 작성 원칙
 
@@ -149,7 +166,46 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
 4. 테스트 — `./gradlew test`
 5. 스키마 변경 시 [docs/schema.sql](docs/schema.sql)과 [docs/ERD.md](docs/ERD.md)를 함께 갱신 (ERDCloud 임포트용 SQL도 같이)
 
-## 브랜치 · 커밋
+## 작업 흐름 — 이슈부터 판다
 
-- 브랜치: `feat/`, `fix/`, `docs/`, `refactor/` + 작업 내용
-- 메인 브랜치는 `main`
+**모든 작업은 GitHub 이슈 생성으로 시작합니다.** 브랜치를 먼저 만들지 않습니다.
+
+```text
+이슈 생성 → develop에서 브랜치 → 작업 → PR(develop 대상) → 리뷰 → 머지 → 이슈 close
+```
+
+1. **이슈 생성** — 무엇을·왜·완료 조건을 적습니다. 완료 조건은 검증 가능해야 합니다
+   ```bash
+   gh issue create --title "feat: 잔액조회 API" --body "..."
+   ```
+2. **브랜치 생성** — 이슈 번호를 접두로 붙여 추적이 되게 합니다
+   ```bash
+   git checkout develop && git pull
+   git checkout -b feat/12-balance-api      # 12 = 이슈 번호
+   ```
+3. **PR 본문에 이슈 연결** — `Closes #12`를 적으면 머지 시 이슈가 자동으로 닫힙니다
+
+```text
+main     — 배포 가능 상태
+develop  — 통합 브랜치. 기능 브랜치는 여기서 따고 여기로 병합한다
+feat/*   — 기능 개발 (fix/, docs/, refactor/, chore/ 도 동일)
+```
+
+`main`에 직접 커밋하지 않습니다.
+
+### 커밋 메시지
+
+- 한국어로 쓰고, 제목은 `<type>: <요약>` 형식입니다
+- 본문에는 **무엇을 했는지보다 왜 그렇게 했는지**를 씁니다
+- **AI가 작성했다는 표시를 남기지 않습니다.** 커밋의 저자는 사람입니다
+
+  아래 형태는 모두 금지입니다.
+
+  ```text
+  Co-Authored-By: Claude <noreply@anthropic.com>
+  Co-Authored-By: Codex <codex@openai.com>
+  🤖 Generated with Claude Code
+  ```
+
+  PR 본문·이슈·코드 주석에도 마찬가지로 남기지 않습니다.
+- 커밋 전 `git status`로 포함될 파일을 확인합니다. 설정 파일이나 시크릿이 섞이지 않았는지 봅니다

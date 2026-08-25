@@ -6,14 +6,16 @@
 CREATE TABLE users (
     user_id    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '사용자 ID',
     name       VARCHAR(50)  NOT NULL COMMENT '이름',
-    phone      VARCHAR(255) NOT NULL COMMENT '전화번호(AES 암호화)',
+    phone      VARCHAR(255) NULL COMMENT '전화번호(AES 암호화). 카카오 가입 시점엔 없고 PIN 등록 시 채움',
+    phone_hash VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date DATE         NULL COMMENT '생년월일',
     user_type  VARCHAR(30)  NOT NULL COMMENT 'SENIOR/VISUALLY_IMPAIRED/GENERAL',
     status     VARCHAR(20)  NOT NULL COMMENT 'ACTIVE/DORMANT/WITHDRAWN',
+    token_version BIGINT    NOT NULL DEFAULT 0 COMMENT '로그아웃 시 JWT 일괄 무효화 버전',
     created_at DATETIME     NOT NULL COMMENT '생성일시',
     updated_at DATETIME     NOT NULL COMMENT '수정일시',
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_users_phone (phone)
+    UNIQUE KEY uk_users_phone_hash (phone_hash)
 ) COMMENT '사용자';
 
 CREATE TABLE oauth_accounts (
@@ -122,9 +124,14 @@ CREATE TABLE voice_sessions (
     session_id BIGINT      NOT NULL AUTO_INCREMENT COMMENT '세션 ID',
     user_id    BIGINT      NOT NULL COMMENT '사용자 ID',
     device_id  BIGINT      NULL COMMENT '기기 ID',
-    channel    VARCHAR(20) NOT NULL COMMENT 'APP/PHONE',
-    started_at DATETIME    NOT NULL COMMENT '시작일시',
-    ended_at   DATETIME    NULL COMMENT '종료일시',
+    channel        VARCHAR(20) NOT NULL COMMENT 'APP/PHONE',
+    status         VARCHAR(30) NOT NULL COMMENT '세션 상태',
+    pending_intent VARCHAR(40) NULL COMMENT '재질문·확인 대기 중인 의도',
+    pending_slots  JSON        NULL COMMENT '보관 슬롯',
+    retry_count    INT         NOT NULL COMMENT '재질문 횟수',
+    expires_at     DATETIME    NOT NULL COMMENT '슬롯 만료 시각',
+    started_at     DATETIME    NOT NULL COMMENT '시작일시',
+    ended_at       DATETIME    NULL COMMENT '종료일시',
     PRIMARY KEY (session_id),
     CONSTRAINT fk_vsession_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_vsession_device FOREIGN KEY (device_id) REFERENCES devices (device_id)
@@ -137,7 +144,7 @@ CREATE TABLE voice_commands (
     audio_uri      VARCHAR(500) NULL COMMENT '오디오 원본 URI',
     stt_text       TEXT         NULL COMMENT 'STT 변환 텍스트',
     stt_confidence DECIMAL(5,4) NULL COMMENT 'STT 신뢰도',
-    intent         VARCHAR(40)  NOT NULL COMMENT 'BALANCE/TRANSFER/HISTORY/GUARDIAN/SETTING/UNKNOWN',
+    intent         VARCHAR(40)  NOT NULL COMMENT 'BALANCE/TRANSFER/HISTORY/CONFIRM/CANCEL/UNKNOWN (GUARDIAN·SETTING은 예약값)',
     entities       JSON         NULL COMMENT '추출 엔티티',
     nlu_confidence DECIMAL(5,4) NULL COMMENT 'NLU 신뢰도',
     response_text  TEXT         NULL COMMENT 'TTS 응답 문구',
@@ -191,7 +198,7 @@ CREATE TABLE transfers (
     to_account_num   VARCHAR(255) NOT NULL COMMENT '입금 계좌번호(암호화)',
     to_holder_name   VARCHAR(50)  NOT NULL COMMENT '입금 예금주명',
     amount           BIGINT       NOT NULL COMMENT '이체금액',
-    status           VARCHAR(30)  NOT NULL COMMENT 'PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED',
+    status           VARCHAR(30)  NOT NULL COMMENT 'PENDING/RISK_REVIEW/HOLD/COMPLETED/BLOCKED/FAILED/CANCELED',
     idempotency_key  VARCHAR(64)  NOT NULL COMMENT '중복 발화 방지 키',
     fail_reason      VARCHAR(200) NULL COMMENT '실패 사유',
     requested_at     DATETIME     NOT NULL COMMENT '요청일시',
@@ -259,18 +266,15 @@ CREATE TABLE user_transfer_profiles (
 CREATE TABLE guardian_links (
     link_id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '연결 ID',
     protectee_user_id BIGINT       NOT NULL COMMENT '피보호자 사용자 ID',
-    guardian_user_id  BIGINT       NULL COMMENT '보호자 사용자 ID(가입 후 바인딩)',
+    guardian_user_id  BIGINT       NULL COMMENT '보호자 사용자 ID(Movi 회원이면 바인딩)',
     guardian_name     VARCHAR(50)  NOT NULL COMMENT '보호자명',
     guardian_phone    VARCHAR(255) NOT NULL COMMENT '보호자 전화번호(암호화)',
-    relation          VARCHAR(30)  NULL COMMENT '관계(자녀/배우자 등)',
-    status            VARCHAR(20)  NOT NULL COMMENT 'REQUESTED/ACTIVE/REJECTED/REVOKED',
-    invite_token      VARCHAR(64)  NOT NULL COMMENT '초대 토큰',
-    invite_expires_at DATETIME     NOT NULL COMMENT '초대 만료일시',
+    guardian_phone_hash VARCHAR(64) NULL COMMENT '보호자 전화번호 중복 확인용 해시',
+    relation          VARCHAR(30)  NULL COMMENT '관계(CHILD/SPOUSE/SOCIAL_WORKER/OTHER)',
+    status            VARCHAR(20)  NOT NULL COMMENT 'ACTIVE/REVOKED',
     permission_scope  JSON         NULL COMMENT '권한 범위',
-    requested_at      DATETIME     NOT NULL COMMENT '요청일시',
-    accepted_at       DATETIME     NULL COMMENT '수락일시',
+    linked_at         DATETIME     NOT NULL COMMENT '연결일시',
     PRIMARY KEY (link_id),
-    UNIQUE KEY uk_glink_token (invite_token),
     CONSTRAINT fk_glink_protectee FOREIGN KEY (protectee_user_id) REFERENCES users (user_id),
     CONSTRAINT fk_glink_guardian FOREIGN KEY (guardian_user_id) REFERENCES users (user_id)
 ) COMMENT '보호자 연결';

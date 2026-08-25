@@ -1,0 +1,60 @@
+# 테스트 환경 — H2 in-memory
+#
+# MySQL 모드로 동작시켜 운영 DB와 문법 차이를 줄인다.
+# 테스트마다 스키마를 새로 만들므로 schema.sql 적용은 필요 없다.
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:movi;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+
+# 인증
+#   dev-mode: true 면 JWT 없이 X-Dev-User-Id 헤더로 사용자를 지정할 수 있다.
+#   인증 필터 구현 전 다른 파트가 API를 개발·테스트하기 위한 장치이며,
+#   운영 환경에서는 반드시 false 여야 한다.
+movi:
+  auth:
+    dev-mode: true
+    dev-user-id: 1
+  kakao:
+    rest-api-key: test-rest-api-key
+    redirect-uri: http://localhost:8080/api/v1/auth/kakao/callback
+  jwt:
+    secret: test-jwt-signing-key-must-be-at-least-32-bytes
+  crypto:
+    encryption-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    hash-key: YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=
+
+  # 외부 연동은 테스트에서 전부 mock을 쓴다.
+  guardian:
+    default-receive-alert: true
+  sms:
+    provider: mock
+  fds:
+    mode: mock
+    client-type: mock
+    mock-high-amount: 1000000
+    mock-medium-amount: 300000
+  openbanking:
+    mode: mock
+    redirect-uri: http://localhost:8080/api/openbanking/callback
+    mock-balance: 1000000
+
+  transfer:
+    confirmation-expire-minutes: 5
+    minimum-amount: 1
+    per-transfer-limit: 1000000
+    daily-limit: 3000000

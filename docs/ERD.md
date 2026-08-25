@@ -51,7 +51,7 @@ erDiagram
     users ||--o{ guardian_links : "피보호자"
     users ||--o{ guardian_links : "보호자"
     users ||--o{ notifications : "알림 수신"
-    guardian_links ||--o{ notifications : "초대 SMS"
+    guardian_links ||--o{ notifications : "등록 통보 SMS"
     transfers ||--o{ notifications : "이상거래 통보"
 
     users ||--o{ audit_logs : "감사 로그"
@@ -59,10 +59,12 @@ erDiagram
     users {
         bigint user_id PK
         varchar name
-        varchar phone UK "암호화"
+        varchar phone "AES-GCM 암호화. 카카오 가입 시점엔 NULL, PIN 등록 시 채움"
+        varchar phone_hash UK "HMAC-SHA256"
         date birth_date
         varchar user_type "SENIOR/VISUALLY_IMPAIRED/GENERAL"
         varchar status "ACTIVE/DORMANT/WITHDRAWN"
+        bigint token_version "JWT 무효화 버전"
         datetime created_at
         datetime updated_at
     }
@@ -166,7 +168,7 @@ erDiagram
         varchar to_account_num
         varchar to_holder_name
         bigint amount
-        varchar status "PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED"
+        varchar status "PENDING/RISK_REVIEW/HOLD/COMPLETED/BLOCKED/FAILED/CANCELED"
         varchar idempotency_key UK
         datetime requested_at
         datetime completed_at
@@ -189,6 +191,11 @@ erDiagram
         bigint user_id FK
         bigint device_id FK
         varchar channel "APP/PHONE"
+        varchar status "ACTIVE/CLARIFYING/AWAITING_CONFIRMATION/PROCESSING/COMPLETED/CANCELED/EXPIRED"
+        varchar pending_intent "대기 중인 의도"
+        json pending_slots "보관 슬롯"
+        int retry_count "재질문 횟수 (최대 3)"
+        datetime expires_at "슬롯 만료 시각"
         datetime started_at
         datetime ended_at
     }
@@ -200,7 +207,7 @@ erDiagram
         varchar audio_uri
         text stt_text
         decimal stt_confidence
-        varchar intent "BALANCE/TRANSFER/HISTORY/GUARDIAN/SETTING/UNKNOWN"
+        varchar intent "BALANCE/TRANSFER/HISTORY/CONFIRM/CANCEL/UNKNOWN"
         json entities
         decimal nlu_confidence
         text response_text
@@ -253,16 +260,14 @@ erDiagram
     guardian_links {
         bigint link_id PK
         bigint protectee_user_id FK
-        bigint guardian_user_id FK
+        bigint guardian_user_id FK "보호자가 Movi 회원이면 바인딩"
         varchar guardian_name
-        varchar guardian_phone
-        varchar relation
-        varchar status "REQUESTED/ACTIVE/REJECTED/REVOKED"
-        varchar invite_token UK
-        datetime invite_expires_at
+        varchar guardian_phone "AES-GCM 암호화"
+        varchar guardian_phone_hash "HMAC-SHA256 (중복 확인)"
+        varchar relation "CHILD/SPOUSE/SOCIAL_WORKER/OTHER"
+        varchar status "ACTIVE/REVOKED"
         json permission_scope
-        datetime requested_at
-        datetime accepted_at
+        datetime linked_at
     }
 
     notifications {
@@ -298,21 +303,21 @@ erDiagram
 ## 3. 핵심 플로우 ↔ 테이블 매핑
 
 ### ① 인증 플로우
-```
+```text
 앱 시작 → 카카오 로그인      → oauth_accounts (provider_user_id 조회/생성) + users
         → PIN/생체인증       → user_credentials (pin_hash 검증, failed_attempts++)
         → (신규) 오픈뱅킹 연결 → openbanking_connections + accounts 벌크 등록
 ```
 
 ### ③④ 음성 명령 → 이체
-```
+```text
 홈(음성 대기)  → voice_sessions 생성
 발화           → voice_commands (stt_text, intent=TRANSFER, entities={수취인,금액})
 이체 정보 확인 → transfers INSERT (status=PENDING, idempotency_key)
 ```
 
 ### ⑤ FDS 위험도 분기
-```
+```text
 transfers.status = RISK_REVIEW
   → fds_assessments (Isolation Forest anomaly_score 산출)
      · 피처 소스: user_transfer_profiles + transactions + devices + voice_commands
@@ -330,12 +335,12 @@ transfers.status = RISK_REVIEW
 > `guardian_approvals` 테이블과 `transfers.status`의 `GUARDIAN_PENDING`은 삭제했습니다.
 
 ### 보호자 연결
-```
-연결 요청 → guardian_links (status=REQUESTED, invite_token 발급)
-SMS 발송  → notifications (channel=SMS, template_code=GUARDIAN_INVITE)
-수락      → guardian_links.status=ACTIVE, guardian_user_id 바인딩
-대시보드  → guardian_links.permission_scope 로 조회 범위 제어
-           (MVP: {"view_balance":true, "receive_alert":true} — 승인 권한 없음)
+```text
+회원가입(온보딩) → 보호자 전화번호 입력
+연결 등록        → guardian_links (status=ACTIVE, 확인 절차 없이 즉시 생성)
+통보 SMS         → notifications (channel=SMS, template_code=GUARDIAN_LINK_REGISTERED)
+대시보드         → guardian_links.permission_scope 로 조회 범위 제어
+                  (MVP: {"view_balance":true, "receive_alert":true} — 승인 권한 없음)
 ```
 
 ---
@@ -346,7 +351,7 @@ SMS 발송  → notifications (channel=SMS, template_code=GUARDIAN_INVITE)
 FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이체 본체 테이블에 컬럼을 붙이면 스키마가 계속 흔들립니다. 재평가(모델 교체 후 백테스트)도 별도 테이블이 편합니다.
 
 **2. `guardian_links`의 self-referencing FK**
-보호자도 앱 사용자입니다. 다만 SMS 초대 직후에는 아직 가입 전이므로 `guardian_user_id`는 nullable이고, `guardian_phone`으로 먼저 식별합니다. 수락 시점에 바인딩.
+보호자가 Movi 회원이 아닐 수 있습니다. 회원가입 시 입력하는 건 전화번호뿐이라 `guardian_user_id`는 nullable이고, `guardian_phone`으로 식별·알림 발송합니다. 보호자가 나중에 Movi에 가입해도 자동으로 바인딩되지는 않습니다(MVP 범위 밖).
 
 **3. `transfer_recipients` 별도 분리**
 "엄마한테 5만원 보내줘" 같은 음성 명령을 해석하려면 별칭↔계좌 매핑이 필수입니다. 동시에 `transfer_count`는 FDS의 "처음 보내는 상대" 피처로 직접 쓰입니다.
@@ -361,7 +366,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 보호자 승인이 빠지면서 알림이 이상거래 통보의 유일한 수단이 됐습니다. "어떤 이체 때문에 나간 알림인지" 추적할 수 없으면 사후 대응이 불가능하므로 이체를 직접 참조합니다.
 
 **7. 개인정보 컬럼 암호화**
-`users.phone`, `accounts.account_num_masked`, `transfers.to_account_num`, `guardian_links.guardian_phone`은 AES 양방향 암호화 대상. 토큰류(`access_token`, `refresh_token`)도 동일.
+`users.phone`, `accounts.account_num_masked`, `transfers.to_account_num`, `guardian_links.guardian_phone`은 AES 양방향 암호화 대상. 토큰류(`access_token`, `refresh_token`)도 동일. 무작위 IV를 사용하는 암호문은 직접 중복 비교할 수 없으므로 `users.phone_hash`에는 별도 키로 만든 HMAC-SHA256 검색 해시를 저장합니다.
 
 ---
 
@@ -374,7 +379,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 | `transactions` | `idx (account_id, tran_datetime DESC)` | 거래 내역 기간 필터 |
 | `transfers` | `uk (idempotency_key)` / `idx (user_id, requested_at DESC)` | 중복 방지 / 이체 이력 |
 | `voice_commands` | `idx (user_id, created_at DESC)` / `idx (intent, status)` | 음성 로그 분석 |
-| `guardian_links` | `idx (protectee_user_id, status)` / `uk (invite_token)` | 활성 보호자 조회 / 초대 수락 |
+| `guardian_links` | `idx (protectee_user_id, status)` / `idx (protectee_user_id, guardian_phone_hash, status)` | 활성 보호자 조회 / 중복 등록 방지 |
 | `notifications` | `idx (status)` / `idx (user_id, created_at DESC)` | 발송 재시도 / 알림 이력 |
 | `fds_assessments` | `idx (user_id, evaluated_at DESC)` | 프로필 갱신 |
 

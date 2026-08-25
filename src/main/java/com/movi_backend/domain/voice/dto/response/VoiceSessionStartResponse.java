@@ -1,0 +1,21 @@
+package com.movi_backend.domain.voice.dto.response;
+
+import com.movi_backend.domain.voice.entity.VoiceSession;
+import com.movi_backend.domain.voice.type.VoiceSessionStatus;
+import java.time.LocalDateTime;
+
+public record VoiceSessionStartResponse(
+        Long voiceSessionId,
+        VoiceSessionStatus status,
+        LocalDateTime expiresAt
+) {
+
+    /** 저장된 음성 세션을 외부 응답 모델로 변환한다. */
+    public static VoiceSessionStartResponse from(final VoiceSession voiceSession) {
+        return new VoiceSessionStartResponse(
+                voiceSession.getId(),
+                voiceSession.getStatus(),
+                voiceSession.getExpiresAt()
+        );
+    }
+}

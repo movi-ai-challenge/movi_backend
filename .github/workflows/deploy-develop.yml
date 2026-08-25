@@ -1,0 +1,182 @@
+name: Deploy develop to AWS EC2
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-develop
+  cancel-in-progress: false
+
+env:
+  DOCKER_IMAGE_NAME: ${{ secrets.DEV_DOCKER_IMAGE_NAME }}
+  CONTAINER_NAME: ${{ secrets.DEV_CONTAINER_NAME }}
+  EC2_HOST: ${{ secrets.EC2_HOST }}
+  EC2_SSH_USER: ubuntu
+  EC2_DEPLOY_PATH: /home/ubuntu/movi
+  HOST_PORT: "8080"
+  CONTAINER_PORT: "8080"
+
+jobs:
+  build-and-push-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: gradle
+
+      - name: Set up application configuration for CI
+        run: |
+          cp src/main/resources/application.yml.example src/main/resources/application.yml
+          cp src/test/resources/application-test.yml.example src/test/resources/application-test.yml
+
+      - name: Grant execute permission to Gradle wrapper
+        run: chmod +x gradlew
+
+      - name: Build and test with Gradle
+        run: ./gradlew clean build --no-daemon
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_NAME }}:latest
+            ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-to-ec2:
+    needs: build-and-push-docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Encode production configuration
+        env:
+          APPLICATION_PROD_YML: ${{ secrets.DEV_APPLICATION }}
+        run: |
+          if [ -z "$APPLICATION_PROD_YML" ]; then
+            echo "DEV_APPLICATION 시크릿이 비어 있습니다." >&2
+            exit 1
+          fi
+          echo "CONFIG_B64=$(printf '%s' "$APPLICATION_PROD_YML" | base64 -w0)" \
+            >> "$GITHUB_ENV"
+
+      - name: Deploy Docker container to EC2
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          CONFIG_B64: ${{ env.CONFIG_B64 }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          CONTAINER_PORT: ${{ env.CONTAINER_PORT }}
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          DOCKER_IMAGE_NAME: ${{ env.DOCKER_IMAGE_NAME }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          EC2_DEPLOY_PATH: ${{ env.EC2_DEPLOY_PATH }}
+          GIT_COMMIT_SHA: ${{ github.sha }}
+          HOST_PORT: ${{ env.HOST_PORT }}
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_SSH_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          envs: CONFIG_B64,CONTAINER_NAME,CONTAINER_PORT,DOCKER_HUB_TOKEN,DOCKER_IMAGE_NAME,DOCKER_USERNAME,EC2_DEPLOY_PATH,GIT_COMMIT_SHA,HOST_PORT
+          command_timeout: 10m
+          script: |
+            set -eu
+
+            IMAGE_REFERENCE="${DOCKER_IMAGE_NAME}:${GIT_COMMIT_SHA}"
+            CONFIG_DIRECTORY="${EC2_DEPLOY_PATH}/config"
+            CONFIG_PATH="${CONFIG_DIRECTORY}/application-prod.yml"
+            BACKUP_CONTAINER_NAME="${CONTAINER_NAME}-rollback"
+
+            # install --owner 는 시스템에 등록된 사용자만 받는다.
+            # uid 10001 은 컨테이너 내부 계정이라 호스트에 없으므로 chown 을 쓴다.
+            sudo mkdir -p "$CONFIG_DIRECTORY"
+            sudo chown 10001:10001 "$CONFIG_DIRECTORY"
+            sudo chmod 700 "$CONFIG_DIRECTORY"
+            printf '%s' "$CONFIG_B64" | base64 -d | sudo tee "$CONFIG_PATH" > /dev/null
+            sudo chown 10001:10001 "$CONFIG_PATH"
+            sudo chmod 400 "$CONFIG_PATH"
+            sudo test -s "$CONFIG_PATH"
+
+            echo "$DOCKER_HUB_TOKEN" | sudo docker login \
+              --username "$DOCKER_USERNAME" \
+              --password-stdin
+            sudo docker pull "$IMAGE_REFERENCE"
+
+            sudo docker rm --force "$BACKUP_CONTAINER_NAME" 2>/dev/null || true
+
+            if sudo docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+              sudo docker stop "$CONTAINER_NAME"
+              sudo docker rename "$CONTAINER_NAME" "$BACKUP_CONTAINER_NAME"
+            fi
+
+            restore_previous_container() {
+              sudo docker rm --force "$CONTAINER_NAME" 2>/dev/null || true
+
+              if sudo docker container inspect "$BACKUP_CONTAINER_NAME" >/dev/null 2>&1; then
+                sudo docker rename "$BACKUP_CONTAINER_NAME" "$CONTAINER_NAME"
+                sudo docker start "$CONTAINER_NAME"
+              fi
+            }
+
+            if ! sudo docker run \
+              --name "$CONTAINER_NAME" \
+              --detach \
+              --restart unless-stopped \
+              --publish "${HOST_PORT}:${CONTAINER_PORT}" \
+              --env TZ=Asia/Seoul \
+              --env SPRING_PROFILES_ACTIVE=prod \
+              --env SERVER_PORT="$CONTAINER_PORT" \
+              --volume "${CONFIG_PATH}:/app/config/application-prod.yml:ro" \
+              "$IMAGE_REFERENCE"; then
+              restore_previous_container
+              exit 1
+            fi
+
+            attempt=1
+            while [ "$attempt" -le 30 ]; do
+              health_status="$(sudo docker inspect \
+                --format='{{.State.Health.Status}}' \
+                "$CONTAINER_NAME" 2>/dev/null || true)"
+
+              if [ "$health_status" = "healthy" ]; then
+                echo "Deployment completed: $IMAGE_REFERENCE"
+                exit 0
+              fi
+
+              if [ "$health_status" = "unhealthy" ]; then
+                break
+              fi
+
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+
+            sudo docker logs --tail 100 "$CONTAINER_NAME" || true
+            restore_previous_container
+            exit 1

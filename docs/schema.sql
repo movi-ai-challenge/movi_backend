@@ -10,14 +10,16 @@ SET NAMES utf8mb4;
 CREATE TABLE users (
     user_id      BIGINT       NOT NULL AUTO_INCREMENT,
     name         VARCHAR(50)  NOT NULL,
-    phone        VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
+    phone        VARCHAR(255) NULL     COMMENT 'AES 암호화. 카카오 가입 시점엔 없고 PIN 등록 시 채움',
+    phone_hash   VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date   DATE         NULL,
     user_type    VARCHAR(30)  NOT NULL DEFAULT 'GENERAL' COMMENT 'SENIOR/VISUALLY_IMPAIRED/GENERAL',
     status       VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'  COMMENT 'ACTIVE/DORMANT/WITHDRAWN',
+    token_version BIGINT      NOT NULL DEFAULT 0 COMMENT '로그아웃 시 JWT 일괄 무효화 버전',
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_users_phone (phone)
+    UNIQUE KEY uk_users_phone_hash (phone_hash)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE oauth_accounts (
@@ -139,11 +141,18 @@ CREATE TABLE voice_sessions (
     session_id BIGINT      NOT NULL AUTO_INCREMENT,
     user_id    BIGINT      NOT NULL,
     device_id  BIGINT      NULL,
-    channel    VARCHAR(20) NOT NULL DEFAULT 'APP' COMMENT 'APP/PHONE',
-    started_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ended_at   DATETIME    NULL,
+    channel        VARCHAR(20) NOT NULL DEFAULT 'APP' COMMENT 'APP/PHONE',
+    status         VARCHAR(30) NOT NULL DEFAULT 'ACTIVE'
+                   COMMENT 'ACTIVE/CLARIFYING/AWAITING_CONFIRMATION/PROCESSING/COMPLETED/CANCELED/EXPIRED',
+    pending_intent VARCHAR(40) NULL COMMENT '재질문·확인 대기 중인 의도',
+    pending_slots  JSON        NULL COMMENT '{"recipient":"엄마","amount":null}',
+    retry_count    INT         NOT NULL DEFAULT 0 COMMENT '같은 슬롯 재질문 횟수 (최대 3)',
+    expires_at     DATETIME    NOT NULL COMMENT '슬롯 만료 시각',
+    started_at     DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at       DATETIME    NULL,
     PRIMARY KEY (session_id),
     KEY idx_vsession_user (user_id, started_at DESC),
+    KEY idx_vsession_status_exp (status, expires_at),
     CONSTRAINT fk_vsession_user FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT fk_vsession_device FOREIGN KEY (device_id) REFERENCES devices (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -156,7 +165,7 @@ CREATE TABLE voice_commands (
     stt_text       TEXT         NULL,
     stt_confidence DECIMAL(5,4) NULL,
     intent         VARCHAR(40)  NOT NULL DEFAULT 'UNKNOWN'
-                   COMMENT 'BALANCE/TRANSFER/HISTORY/GUARDIAN/SETTING/UNKNOWN',
+                   COMMENT 'BALANCE/TRANSFER/HISTORY/CONFIRM/CANCEL/UNKNOWN (GUARDIAN·SETTING은 예약값)',
     entities       JSON         NULL COMMENT '{"recipient":"엄마","amount":50000}',
     nlu_confidence DECIMAL(5,4) NULL,
     response_text  TEXT         NULL,
@@ -219,7 +228,7 @@ CREATE TABLE transfers (
     to_holder_name   VARCHAR(50)  NOT NULL,
     amount           BIGINT       NOT NULL,
     status           VARCHAR(30)  NOT NULL DEFAULT 'PENDING'
-                     COMMENT 'PENDING/RISK_REVIEW/COMPLETED/BLOCKED/FAILED/CANCELED',
+                     COMMENT 'PENDING/RISK_REVIEW/HOLD/COMPLETED/BLOCKED/FAILED/CANCELED',
     idempotency_key  VARCHAR(64)  NOT NULL COMMENT '중복 발화 방지',
     fail_reason      VARCHAR(200) NULL,
     requested_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -300,20 +309,18 @@ CREATE TABLE user_transfer_profiles (
 CREATE TABLE guardian_links (
     link_id            BIGINT       NOT NULL AUTO_INCREMENT,
     protectee_user_id  BIGINT       NOT NULL COMMENT '피보호자 (앱 주 사용자)',
-    guardian_user_id   BIGINT       NULL     COMMENT '보호자 가입 후 바인딩',
+    guardian_user_id   BIGINT       NULL     COMMENT '보호자가 Movi 회원이면 바인딩. 아니면 NULL',
     guardian_name      VARCHAR(50)  NOT NULL,
     guardian_phone     VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
-    relation           VARCHAR(30)  NULL     COMMENT '자녀/배우자/사회복지사',
-    status             VARCHAR(20)  NOT NULL DEFAULT 'REQUESTED'
-                       COMMENT 'REQUESTED/ACTIVE/REJECTED/REVOKED',
-    invite_token       VARCHAR(64)  NOT NULL,
-    invite_expires_at  DATETIME     NOT NULL,
+    guardian_phone_hash VARCHAR(64) NULL     COMMENT '보호자 전화번호 중복 확인용 HMAC-SHA256',
+    relation           VARCHAR(30)  NULL     COMMENT 'CHILD/SPOUSE/SOCIAL_WORKER/OTHER',
+    status             VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'
+                       COMMENT 'ACTIVE/REVOKED',
     permission_scope   JSON         NULL COMMENT '{"view_balance":true,"receive_alert":true}',
-    requested_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    accepted_at        DATETIME     NULL,
+    linked_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (link_id),
-    UNIQUE KEY uk_glink_token (invite_token),
     KEY idx_glink_protectee (protectee_user_id, status),
+    KEY idx_glink_protectee_phone_status (protectee_user_id, guardian_phone_hash, status),
     KEY idx_glink_guardian (guardian_user_id, status),
     CONSTRAINT fk_glink_protectee FOREIGN KEY (protectee_user_id) REFERENCES users (user_id),
     CONSTRAINT fk_glink_guardian FOREIGN KEY (guardian_user_id) REFERENCES users (user_id)

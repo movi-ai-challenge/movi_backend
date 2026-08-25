@@ -47,5 +47,16 @@ out/
 ### 환경 변수 ###
 .env
 *.env.local
-src/main/resources/application-local.yaml
-src/main/resources/application-prod.yaml
+
+### 설정 파일 ###
+# yml 에 DB 비밀번호·API 키를 직접 적으므로 커밋하지 않는다.
+# 팀 공유는 *.yml.example 템플릿으로 하고, 각자 복사해서 값을 채운다.
+*.yml
+!*.yml.example
+# CI 워크플로는 인증정보가 없으므로 커밋 대상
+!.github/**/*.yml
+src/main/resources/application-secret.yml
+# 저장소 루트의 config/ 만 무시한다. (secret_key, field_encryption_key 등이 들어 있다)
+# 슬래시 없이 'config/' 로 두면 domain/*/config, global/config 같은
+# 자바 패키지까지 전부 무시돼 소스가 조용히 커밋에서 빠진다.
+/config/

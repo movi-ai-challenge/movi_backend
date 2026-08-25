@@ -1,0 +1,16 @@
+.git
+.gradle
+.idea
+build
+out
+*.iml
+*.iws
+*.ipr
+
+.env
+*.env.local
+src/main/resources/application-secret.yml
+
+config
+docs
+HELP.md

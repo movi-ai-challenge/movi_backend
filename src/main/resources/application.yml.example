@@ -1,0 +1,108 @@
+spring:
+  application:
+    name: Movi_backend
+
+  profiles:
+    default: local
+
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 100
+
+logging:
+  level:
+    com.movi_backend: debug
+
+movi:
+  fds:
+    client-type: mock
+    base-url: ${FDS_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 3s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    db:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+movi:
+  auth:
+    dev-mode: ${AUTH_DEV_MODE:false}
+    dev-user-id: ${AUTH_DEV_USER_ID:1}
+  kakao:
+    rest-api-key: ${KAKAO_REST_API_KEY}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+    redirect-uri: ${KAKAO_REDIRECT_URI}
+    secure-cookie: true
+  jwt:
+    issuer: movi-backend
+    secret: ${JWT_SECRET}
+    access-token-expiration: 30m
+    refresh-token-expiration: 14d
+    oauth-state-expiration: 5m
+  crypto:
+    encryption-key: ${DATA_ENCRYPTION_KEY}
+    hash-key: ${DATA_HASH_KEY}
+
+  # 보호자 연결
+  #   default-receive-alert: permission_scope가 비어 있는 과거 데이터의 알림 수신 기본값.
+  #                          기능명세가 확정하지 않은 값이라 설정으로 뺐다.
+  guardian:
+    default-receive-alert: ${GUARDIAN_DEFAULT_RECEIVE_ALERT:true}
+
+  # SMS 발송
+  #   provider: mock | solapi
+  #   Twilio는 국내 발신 제약이 있어 솔라피(Solapi)로 정했다.
+  sms:
+    provider: ${SMS_PROVIDER:mock}
+    # provider: solapi 로 바꿀 때만 필요하다. api-secret은 서명에만 쓰고 로그에 남기지 않는다.
+    solapi:
+      api-key: ${SOLAPI_API_KEY:}
+      api-secret: ${SOLAPI_API_SECRET:}
+      sender-phone: ${SOLAPI_SENDER_PHONE:}
+
+  # 이상거래 탐지
+  #   mode: mock이면 금액 기준 내부 규칙으로 판정한다. AI 파트 API가 열리면 http로 바꾼다.
+  #   재시도는 0회다. docs/ai-api-contract.md 3.6 참조.
+  fds:
+    mode: ${FDS_MODE:mock}
+    base-url: ${FDS_BASE_URL:}
+    predict-path: /internal/v1/fraud/predict
+    connect-timeout: 1s
+    read-timeout: 3s
+
+  # 오픈뱅킹
+  #   mode: Sandbox 승인 전까지 mock을 쓴다.
+  openbanking:
+    mode: ${OPENBANKING_MODE:mock}
+    base-url: ${OPENBANKING_BASE_URL:}
+
+  # 이체
+  #   confirmation-expire-minutes: 고위험 감지 후 본인 재확인을 기다리는 시간(분).
+  #                                지나면 차단으로 확정한다. 무기한 열어 두지 않는다.
+  transfer:
+    confirmation-expire-minutes: ${TRANSFER_CONFIRMATION_EXPIRE_MINUTES:5}
+    minimum-amount: ${TRANSFER_MINIMUM_AMOUNT:1}
+    per-transfer-limit: ${TRANSFER_PER_TRANSFER_LIMIT:1000000}
+    daily-limit: ${TRANSFER_DAILY_LIMIT:3000000}
+
+  voice:
+    client-type: ${VOICE_CLIENT_TYPE:mock}
+    base-url: ${VOICE_API_BASE_URL:http://localhost:8000}
+    connect-timeout: 1s
+    response-timeout: 10s

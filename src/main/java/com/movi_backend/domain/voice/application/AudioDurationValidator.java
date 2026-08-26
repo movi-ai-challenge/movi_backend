@@ -18,14 +18,17 @@ public class AudioDurationValidator {
     private static final long TIMECODE_SCALE_ID = 0x2AD7B1L;
     private static final long DURATION_ID = 0x4489L;
     private static final long DEFAULT_TIMECODE_SCALE_NANOS = 1_000_000L;
+    private static final String MP4_FILE_TYPE_BOX = "ftyp";
+    private static final String MP4_MOVIE_BOX = "moov";
+    private static final String MP4_MOVIE_HEADER_BOX = "mvhd";
+    private static final long MP4_EXTENDED_SIZE = 1L;
+    private static final long MP4_TO_END_SIZE = 0L;
 
     public void validate(final MultipartFile audio, final String contentType) {
         final double durationSeconds;
         try {
             final byte[] bytes = audio.getBytes();
-            durationSeconds = contentType.equals("audio/webm")
-                    ? readWebmDurationSeconds(bytes)
-                    : readWavDurationSeconds(bytes);
+            durationSeconds = readDurationSeconds(bytes, contentType);
         } catch (IOException | IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.AUDIO_DURATION_INVALID);
         }
@@ -36,6 +39,166 @@ public class AudioDurationValidator {
         if (durationSeconds > MAXIMUM_DURATION_SECONDS) {
             throw new BusinessException(ErrorCode.AUDIO_DURATION_EXCEEDED);
         }
+    }
+
+    private double readDurationSeconds(final byte[] bytes, final String contentType) {
+        if (contentType.equals("audio/webm")) {
+            return readWebmDurationSeconds(bytes);
+        }
+        if (contentType.equals("audio/mp4") || contentType.equals("audio/x-m4a")) {
+            return readMp4DurationSeconds(bytes);
+        }
+        return readWavDurationSeconds(bytes);
+    }
+
+    private double readMp4DurationSeconds(final byte[] bytes) {
+        boolean fileTypeFound = false;
+        Double durationSeconds = null;
+        int offset = 0;
+        while (offset < bytes.length) {
+            final Mp4Box box = readMp4Box(bytes, offset, bytes.length);
+            if (box.type().equals(MP4_FILE_TYPE_BOX)) {
+                validateMp4FileType(box);
+                fileTypeFound = true;
+            } else if (box.type().equals(MP4_MOVIE_BOX)) {
+                durationSeconds = readMp4MovieDurationSeconds(bytes, box);
+            }
+            offset = box.endOffset();
+        }
+
+        if (!fileTypeFound || durationSeconds == null) {
+            throw new IllegalArgumentException("MP4 재생 시간 정보 누락");
+        }
+        return durationSeconds;
+    }
+
+    private void validateMp4FileType(final Mp4Box box) {
+        if (box.dataSize() < 8) {
+            throw new IllegalArgumentException("MP4 ftyp box가 너무 짧음");
+        }
+    }
+
+    private double readMp4MovieDurationSeconds(final byte[] bytes, final Mp4Box movieBox) {
+        int offset = movieBox.dataOffset();
+        while (offset < movieBox.endOffset()) {
+            final Mp4Box child = readMp4Box(bytes, offset, movieBox.endOffset());
+            if (child.type().equals(MP4_MOVIE_HEADER_BOX)) {
+                return readMp4MovieHeaderDurationSeconds(bytes, child);
+            }
+            offset = child.endOffset();
+        }
+        throw new IllegalArgumentException("MP4 mvhd box 누락");
+    }
+
+    private double readMp4MovieHeaderDurationSeconds(
+            final byte[] bytes,
+            final Mp4Box movieHeaderBox
+    ) {
+        if (movieHeaderBox.dataSize() < 4) {
+            throw new IllegalArgumentException("MP4 mvhd box가 너무 짧음");
+        }
+        final int version = Byte.toUnsignedInt(bytes[movieHeaderBox.dataOffset()]);
+        if (version == 0) {
+            return readMp4VersionZeroDurationSeconds(bytes, movieHeaderBox);
+        }
+        if (version == 1) {
+            return readMp4VersionOneDurationSeconds(bytes, movieHeaderBox);
+        }
+        throw new IllegalArgumentException("지원하지 않는 MP4 mvhd 버전");
+    }
+
+    private double readMp4VersionZeroDurationSeconds(
+            final byte[] bytes,
+            final Mp4Box movieHeaderBox
+    ) {
+        final int requiredSize = 20;
+        if (movieHeaderBox.dataSize() < requiredSize) {
+            throw new IllegalArgumentException("MP4 mvhd 버전 0 데이터가 너무 짧음");
+        }
+        final int dataOffset = movieHeaderBox.dataOffset();
+        final long timeScale = readUnsignedBigEndian(bytes, dataOffset + 12, 4);
+        final double duration = readUnsignedBigEndianAsDouble(bytes, dataOffset + 16, 4);
+        return calculateMp4DurationSeconds(timeScale, duration);
+    }
+
+    private double readMp4VersionOneDurationSeconds(
+            final byte[] bytes,
+            final Mp4Box movieHeaderBox
+    ) {
+        final int requiredSize = 32;
+        if (movieHeaderBox.dataSize() < requiredSize) {
+            throw new IllegalArgumentException("MP4 mvhd 버전 1 데이터가 너무 짧음");
+        }
+        final int dataOffset = movieHeaderBox.dataOffset();
+        final long timeScale = readUnsignedBigEndian(bytes, dataOffset + 20, 4);
+        final double duration = readUnsignedBigEndianAsDouble(bytes, dataOffset + 24, 8);
+        return calculateMp4DurationSeconds(timeScale, duration);
+    }
+
+    private double calculateMp4DurationSeconds(final long timeScale, final double duration) {
+        if (timeScale <= 0 || !Double.isFinite(duration) || duration <= 0) {
+            throw new IllegalArgumentException("MP4 재생 시간 값이 유효하지 않음");
+        }
+        return duration / timeScale;
+    }
+
+    private Mp4Box readMp4Box(final byte[] bytes, final int offset, final int limit) {
+        final int standardHeaderSize = 8;
+        if (offset < 0 || limit > bytes.length || offset + standardHeaderSize > limit) {
+            throw new IllegalArgumentException("MP4 box 헤더 누락");
+        }
+
+        final long declaredSize = readUnsignedBigEndian(bytes, offset, 4);
+        final String type = new String(bytes, offset + 4, 4, StandardCharsets.US_ASCII);
+        int headerSize = standardHeaderSize;
+        long boxSize = declaredSize;
+        if (declaredSize == MP4_EXTENDED_SIZE) {
+            headerSize = 16;
+            boxSize = readSupportedMp4ExtendedSize(bytes, offset, limit);
+        } else if (declaredSize == MP4_TO_END_SIZE) {
+            boxSize = limit - (long) offset;
+        }
+
+        if (boxSize < headerSize || boxSize > limit - (long) offset) {
+            throw new IllegalArgumentException("MP4 box 크기가 유효하지 않음");
+        }
+        final long endOffset = offset + boxSize;
+        if (endOffset > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("MP4 box 범위가 너무 큼");
+        }
+        return new Mp4Box(type, offset + headerSize, (int) boxSize - headerSize);
+    }
+
+    private long readSupportedMp4ExtendedSize(
+            final byte[] bytes,
+            final int offset,
+            final int limit
+    ) {
+        final int extendedHeaderSize = 16;
+        if (offset + extendedHeaderSize > limit) {
+            throw new IllegalArgumentException("MP4 확장 box 헤더 누락");
+        }
+        for (int index = offset + 8; index < offset + 12; index++) {
+            if (bytes[index] != 0) {
+                throw new IllegalArgumentException("MP4 확장 box 범위가 너무 큼");
+            }
+        }
+        return readUnsignedBigEndian(bytes, offset + 12, 4);
+    }
+
+    private double readUnsignedBigEndianAsDouble(
+            final byte[] bytes,
+            final int offset,
+            final int length
+    ) {
+        if (offset < 0 || length < 1 || length > 8 || offset + length > bytes.length) {
+            throw new IllegalArgumentException("정수 범위가 유효하지 않음");
+        }
+        double value = 0;
+        for (int index = 0; index < length; index++) {
+            value = value * 256 + Byte.toUnsignedInt(bytes[offset + index]);
+        }
+        return value;
     }
 
     private double readWavDurationSeconds(final byte[] bytes) {
@@ -243,6 +406,13 @@ public class AudioDurationValidator {
     }
 
     private record EbmlElement(long id, int dataOffset, int dataSize) {
+
+        private int endOffset() {
+            return dataOffset + dataSize;
+        }
+    }
+
+    private record Mp4Box(String type, int dataOffset, int dataSize) {
 
         private int endOffset() {
             return dataOffset + dataSize;

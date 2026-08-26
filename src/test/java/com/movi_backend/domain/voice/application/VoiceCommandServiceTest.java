@@ -510,6 +510,30 @@ class VoiceCommandServiceTest {
     }
 
     @Test
+    @DisplayName("코덱 정보가 포함된 MP4 음성 형식은 정규화해 길이를 검증한다")
+    void MP4_음성_형식은_정규화해_길이를_검증한다() {
+        // given
+        final VoiceSession otherUserSession = createSession(99L);
+        final MockMultipartFile mp4Audio = new MockMultipartFile(
+                "audio",
+                "voice.mp4",
+                "audio/mp4;codecs=mp4a.40.2",
+                new byte[]{1, 2, 3}
+        );
+        given(voiceSessionRepository.findById(SESSION_ID))
+                .willReturn(Optional.of(otherUserSession));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, mp4Audio))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+        then(audioDurationValidator).should().validate(mp4Audio, "audio/mp4");
+        then(voiceAnalysisClient).shouldHaveNoInteractions();
+    }
+
+    @Test
     @DisplayName("만료된 슬롯이 있는 세션에 발화하면 슬롯을 폐기하고 만료 예외가 발생한다")
     void 만료된_슬롯이_있는_세션에_발화하면_슬롯을_폐기하고_만료_예외가_발생한다()
             throws Exception {

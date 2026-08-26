@@ -60,6 +60,7 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
 
 ## 변경 이력
 
+- **2026-08-27** — Safari/iOS 녹음 파일 지원 추가 (#91). `audio/mp4`·`audio/x-m4a`를 허용하고, MIME 문자열만 믿지 않도록 MP4의 `ftyp`·`moov`·`mvhd` box를 파싱해 버전 0·1 재생시간을 검증한다. 15초 초과와 손상된 box 크기·재생시간 누락은 AI 호출 전에 거부한다.
 - **2026-08-25** — `BALANCE` 의도 처리 추가 (#73). `HISTORY`와 같은 조회 흐름을 따르며 `BalanceInquiryService`를 그대로 호출한다. `VoiceCommandResponse`에 `balance` 필드 추가.
 - **2026-08-25** — `HISTORY` 의도 처리 추가 (#68). `validateIntent()`가 `TRANSFER` 외를 전부 거부해 "거래내역 알려줘"가 음성으로 동작하지 않던 문제를 해결했다. 함께 바뀐 것:
   - `VoiceSessionStatus`에 `CLARIFYING → ACTIVE` 전이 추가 (의도 전환)

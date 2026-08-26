@@ -151,7 +151,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 ### 음성 세션
 
-- WebM/WAV, 최대 5MB·15초 검증
+- WebM/WAV와 Safari/iOS MP4·M4A, 최대 5MB·15초 검증
 - AI Voice 응답의 request/session ID, confidence, 필수 필드 검증
 - 최종 확인 발화의 `confirmationId`를 서버 세션 값과 대조
 - 금액·수취인 누락 시 기존 슬롯과 후속 발화 병합

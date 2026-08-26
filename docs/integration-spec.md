@@ -181,6 +181,7 @@ Content-Type: multipart/form-data
     "voiceSessionId": 15,
     "state": "CLARIFYING",
     "intent": "TRANSFER",
+    "transcript": "엄마한테 보내줘",
     "missingSlots": ["AMOUNT"],
     "expiresAt": "2026-08-14T10:01:00+09:00"
   }
@@ -199,6 +200,7 @@ Content-Type: multipart/form-data
   "data": {
     "voiceSessionId": 15,
     "state": "AWAITING_CONFIRMATION",
+    "transcript": "엄마 계좌 ***6789로 오만 원 보내줘",
     "confirmationId": "c14c5b4d-a394-4d67-8788-bc716e5a60b6",
     "fromAccount": {
       "accountId": 12,
@@ -228,6 +230,7 @@ Content-Type: multipart/form-data
   "message": "이체가 완료되었습니다.",
   "voiceMessage": "김영희 님에게 오만 원을 보냈어요.",
   "data": {
+    "transcript": "응 보내줘",
     "transferId": 101,
     "status": "COMPLETED",
     "riskLevel": "LOW",
@@ -236,6 +239,11 @@ Content-Type: multipart/form-data
   }
 }
 ```
+
+`transcript`는 현재 AI 분석 결과를 Backend가 마스킹한 값이다. 계좌번호·전화번호 형태의 긴 숫자는
+마지막 네 자리만 남긴다. 프론트는 사용자에게 인식 결과를 보여 주는 용도로만 사용하며 금융 실행
+값으로 다시 보내거나 저장하지 않는다. 완료된 멱등 요청을 재조회해 AI 분석을 생략한 응답은
+`transcript=null`이다.
 
 HIGH는 `403`과 `FDS_4031`, FDS 통신 실패는 `502/504`를 사용한다. 두 경우 모두 실제 오픈뱅킹 이체를 호출하지 않는다.
 

@@ -124,10 +124,12 @@ public class VoiceCommandService {
 
         final PendingTransferSlots previousSlots = readPendingSlots(session);
         final VoiceAnalysisResponse analysis = analyze(audio, session, previousSlots);
+        final String transcript = SensitiveTextMasker.mask(analysis.transcript());
         if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
             return processConfirmationResponse(
                     session,
                     analysis,
+                    transcript,
                     previousSlots,
                     confirmationId,
                     idempotencyKey,
@@ -135,10 +137,10 @@ public class VoiceCommandService {
             );
         }
         if (analysis.intent() == VoiceIntent.HISTORY) {
-            return queryHistory(session, analysis, now);
+            return queryHistory(session, analysis, transcript, now);
         }
         if (analysis.intent() == VoiceIntent.BALANCE) {
-            return queryBalance(session, analysis, now);
+            return queryBalance(session, analysis, transcript, now);
         }
         validateIntent(analysis.intent());
 
@@ -158,6 +160,7 @@ public class VoiceCommandService {
                     voiceCommand,
                     commandRequest,
                     clarification,
+                    transcript,
                     analysis.processingMs(),
                     now
             );
@@ -167,6 +170,7 @@ public class VoiceCommandService {
                 session,
                 voiceCommand,
                 (ValidatedTransferCommand) validationResult,
+                transcript,
                 analysis.processingMs(),
                 now
         );
@@ -285,6 +289,7 @@ public class VoiceCommandService {
     private VoiceCommandResponse queryBalance(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final String transcript,
             final LocalDateTime now
     ) {
         validateSourceAccountConfidence(analysis.entities(), analysis.entityConfidences());
@@ -295,7 +300,11 @@ public class VoiceCommandService {
         );
 
         session.resumeActive(now);
-        final VoiceCommandResponse response = VoiceCommandResponse.balance(session, balance);
+        final VoiceCommandResponse response = VoiceCommandResponse.balance(
+                session,
+                balance,
+                transcript
+        );
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         voiceCommandRepository.save(voiceCommand);
         return response;
@@ -304,6 +313,7 @@ public class VoiceCommandService {
     private VoiceCommandResponse queryHistory(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final String transcript,
             final LocalDateTime now
     ) {
         final VoiceEntities entities = analysis.entities();
@@ -334,7 +344,8 @@ public class VoiceCommandService {
                         transactions.content().stream()
                                 .map(VoiceCommandResponse.Item::from)
                                 .toList()
-                )
+                ),
+                transcript
         );
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         voiceCommandRepository.save(voiceCommand);
@@ -344,18 +355,20 @@ public class VoiceCommandService {
     private VoiceCommandResponse processConfirmationResponse(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final String transcript,
             final PendingTransferSlots pendingSlots,
             final String confirmationId,
             final String idempotencyKey,
             final LocalDateTime now
     ) {
         if (analysis.intent() == VoiceIntent.CANCEL) {
-            return cancel(session, analysis, now);
+            return cancel(session, analysis, transcript, now);
         }
         if (analysis.intent() == VoiceIntent.CONFIRM) {
             return confirm(
                     session,
                     analysis,
+                    transcript,
                     pendingSlots,
                     confirmationId,
                     idempotencyKey,
@@ -368,11 +381,12 @@ public class VoiceCommandService {
     private VoiceCommandResponse cancel(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final String transcript,
             final LocalDateTime now
     ) {
         final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
         session.cancel(now);
-        final VoiceCommandResponse response = VoiceCommandResponse.canceled(session);
+        final VoiceCommandResponse response = VoiceCommandResponse.canceled(session, transcript);
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         voiceCommandRepository.save(voiceCommand);
         return response;
@@ -381,6 +395,7 @@ public class VoiceCommandService {
     private VoiceCommandResponse confirm(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final String transcript,
             final PendingTransferSlots pendingSlots,
             final String confirmationId,
             final String idempotencyKey,
@@ -414,7 +429,7 @@ public class VoiceCommandService {
                 )
         );
         session.complete(LocalDateTime.now());
-        final VoiceCommandResponse response = VoiceCommandResponse.executed(result);
+        final VoiceCommandResponse response = VoiceCommandResponse.executed(result, transcript);
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         return response;
     }
@@ -577,6 +592,7 @@ public class VoiceCommandService {
             final VoiceCommand voiceCommand,
             final TransferCommandRequest commandRequest,
             final TransferClarification clarification,
+            final String transcript,
             final int processingMs,
             final LocalDateTime now
     ) {
@@ -587,7 +603,11 @@ public class VoiceCommandService {
         session.clarify(VoiceIntent.TRANSFER, writeJson(pendingSlots), now);
         voiceCommand.markClarify(clarification.voiceMessage(), processingMs);
         voiceCommandRepository.save(voiceCommand);
-        return VoiceCommandResponse.clarifying(session, clarification.missingSlots());
+        return VoiceCommandResponse.clarifying(
+                session,
+                clarification.missingSlots(),
+                transcript
+        );
     }
 
     private PendingTransferSlots createClarifyingSlots(
@@ -614,6 +634,7 @@ public class VoiceCommandService {
             final VoiceSession session,
             final VoiceCommand voiceCommand,
             final ValidatedTransferCommand validatedCommand,
+            final String transcript,
             final int processingMs,
             final LocalDateTime now
     ) {
@@ -634,7 +655,8 @@ public class VoiceCommandService {
                 confirmationId,
                 account,
                 recipient,
-                validatedCommand.amount()
+                validatedCommand.amount(),
+                transcript
         );
         voiceCommand.completeWith(response.toVoiceMessage(), processingMs);
         voiceCommandRepository.save(voiceCommand);

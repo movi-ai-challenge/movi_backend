@@ -273,4 +273,68 @@ class AudioDurationValidatorTest {
             throw new IllegalStateException(exception);
         }
     }
+
+    @Test
+    @DisplayName("mvhd 뒤에 파일 범위를 벗어난 자식 box가 있으면 거부한다")
+    void mvhd_뒤에_손상된_자식_box가_있으면_거부한다() {
+        // given — 첫 mvhd 에서 멈추면 뒤쪽 손상을 보지 못하고 통과한다
+        final byte[] movieHeader = mp4Box("mvhd", mp4MovieHeader(0, 1_000, 5_000));
+        final ByteBuffer brokenTrack = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN);
+        brokenTrack.putInt(1_024);
+        brokenTrack.put(ascii("trak"));
+        final byte[] fileType = mp4Box(
+                "ftyp",
+                concat(ascii("M4A "), new byte[4], ascii("M4A "), ascii("isom"))
+        );
+        final MockMultipartFile audio = audio(
+                "voice.mp4",
+                "audio/mp4",
+                concat(fileType, mp4Box("moov", concat(movieHeader, brokenTrack.array())))
+        );
+
+        // when & then
+        assertError(audio, "audio/mp4", ErrorCode.AUDIO_DURATION_INVALID);
+    }
+
+    @Test
+    @DisplayName("mvhd가 두 개인 MP4 파일은 거부한다")
+    void mvhd가_두_개인_MP4_파일은_거부한다() {
+        // given — 어느 쪽 재생 시간이 맞는지 알 수 없다
+        final byte[] shortHeader = mp4Box("mvhd", mp4MovieHeader(0, 1_000, 5_000));
+        final byte[] longHeader = mp4Box("mvhd", mp4MovieHeader(0, 1_000, 60_000));
+        final byte[] fileType = mp4Box(
+                "ftyp",
+                concat(ascii("M4A "), new byte[4], ascii("M4A "), ascii("isom"))
+        );
+        final MockMultipartFile audio = audio(
+                "voice.mp4",
+                "audio/mp4",
+                concat(fileType, mp4Box("moov", concat(shortHeader, longHeader)))
+        );
+
+        // when & then
+        assertError(audio, "audio/mp4", ErrorCode.AUDIO_DURATION_INVALID);
+    }
+
+    @Test
+    @DisplayName("mvhd 뒤에 정상 trak이 있는 MP4 파일은 허용한다")
+    void mvhd_뒤에_정상_trak이_있는_MP4_파일은_허용한다() {
+        // given — 실제 iPhone 녹음은 moov 안에 trak, udta 를 함께 담는다
+        final byte[] movieHeader = mp4Box("mvhd", mp4MovieHeader(0, 1_000, 5_000));
+        final byte[] track = mp4Box("trak", new byte[32]);
+        final byte[] userData = mp4Box("udta", new byte[16]);
+        final byte[] fileType = mp4Box(
+                "ftyp",
+                concat(ascii("M4A "), new byte[4], ascii("M4A "), ascii("isom"))
+        );
+        final MockMultipartFile audio = audio(
+                "voice.mp4",
+                "audio/mp4",
+                concat(fileType, mp4Box("moov", concat(movieHeader, track, userData)))
+        );
+
+        // when & then
+        assertThatCode(() -> validator.validate(audio, "audio/mp4"))
+                .doesNotThrowAnyException();
+    }
 }

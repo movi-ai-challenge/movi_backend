@@ -78,16 +78,33 @@ public class AudioDurationValidator {
         }
     }
 
+    /**
+     * {@code moov}의 자식 box를 끝까지 순회하며 재생 시간을 읽는다.
+     *
+     * <p>첫 {@code mvhd}에서 바로 반환하면 그 뒤에 크기가 파일 범위를 벗어나는 손상된
+     * {@code trak}이 있어도 검증을 통과한다. 최상위 box 루프는 이미 끝까지 도는데
+     * 여기서만 멈추면 같은 손상이 위치에 따라 통과와 거부로 갈린다.
+     *
+     * <p>{@code mvhd}가 둘이면 어느 쪽 재생 시간이 맞는지 알 수 없으므로 거부한다.
+     */
     private double readMp4MovieDurationSeconds(final byte[] bytes, final Mp4Box movieBox) {
+        Double durationSeconds = null;
         int offset = movieBox.dataOffset();
         while (offset < movieBox.endOffset()) {
             final Mp4Box child = readMp4Box(bytes, offset, movieBox.endOffset());
             if (child.type().equals(MP4_MOVIE_HEADER_BOX)) {
-                return readMp4MovieHeaderDurationSeconds(bytes, child);
+                if (durationSeconds != null) {
+                    throw new IllegalArgumentException("MP4 mvhd box가 중복됨");
+                }
+                durationSeconds = readMp4MovieHeaderDurationSeconds(bytes, child);
             }
             offset = child.endOffset();
         }
-        throw new IllegalArgumentException("MP4 mvhd box 누락");
+
+        if (durationSeconds == null) {
+            throw new IllegalArgumentException("MP4 mvhd box 누락");
+        }
+        return durationSeconds;
     }
 
     private double readMp4MovieHeaderDurationSeconds(

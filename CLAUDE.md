@@ -186,7 +186,13 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
    git checkout develop && git pull
    git checkout -b feat/12-balance-api      # 12 = 이슈 번호
    ```
-3. **PR 본문에 이슈 연결** — `Closes #12`를 적으면 머지 시 이슈가 자동으로 닫힙니다
+3. **PR 본문에 이슈 연결** — `Closes #12`를 적어 PR과 이슈가 서로 보이게 합니다
+4. **머지 후 이슈를 직접 닫습니다**
+   ```bash
+   gh issue close <이슈번호> --comment "PR #<PR번호> 머지로 완료"
+   ```
+
+   **`Closes #12`로 자동으로 닫히지 않습니다.** GitHub의 자동 종료는 저장소 기본 브랜치(`main`)로 머지될 때만 동작하는데, 기능 PR은 전부 `develop`을 대상으로 하기 때문입니다. 이걸 모르고 두면 끝난 일이 이슈 목록에 계속 남아 무엇이 남았는지 알 수 없게 됩니다
 
 ```text
 main     — 배포 가능 상태

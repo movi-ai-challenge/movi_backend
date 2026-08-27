@@ -3,6 +3,7 @@ package com.movi_backend.e2e;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willCallRealMethod;
 import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -26,6 +27,7 @@ import com.movi_backend.domain.fds.client.FdsAssessmentClient;
 import com.movi_backend.domain.fds.entity.UserTransferProfile;
 import com.movi_backend.domain.fds.repository.FdsAssessmentRepository;
 import com.movi_backend.domain.fds.repository.UserTransferProfileRepository;
+import com.movi_backend.domain.guardian.application.port.SmsNotificationSender;
 import com.movi_backend.domain.guardian.repository.GuardianLinkRepository;
 import com.movi_backend.domain.guardian.repository.NotificationRepository;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
@@ -68,6 +70,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -110,6 +113,9 @@ class MviE2eScenarioTest {
     private static final long PRIMARY_BALANCE = 530_000L;
 
     private static final BigDecimal HIGH_CONFIDENCE = new BigDecimal("0.95");
+
+    /** 등록과 검증이 같은 번호를 보게 묶어 둔다 */
+    private static final String GUARDIAN_PHONE = "01055556666";
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -172,6 +178,13 @@ class MviE2eScenarioTest {
     @MockitoSpyBean
     private FdsAssessmentClient fdsAssessmentClient;
 
+    /**
+     * SMS 게이트웨이 경계. test 프로필에서는 Mock 구현이 붙고, 여기서는 그 구현에
+     * <b>무엇이 전달되는지</b>를 본다. 운영에서는 같은 자리에 솔라피 구현이 들어간다.
+     */
+    @MockitoSpyBean
+    private SmsNotificationSender smsNotificationSender;
+
     private MockMvc mockMvc;
     private User user;
     private Account account;
@@ -184,7 +197,7 @@ class MviE2eScenarioTest {
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
         confirmationId = null;
-        Mockito.reset(fdsAssessmentClient);
+        Mockito.reset(fdsAssessmentClient, smsNotificationSender);
         willCallRealMethod().given(fdsAssessmentClient).assess(any());
         resetMockBalances();
         notificationRepository.deleteAll();
@@ -407,6 +420,47 @@ class MviE2eScenarioTest {
                 .satisfies(t -> assertThat(t.getStatus()).isEqualTo(TransferStatus.BLOCKED));
         assertThat(notificationRepository.findAll()).isNotEmpty();
         assertThat(currentBalance()).isEqualTo(1_500_000L);
+    }
+
+    // ------------------------------------------------------------- 8-1
+
+    /**
+     * 등록 → 감지 → 발송이 한 줄로 이어지는지 본다.
+     *
+     * <p>구간별로는 다 통과하는데 이어 붙이면 끊기는 일이 실제로 있었다. 알림 코드는 다 있는데
+     * 보호자를 등록할 방법이 없어서, 조회 결과가 늘 비어 문자가 한 통도 나가지 않았다.
+     *
+     * <p>그래서 "알림이 남았다"까지만 보지 않고, <b>SMS 게이트웨이에 실제로 전달된 수신번호가
+     * 등록한 번호와 같은지</b>까지 확인한다. 운영에서는 이 자리에 솔라피 구현이 붙으므로,
+     * 여기까지 도달한 번호가 곧 문자를 받는 번호다.
+     */
+    @Test
+    @DisplayName("8-1. 등록한 보호자 번호로 경고 문자가 나간다")
+    void 시나리오8_1_등록한_보호자_번호로_경고_문자가_나간다() throws Exception {
+        // given — 로그인한 사용자가 보호자 번호를 등록한다 (실제 API)
+        linkGuardian();
+        fundPrimaryAccount(1_500_000L);
+        stubUtterance(transferUtterance(700_000L, "엄마"));
+
+        // when — 고위험 이체가 감지된다
+        final Long sessionId = startSession();
+        awaitConfirmation(sessionId);
+        stubUtterance(confirmUtterance());
+        mockMvc.perform(voiceCommand(sessionId, UUID.randomUUID().toString()))
+                .andExpect(status().isForbidden());
+
+        // then — SMS 게이트웨이가 등록한 그 번호로 호출된다
+        final ArgumentCaptor<String> phoneCaptor = ArgumentCaptor.forClass(String.class);
+        final ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
+        then(smsNotificationSender).should().send(
+                any(Long.class), phoneCaptor.capture(), any(String.class), messageCaptor.capture());
+
+        // 게이트웨이에는 암호문이 전달된다. 복호화해야 등록 번호와 대조할 수 있다
+        assertThat(sensitiveDataCrypto.decrypt(phoneCaptor.getValue()))
+                .isEqualTo(GUARDIAN_PHONE);
+        assertThat(messageCaptor.getValue()).isNotBlank();
+        // 문자에 계좌번호·전화번호가 섞여 나가면 잠금화면에 그대로 노출된다
+        assertThat(messageCaptor.getValue()).doesNotContain(GUARDIAN_PHONE);
     }
 
     // ---------------------------------------------------------------- 9
@@ -725,10 +779,10 @@ class MviE2eScenarioTest {
                         .content("""
                                 {
                                   "guardianName": "김보호",
-                                  "guardianPhone": "01055556666",
+                                  "guardianPhone": "%s",
                                   "relation": "자녀"
                                 }
-                                """))
+                                """.formatted(GUARDIAN_PHONE)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
     }

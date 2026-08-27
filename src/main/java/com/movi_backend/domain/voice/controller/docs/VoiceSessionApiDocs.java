@@ -1,6 +1,7 @@
 package com.movi_backend.domain.voice.controller.docs;
 
 import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
+import com.movi_backend.domain.voice.dto.request.VoiceSessionStartRequest;
 import com.movi_backend.domain.voice.dto.response.VoiceSessionStartResponse;
 import com.movi_backend.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,6 +32,11 @@ public interface VoiceSessionApiDocs {
                     들고 있는 주체가 세션입니다. 프론트와 AI는 앞선 발화의 금액·수취인을 보관하지 않습니다.
 
                     유효시간은 마지막 활동 후 5분입니다. 재질문이나 확인을 기다리는 동안은 60초로 짧아집니다.
+
+                    **본문은 선택입니다.** `deviceUuid`를 보내면 그 기기가 세션에 연결돼 이 세션에서 시작된
+                    이체의 FDS 위험도 평가에 신뢰 기기 여부로 들어갑니다. 기기는 PIN 인증(로그인 또는 최초
+                    등록)을 통과한 시점에 신뢰 기기로 등록되므로, **같은 `deviceUuid`를 그때도 함께 보내야**
+                    합니다. 보내지 않거나 등록되지 않은 기기면 비신뢰로 평가돼 위험도가 한 단계 올라갑니다.
                     """
     )
     @ApiResponses({
@@ -39,7 +45,8 @@ public interface VoiceSessionApiDocs {
                     description = "`AUTH_4010` 인증 필요")
     })
     com.movi_backend.global.response.ApiResponse<VoiceSessionStartResponse> start(
-            @Parameter(hidden = true) AuthUser authUser
+            @Parameter(hidden = true) AuthUser authUser,
+            VoiceSessionStartRequest request
     );
 
     @Operation(

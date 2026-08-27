@@ -58,6 +58,12 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
 
 `VoiceCommand`에 저장하는 `sttText`와 `entities`는 `SensitiveTextMasker`를 거친다. 발화에 계좌번호가 섞여 들어오기 때문이다.
 
+### 세션은 기기를 들고 있는다
+
+세션에 붙은 기기가 이 세션에서 시작된 이체의 FDS 신뢰 기기 피처가 된다. 기기를 못 찾으면 붙이지 않고 그대로 진행한다 — 비신뢰로 평가돼 위험 쪽으로 기울 뿐이고, 세션 생성을 막을 이유는 아니다.
+
+`deviceUuid`는 인증 수단이 아니라 식별자다. 소유권 판정은 언제나 Access Token으로 한다.
+
 ## 변경 이력
 
 - **2026-08-27** — Safari/iOS 녹음 파일 지원 추가 (#91). `audio/mp4`·`audio/x-m4a`를 허용하고, MIME 문자열만 믿지 않도록 MP4의 `ftyp`·`moov`·`mvhd` box를 파싱해 버전 0·1 재생시간을 검증한다. 15초 초과와 손상된 box 크기·재생시간 누락은 AI 호출 전에 거부한다.
@@ -68,3 +74,4 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
   - `VoiceCommandResponse`에 `history` 필드 추가 (송금 응답에는 `null`)
   - `VoiceHistoryPeriod` — AI가 준 기간을 재검증하고 빈 값을 기본 기간으로 채운다
   - `ErrorCode.HISTORY_PERIOD_INVALID`(VOICE_4010) 추가
+- **2026-08-28** — 음성 세션에 기기 연결 (#96). 기기 등록은 별도 트랜잭션이라 실패해도 로그인·세션 생성을 무너뜨리지 않는다. `POST /api/voice/sessions`가 선택 본문으로 `deviceUuid`를 받아 세션에 신뢰 기기를 붙인다. 그전까지 `VoiceSession.device`는 항상 `null`이라 FDS의 `trustedDevice`가 실서비스에서 언제나 `false`였고, Mock FDS 기준으로 **LOW 판정이 나올 수 없었다.**

@@ -18,7 +18,6 @@ import com.movi_backend.domain.account.infrastructure.openbanking.MockOpenBankin
 import com.movi_backend.domain.account.repository.BalanceSnapshotRepository;
 import com.movi_backend.domain.account.repository.OpenbankingConnectionRepository;
 import com.movi_backend.domain.account.type.AccountType;
-import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.auth.type.UserType;
@@ -47,6 +46,7 @@ import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.domain.voice.type.VoiceSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.domain.auth.application.DeviceRegistrationService;
 import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -161,6 +161,9 @@ class MviE2eScenarioTest {
     private SensitiveDataCrypto sensitiveDataCrypto;
 
     @Autowired
+    private DeviceRegistrationService deviceRegistrationService;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -264,8 +267,7 @@ class MviE2eScenarioTest {
         makeProfileEstablished();
         stubUtterance(transferUtterance(50_000L, "엄마"));
 
-        final Long sessionId = startSession();
-        attachTrustedDevice(sessionId);
+        final Long sessionId = startSession(trustDevice());
         awaitConfirmation(sessionId);
 
         stubUtterance(confirmUtterance());
@@ -437,8 +439,7 @@ class MviE2eScenarioTest {
         makeRecipientFamiliar();
         makeProfileEstablished();
         stubUtterance(transferUtterance(50_000L, "엄마"));
-        final Long sessionId = startSession();
-        attachTrustedDevice(sessionId);
+        final Long sessionId = startSession(trustDevice());
         awaitConfirmation(sessionId);
         stubUtterance(confirmUtterance());
 
@@ -533,10 +534,14 @@ class MviE2eScenarioTest {
     // ---------------------------------------------------------------- helpers
 
     private Long startSession() throws Exception {
+        return startSession(null);
+    }
+
+    private Long startSession(final String deviceUuid) throws Exception {
         final String body = mockMvc.perform(post("/api/voice/sessions")
                         .header("X-Dev-User-Id", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content(sessionStartBody(deviceUuid)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return voiceSessionRepository.findAll().stream()
@@ -673,29 +678,37 @@ class MviE2eScenarioTest {
         );
     }
 
-    /** Device 는 전용 리포지토리가 없어 정리도 EntityManager 로 한다. */
+    /** 시나리오마다 기기 신뢰 상태가 이어지지 않도록 비운다. */
     private void deleteAllDevices() {
         transactionTemplate.executeWithoutResult(status ->
                 entityManager.createQuery("delete from Device").executeUpdate());
     }
 
+    private String sessionStartBody(final String deviceUuid) {
+        if (deviceUuid == null) {
+            return "{}";
+        }
+        return "{\"deviceUuid\":\"%s\"}".formatted(deviceUuid);
+    }
+
     /**
      * 미등록 기기에서의 이체는 FDS가 위험 신호로 보아 MEDIUM이 된다.
-     * LOW 시나리오에서는 세션에 신뢰 기기를 붙인다.
+     * LOW 시나리오에서는 신뢰 기기를 등록하고 그 식별자로 세션을 연다.
+     *
+     * <p>세션에 기기를 리플렉션으로 심지 않는 이유는, 실제 API 경로로 LOW가 나오는지를
+     * 확인하는 것이 이 시나리오의 목적이기 때문이다. 기기 등록 경로가 없던 시절에는
+     * 이 테스트만 통과하고 실서비스에서는 LOW가 나올 수 없었다.
      */
-    private void attachTrustedDevice(final Long sessionId) {
-        transactionTemplate.executeWithoutResult(status -> {
-            final Device device = Device.builder()
-                    .user(entityManager.getReference(User.class, user.getId()))
-                    .deviceUuid(UUID.randomUUID().toString())
-                    .deviceModel("Galaxy E2E")
-                    .osVersion("Android 14")
-                    .build();
-            device.trust();
-            entityManager.persist(device);
-            final VoiceSession session = entityManager.find(VoiceSession.class, sessionId);
-            ReflectionTestUtils.setField(session, "device", device);
-        });
+    private String trustDevice() {
+        final String deviceUuid = UUID.randomUUID().toString();
+        transactionTemplate.executeWithoutResult(status ->
+                deviceRegistrationService.registerTrusted(
+                        user.getId(),
+                        deviceUuid,
+                        "Galaxy E2E",
+                        "Android 14"
+                ));
+        return deviceUuid;
     }
 
     /** 첫 거래 상대는 FDS가 MEDIUM으로 본다. LOW 시나리오에서는 거래 이력을 만들어 둔다. */

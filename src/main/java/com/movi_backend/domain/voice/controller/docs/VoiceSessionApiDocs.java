@@ -74,7 +74,8 @@ public interface VoiceSessionApiDocs {
 
                     ## 음성 파일 제약
 
-                    WebM/Opus 또는 WAV, **최대 5MB·15초**입니다. 재생 시간은 헤더에서 읽으므로
+                    WebM/Opus, WAV 또는 Safari/iOS MP4·M4A, **최대 5MB·15초**입니다.
+                    재생 시간은 헤더에서 읽으므로
                     형식이 올바르지 않으면 업로드 단계에서 거부됩니다.
 
                     ## 알아 둘 것
@@ -111,7 +112,7 @@ public interface VoiceSessionApiDocs {
     com.movi_backend.global.response.ApiResponse<VoiceCommandResponse> command(
             @Parameter(hidden = true) AuthUser authUser,
             @Parameter(description = "음성 세션 ID", example = "15") Long voiceSessionId,
-            @Parameter(description = "녹음 파일. WebM/Opus 또는 WAV, 최대 5MB·15초")
+            @Parameter(description = "녹음 파일. WebM/Opus, WAV 또는 MP4·M4A, 최대 5MB·15초")
             MultipartFile audio,
             @Parameter(description = "확인 발화에만 보낸다. 확인 대기 응답으로 받은 값을 그대로 되돌려 준다")
             String confirmationId,

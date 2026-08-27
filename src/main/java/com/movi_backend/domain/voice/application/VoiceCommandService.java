@@ -65,6 +65,8 @@ public class VoiceCommandService {
     private static final int HISTORY_PAGE_SIZE = 5;
     private static final List<String> SUPPORTED_AUDIO_TYPES = List.of(
             "audio/webm",
+            "audio/mp4",
+            "audio/x-m4a",
             "audio/wav",
             "audio/x-wav",
             "audio/wave"

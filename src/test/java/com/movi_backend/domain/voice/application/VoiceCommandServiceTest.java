@@ -25,6 +25,7 @@ import com.movi_backend.domain.transfer.application.model.ValidatedTransferComma
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.domain.transfer.application.TransferTargetResolver;
 import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.domain.transfer.type.TransferSlot;
@@ -210,8 +211,7 @@ class VoiceCommandServiceTest {
                 transferExecutionService,
                 transactionQueryService,
                 balanceInquiryService,
-                accountRepository,
-                transferRecipientRepository,
+                new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 objectMapper,
                 audioDurationValidator
         );
@@ -911,8 +911,7 @@ class VoiceCommandServiceTest {
                 transferExecutionService,
                 transactionQueryService,
                 balanceInquiryService,
-                accountRepository,
-                transferRecipientRepository,
+                new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 new ObjectMapper(),
                 audioDurationValidator
         );

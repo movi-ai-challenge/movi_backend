@@ -80,11 +80,6 @@ PENDING → RISK_REVIEW → COMPLETED
 
 ## 변경 이력
 
-- **2026-08-25** — 거래내역 단건 상세 조회와 음성 안내 추가 (#71)
-  - `GET /api/transactions/{transactionId}` 신설, `TransactionDetailResponse` 추가
-  - 목록·상세 응답에 `voiceMessage` 채움 (기존 목록 응답에는 없었다)
-  - `ErrorCode.TRANSACTION_NOT_FOUND`(TRANSFER_4042) 추가
-
 - **2026-08-28** — 직접 입력 송금 검토·실행과 등록 수취인 목록 추가
   - `GET /api/transfers/recipients`, `POST /api/transfers/review`, `POST /api/transfers` 신설
   - `TransferConfirmationStore`로 검토 스냅샷을 서버가 소유. 실행 요청은 확인 ID와 멱등성 키만 받는다
@@ -92,3 +87,8 @@ PENDING → RISK_REVIEW → COMPLETED
   - `ErrorCode.CONFIRMATION_INVALID`(TRANSFER_4007) 추가
   - `movi.transfer.confirmation-expire-minutes`(기본 5분) 추가 — 화면 검토는 음성 확인 60초보다 길다
 - **2026-08-28** — 직접 입력 실행 요청이 `deviceUuid`를 받아 FDS 신뢰 기기 피처로 넘긴다 (#96). 음성 세션과 달리 기기를 들고 있을 세션이 없어 실행 요청이 직접 실어 보낸다.
+- **2026-08-28** — 직접 입력 송금 E2E 추가 (#107). 단위 테스트는 `TransferExecutionService`를 목으로 대체해 컨트롤러부터 FDS·오픈뱅킹까지 실제로 이어지는지, 멱등성이 DB 제약까지 포함해 동작하는지를 보지 못한다. 접근성 대안이지만 **똑같이 돈이 나가는 경로**라 음성과 같은 수준으로 고정했다.
+- **2026-08-25** — 거래내역 단건 상세 조회와 음성 안내 추가 (#71)
+  - `GET /api/transactions/{transactionId}` 신설, `TransactionDetailResponse` 추가
+  - 목록·상세 응답에 `voiceMessage` 채움 (기존 목록 응답에는 없었다)
+  - `ErrorCode.TRANSACTION_NOT_FOUND`(TRANSFER_4042) 추가

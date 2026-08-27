@@ -145,6 +145,8 @@ class VoiceCommandServiceTest {
 
         // then
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.CLARIFYING);
+        assertThat(response.transcript()).isEqualTo("엄마 계좌 ***3456으로 보내줘");
+        assertThat(response.transcript()).doesNotContain("110-123-123456");
         assertThat(response.missingSlots()).containsExactly(TransferSlot.AMOUNT);
         assertThat(response.toVoiceMessage()).isEqualTo("얼마를 보내시겠어요?");
         assertThat(session.getPendingSlots()).contains("엄마");
@@ -225,6 +227,7 @@ class VoiceCommandServiceTest {
 
         // then
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+        assertThat(response.transcript()).isEqualTo("오만 원");
         assertThat(response.amount()).isEqualTo(50_000L);
         assertThat(response.confirmationId()).isNotBlank();
         assertThat(response.toVoiceMessage())
@@ -296,6 +299,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.CANCELED);
         assertThat(response.intent()).isEqualTo(VoiceIntent.CANCEL);
+        assertThat(response.transcript()).isEqualTo("아니 취소할게");
         assertThat(response.toVoiceMessage()).isEqualTo("송금을 취소했어요.");
         assertThat(session.getPendingSlots()).isNull();
         assertThat(session.getPendingIntent()).isNull();
@@ -375,6 +379,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.transferId()).isEqualTo(101L);
         assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(response.transcript()).isEqualTo("응 보내줘");
         assertThat(response.toVoiceMessage()).isEqualTo("김영희 님에게 5만원을 보냈어요.");
         assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
         assertThat(session.getPendingSlots()).isNull();
@@ -468,6 +473,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.transferId()).isEqualTo(101L);
         assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(response.transcript()).isNull();
         then(voiceAnalysisClient).shouldHaveNoInteractions();
         then(transferExecutionService).should(never()).execute(any());
     }
@@ -621,6 +627,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.intent()).isEqualTo(VoiceIntent.HISTORY);
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(response.transcript()).isEqualTo("거래내역 알려줘");
         assertThat(response.history().totalCount()).isEqualTo(2L);
         assertThat(response.history().items()).hasSize(2);
         assertThat(response.toVoiceMessage())
@@ -759,6 +766,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.intent()).isEqualTo(VoiceIntent.BALANCE);
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(response.transcript()).isEqualTo("잔액 알려줘");
         assertThat(response.balance().balanceAmount()).isEqualTo(53_000L);
         assertThat(response.toVoiceMessage()).isEqualTo("국민은행 생활비 통장에 5만 3천원 있어요.");
         assertThat(response.toVoiceMessage()).doesNotContain("53000");

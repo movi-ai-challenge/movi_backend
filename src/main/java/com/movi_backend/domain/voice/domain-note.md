@@ -66,7 +66,9 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
 
 ## 변경 이력
 
+- **2026-08-28** — 음성 세션에 기기 연결 (#96). 기기 등록은 별도 트랜잭션이라 실패해도 로그인·세션 생성을 무너뜨리지 않는다. `POST /api/voice/sessions`가 선택 본문으로 `deviceUuid`를 받아 세션에 신뢰 기기를 붙인다. 그전까지 `VoiceSession.device`는 항상 `null`이라 FDS의 `trustedDevice`가 실서비스에서 언제나 `false`였고, Mock FDS 기준으로 **LOW 판정이 나올 수 없었다.**
 - **2026-08-27** — Safari/iOS 녹음 파일 지원 추가 (#91). `audio/mp4`·`audio/x-m4a`를 허용하고, MIME 문자열만 믿지 않도록 MP4의 `ftyp`·`moov`·`mvhd` box를 파싱해 버전 0·1 재생시간을 검증한다. 15초 초과와 손상된 box 크기·재생시간 누락은 AI 호출 전에 거부한다.
+- **2026-08-27** — 공개 Voice 응답에 마스킹된 `transcript` 추가 (#93). 실시간 AI 분석 응답은 계좌번호·전화번호 형태의 숫자를 가린 뒤 프론트에 전달하고, AI 호출 없이 저장 결과만 반환하는 멱등 재조회에서는 이전 발화를 재노출하지 않도록 `null`을 반환한다.
 - **2026-08-25** — `BALANCE` 의도 처리 추가 (#73). `HISTORY`와 같은 조회 흐름을 따르며 `BalanceInquiryService`를 그대로 호출한다. `VoiceCommandResponse`에 `balance` 필드 추가.
 - **2026-08-25** — `HISTORY` 의도 처리 추가 (#68). `validateIntent()`가 `TRANSFER` 외를 전부 거부해 "거래내역 알려줘"가 음성으로 동작하지 않던 문제를 해결했다. 함께 바뀐 것:
   - `VoiceSessionStatus`에 `CLARIFYING → ACTIVE` 전이 추가 (의도 전환)
@@ -74,4 +76,3 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
   - `VoiceCommandResponse`에 `history` 필드 추가 (송금 응답에는 `null`)
   - `VoiceHistoryPeriod` — AI가 준 기간을 재검증하고 빈 값을 기본 기간으로 채운다
   - `ErrorCode.HISTORY_PERIOD_INVALID`(VOICE_4010) 추가
-- **2026-08-28** — 음성 세션에 기기 연결 (#96). 기기 등록은 별도 트랜잭션이라 실패해도 로그인·세션 생성을 무너뜨리지 않는다. `POST /api/voice/sessions`가 선택 본문으로 `deviceUuid`를 받아 세션에 신뢰 기기를 붙인다. 그전까지 `VoiceSession.device`는 항상 `null`이라 FDS의 `trustedDevice`가 실서비스에서 언제나 `false`였고, Mock FDS 기준으로 **LOW 판정이 나올 수 없었다.**

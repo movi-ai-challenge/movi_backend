@@ -153,6 +153,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 - WebM/WAV와 Safari/iOS MP4·M4A, 최대 5MB·15초 검증
 - AI Voice 응답의 request/session ID, confidence, 필수 필드 검증
+- 공개 Voice 응답의 transcript를 마스킹해 계좌번호·전화번호 원문 차단
 - 최종 확인 발화의 `confirmationId`를 서버 세션 값과 대조
 - 금액·수취인 누락 시 기존 슬롯과 후속 발화 병합
 - 재질문·확인 대기 60초, 동일 슬롯 재질문 최대 3회

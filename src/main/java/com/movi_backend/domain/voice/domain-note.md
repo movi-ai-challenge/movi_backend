@@ -74,4 +74,4 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
   - `VoiceCommandResponse`에 `history` 필드 추가 (송금 응답에는 `null`)
   - `VoiceHistoryPeriod` — AI가 준 기간을 재검증하고 빈 값을 기본 기간으로 채운다
   - `ErrorCode.HISTORY_PERIOD_INVALID`(VOICE_4010) 추가
-- **2026-08-28** — 음성 세션에 기기 연결 (#96). `POST /api/voice/sessions`가 선택 본문으로 `deviceUuid`를 받아 세션에 신뢰 기기를 붙인다. 그전까지 `VoiceSession.device`는 항상 `null`이라 FDS의 `trustedDevice`가 실서비스에서 언제나 `false`였고, Mock FDS 기준으로 **LOW 판정이 나올 수 없었다.**
+- **2026-08-28** — 음성 세션에 기기 연결 (#96). 기기 등록은 별도 트랜잭션이라 실패해도 로그인·세션 생성을 무너뜨리지 않는다. `POST /api/voice/sessions`가 선택 본문으로 `deviceUuid`를 받아 세션에 신뢰 기기를 붙인다. 그전까지 `VoiceSession.device`는 항상 `null`이라 FDS의 `trustedDevice`가 실서비스에서 언제나 `false`였고, Mock FDS 기준으로 **LOW 판정이 나올 수 없었다.**

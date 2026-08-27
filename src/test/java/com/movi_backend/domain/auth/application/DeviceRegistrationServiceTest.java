@@ -1,15 +1,19 @@
 package com.movi_backend.domain.auth.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.DeviceRepository;
+import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.auth.type.UserType;
+import org.springframework.dao.DataIntegrityViolationException;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +33,9 @@ class DeviceRegistrationServiceTest {
     @Mock
     private DeviceRepository deviceRepository;
 
+    @Mock
+    private UserRepository userRepository;
+
     @InjectMocks
     private DeviceRegistrationService deviceRegistrationService;
 
@@ -40,15 +47,16 @@ class DeviceRegistrationServiceTest {
         given(deviceRepository.findByUserIdAndDeviceUuid(USER_ID, DEVICE_UUID))
                 .willReturn(Optional.empty());
         given(deviceRepository.existsByDeviceUuid(DEVICE_UUID)).willReturn(false);
-        given(deviceRepository.save(any(Device.class)))
+        given(userRepository.getReferenceById(USER_ID)).willReturn(createUser());
+        given(deviceRepository.saveAndFlush(any(Device.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         // when
-        deviceRegistrationService.registerTrusted(user, DEVICE_UUID, "Galaxy S24", "Android 14");
+        deviceRegistrationService.registerTrusted(USER_ID, DEVICE_UUID, "Galaxy S24", "Android 14");
 
         // then
         final ArgumentCaptor<Device> captor = ArgumentCaptor.forClass(Device.class);
-        then(deviceRepository).should().save(captor.capture());
+        then(deviceRepository).should().saveAndFlush(captor.capture());
         assertThat(captor.getValue().getDeviceUuid()).isEqualTo(DEVICE_UUID);
         assertThat(captor.getValue().isTrusted()).isTrue();
         assertThat(captor.getValue().getLastLoginAt()).isNotNull();
@@ -63,11 +71,11 @@ class DeviceRegistrationServiceTest {
                 .willReturn(Optional.of(device));
 
         // when
-        deviceRegistrationService.registerTrusted(createUser(), DEVICE_UUID, null, null);
+        deviceRegistrationService.registerTrusted(USER_ID, DEVICE_UUID, null, null);
 
         // then
         assertThat(device.isTrusted()).isTrue();
-        then(deviceRepository).should(never()).save(any());
+        then(deviceRepository).should(never()).saveAndFlush(any());
     }
 
     @Test
@@ -79,21 +87,22 @@ class DeviceRegistrationServiceTest {
         given(deviceRepository.existsByDeviceUuid(DEVICE_UUID)).willReturn(true);
 
         // when
-        deviceRegistrationService.registerTrusted(createUser(), DEVICE_UUID, null, null);
+        deviceRegistrationService.registerTrusted(USER_ID, DEVICE_UUID, null, null);
 
         // then
-        then(deviceRepository).should(never()).save(any());
+        then(deviceRepository).should(never()).saveAndFlush(any());
     }
 
     @Test
     @DisplayName("기기 식별자를 보내지 않아도 로그인은 막지 않는다")
     void 기기_식별자를_보내지_않아도_로그인은_막지_않는다() {
         // when
-        deviceRegistrationService.registerTrusted(createUser(), null, null, null);
-        deviceRegistrationService.registerTrusted(createUser(), "  ", null, null);
+        deviceRegistrationService.registerTrusted(USER_ID, null, null, null);
+        deviceRegistrationService.registerTrusted(USER_ID, "  ", null, null);
 
         // then
         then(deviceRepository).shouldHaveNoInteractions();
+        then(userRepository).shouldHaveNoInteractions();
     }
 
     @Test
@@ -136,5 +145,22 @@ class DeviceRegistrationServiceTest {
                 .user(user)
                 .deviceUuid(DEVICE_UUID)
                 .build();
+    }
+
+    @Test
+    @DisplayName("동시 요청이 같은 기기를 먼저 등록해도 로그인을 실패시키지 않는다")
+    void 동시_요청이_같은_기기를_먼저_등록해도_로그인을_실패시키지_않는다() {
+        // given — 존재 확인과 저장 사이에 같은 식별자가 들어온 상황
+        given(deviceRepository.findByUserIdAndDeviceUuid(USER_ID, DEVICE_UUID))
+                .willReturn(Optional.empty());
+        given(deviceRepository.existsByDeviceUuid(DEVICE_UUID)).willReturn(false);
+        given(userRepository.getReferenceById(USER_ID)).willReturn(createUser());
+        willThrow(new DataIntegrityViolationException("uk_device_uuid"))
+                .given(deviceRepository).saveAndFlush(any(Device.class));
+
+        // when & then — PIN 인증까지 끝난 로그인이 서버 오류로 끝나면 안 된다
+        assertThatCode(() -> deviceRegistrationService.registerTrusted(
+                USER_ID, DEVICE_UUID, null, null
+        )).doesNotThrowAnyException();
     }
 }

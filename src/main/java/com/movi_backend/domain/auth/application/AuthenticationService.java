@@ -43,7 +43,7 @@ public class AuthenticationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.PIN_NOT_REGISTERED));
         verifyPin(credential, request.pin());
         deviceRegistrationService.registerTrusted(
-                user,
+                user.getId(),
                 request.deviceUuid(),
                 request.deviceModel(),
                 request.osVersion()
@@ -71,7 +71,7 @@ public class AuthenticationService {
                 .build();
         userCredentialRepository.save(credential);
         deviceRegistrationService.registerTrusted(
-                user,
+                user.getId(),
                 request.deviceUuid(),
                 request.deviceModel(),
                 request.osVersion()

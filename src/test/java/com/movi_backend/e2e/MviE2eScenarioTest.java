@@ -703,7 +703,7 @@ class MviE2eScenarioTest {
         final String deviceUuid = UUID.randomUUID().toString();
         transactionTemplate.executeWithoutResult(status ->
                 deviceRegistrationService.registerTrusted(
-                        entityManager.getReference(User.class, user.getId()),
+                        user.getId(),
                         deviceUuid,
                         "Galaxy E2E",
                         "Android 14"

@@ -196,7 +196,7 @@ class AuthenticationServiceTest {
 
         // then
         then(deviceRegistrationService).should()
-                .registerTrusted(user, "device-uuid-1", "Galaxy S24", "Android 14");
+                .registerTrusted(user.getId(), "device-uuid-1", "Galaxy S24", "Android 14");
     }
 
     @Test

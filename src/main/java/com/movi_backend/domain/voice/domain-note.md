@@ -2,7 +2,7 @@
 
 음성 세션과 명령을 다룬다. STT·NLU는 AI 파트가 하고, **이 패키지는 그 결과를 검증하고 실행을 판단하는 쪽**이다.
 
-도메인 전반의 불변식은 [docs/domain-guide.md](../../../../../../docs/domain-guide.md), 파트 간 계약은 [docs/integration-spec.md](../../../../../../docs/integration-spec.md) 6절이 기준이다. 이 문서는 패키지 내부 관점의 보충 설명이다.
+도메인 전반의 불변식은 [docs/domain-guide.md](../../../../../../../docs/domain-guide.md), 파트 간 계약은 [docs/integration-spec.md](../../../../../../../docs/integration-spec.md) 6절이 기준이다. 이 문서는 패키지 내부 관점의 보충 설명이다.
 
 ## 책임
 

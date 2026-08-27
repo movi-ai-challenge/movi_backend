@@ -131,7 +131,13 @@ AI는 사용자 DB와 오픈뱅킹을 직접 조회하지 않는다. 프론트�
 ```http
 POST /api/voice/sessions
 Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{ "deviceUuid": "b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d" }
 ```
+
+본문은 선택이다. `deviceUuid`를 보내면 그 기기가 세션에 연결돼 이 세션에서 시작된 이체의 FDS
+평가에 신뢰 기기 여부로 들어간다. 자세한 규칙은 8.5절을 따른다.
 
 ```json
 {
@@ -313,9 +319,13 @@ Content-Type: application/json
 
 {
   "confirmationId": "c14c5b4d-a394-4d67-8788-bc716e5a60b6",
-  "idempotencyKey": "5f0e5c2c-52d1-4e3f-9a6f-5f8a4c1a2b3d"
+  "idempotencyKey": "5f0e5c2c-52d1-4e3f-9a6f-5f8a4c1a2b3d",
+  "deviceUuid": "b3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 }
 ```
+
+`deviceUuid`는 선택이다. 음성 세션이 기기를 들고 있는 것과 달리 직접 입력에는 세션이 없으므로
+실행 요청이 직접 실어 보낸다. 규칙은 8.5절과 같다.
 
 금액·수취인·출금 계좌를 다시 보내지 않는다. 백엔드가 검토 시점의 스냅샷을 소유하므로 이 요청은
 "그 확인을 실행한다"는 뜻만 갖는다. 실행 요청이 금액을 다시 실을 수 있으면 사용자가 검토한 값과
@@ -500,6 +510,26 @@ Mock `risk-policy-dev-v1`의 개발 임계값:
 ```
 
 실모델에는 이 수치를 자동 적용하지 않는다. AI 파트가 validation/test의 Recall, Precision, F1, PR-AUC, 오탐률과 임계값 후보를 제출하고 팀이 승인한 값을 `risk-policy-v1`로 고정한다. 백엔드는 임계값을 재계산하지 않고 AI가 반환한 위험도와 결정 조합만 검증한다.
+
+### 8.5 신뢰 기기
+
+8.3절 cold start 정책은 "신뢰 기기"를 LOW의 전제로 둔다. 그 값이 실제로 채워지려면 기기를 기록해야
+한다. **기록되지 않으면 모든 이체가 비신뢰 기기로 평가돼 최소 MEDIUM이 되고, 정상 송금에도 매번
+보호자 알림이 나간다.**
+
+| 항목 | 규칙 |
+|---|---|
+| 식별자 | 프론트가 기기·브라우저마다 UUID 하나를 만들어 보관하고 계속 같은 값을 보낸다 |
+| 신뢰 기준 | **PIN 인증(로그인 또는 최초 등록)을 통과한 기기**. 카카오 로그인만으로는 승격하지 않는다 |
+| 전달 시점 | `POST /api/v1/auth/pin/login`, `POST /api/v1/auth/pin/register`, `POST /api/voice/sessions`, `POST /api/transfers` |
+| 미전달·미등록 | 오류가 아니다. 비신뢰로 평가돼 위험도가 한 단계 오를 뿐이다 |
+| 다른 사용자의 식별자 | 신뢰를 옮기지 않는다. 등록하지 않고 비신뢰로 둔다 |
+
+`deviceUuid`는 기기 식별자일 뿐 인증 수단이 아니다. 이 값만으로 사용자를 식별하거나 인증을
+대체하지 않으며, 소유권은 항상 Access Token으로 판정한다.
+
+프론트는 이 값을 로그아웃 시 지우지 않는다. 기기는 계정이 아니라 단말에 묶인 정보이고, 지우면
+로그인할 때마다 처음 보는 기기가 된다.
 
 ---
 

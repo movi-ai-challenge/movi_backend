@@ -55,6 +55,8 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -62,7 +64,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -444,33 +445,11 @@ class MviE2eScenarioTest {
         stubUtterance(confirmUtterance());
 
         final String idempotencyKey = UUID.randomUUID().toString();
-        final int threads = 4;
-        final ExecutorService pool = Executors.newFixedThreadPool(threads);
-        final CountDownLatch start = new CountDownLatch(1);
-        final CountDownLatch done = new CountDownLatch(threads);
-        final AtomicInteger succeeded = new AtomicInteger();
+        final ConcurrentRequestResult result = requestConcurrently(
+                () -> mockMvc.perform(voiceCommand(sessionId, idempotencyKey)).andReturn()
+        );
 
-        for (int i = 0; i < threads; i++) {
-            pool.submit(() -> {
-                try {
-                    start.await();
-                    final MvcResult result =
-                            mockMvc.perform(voiceCommand(sessionId, idempotencyKey)).andReturn();
-                    if (result.getResponse().getStatus() == 200) {
-                        succeeded.incrementAndGet();
-                    }
-                } catch (final Exception ignored) {
-                    // 경합에서 밀린 요청의 실패는 시나리오상 정상이다
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        pool.shutdownNow();
-
-        assertThat(succeeded.get()).isPositive();
+        result.assertOnlyExpectedStatuses();
         assertThat(transferRepository.findAll()).hasSize(1);
         assertThat(currentBalance()).isEqualTo(PRIMARY_BALANCE - 50_000L);
     }
@@ -782,5 +761,73 @@ class MviE2eScenarioTest {
             throw new IllegalStateException("잔액을 읽지 못했습니다: " + body);
         }
         return Long.parseLong(matcher.group(1));
+    }
+
+    /**
+     * 같은 요청을 여러 스레드에서 동시에 보낸다.
+     *
+     * <p>예외를 삼키거나 {@code await} 결과를 버리면 요청이 멈춰도, 절반이 500으로 터져도
+     * 테스트가 초록불이 된다. 경합에서 밀린 요청이 <b>409로 밀리는 것과 500으로 터지는 것은
+     * 다르다</b> — 500은 사용자에게 오류 문구가 TTS로 읽히는 상황이다.
+     */
+    private ConcurrentRequestResult requestConcurrently(final ConcurrentRequest request)
+            throws InterruptedException {
+        final int threads = 4;
+        final ExecutorService pool = Executors.newFixedThreadPool(threads);
+        final CountDownLatch start = new CountDownLatch(1);
+        final CountDownLatch done = new CountDownLatch(threads);
+        final List<Integer> statuses = Collections.synchronizedList(new ArrayList<>());
+        final List<String> failures = Collections.synchronizedList(new ArrayList<>());
+
+        for (int index = 0; index < threads; index++) {
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    statuses.add(request.perform().getResponse().getStatus());
+                } catch (final Exception exception) {
+                    failures.add(exception.toString());
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        final boolean finished = done.await(30, TimeUnit.SECONDS);
+        pool.shutdownNow();
+        return new ConcurrentRequestResult(finished, List.copyOf(statuses), List.copyOf(failures));
+    }
+
+    @FunctionalInterface
+    private interface ConcurrentRequest {
+        MvcResult perform() throws Exception;
+    }
+
+    private record ConcurrentRequestResult(
+            boolean finished,
+            List<Integer> statuses,
+            List<String> failures
+    ) {
+
+        /**
+         * 200(기존 결과 반환)과 409(아직 처리 중)만 정상이다.
+         *
+         * <p>둘 다 "돈은 한 번만 나갔다"와 모순되지 않는다. 그 밖의 상태는 멱등성 처리가
+         * 아니라 결함이다.
+         */
+        private void assertOnlyExpectedStatuses() {
+            assertThat(this.finished)
+                    .withFailMessage("동시 요청이 30초 안에 끝나지 않았다: %s", this.statuses)
+                    .isTrue();
+            assertThat(this.failures)
+                    .withFailMessage("요청 중 예외 발생: %s", this.failures)
+                    .isEmpty();
+            assertThat(this.statuses)
+                    .withFailMessage("허용되지 않은 응답 상태: %s", this.statuses)
+                    .isNotEmpty()
+                    .allMatch(status -> status == 200 || status == 409);
+            assertThat(this.statuses)
+                    .withFailMessage("성공한 요청이 없다: %s", this.statuses)
+                    .contains(200);
+        }
     }
 }

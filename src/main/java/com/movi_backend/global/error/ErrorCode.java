@@ -97,6 +97,8 @@ public enum ErrorCode {
             "같은 계좌로는 보낼 수 없어요."),
     INVALID_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "TRANSFER_4006", "처리할 수 없는 이체 상태입니다.",
             "이미 처리된 송금이에요."),
+    CONFIRMATION_INVALID(HttpStatus.BAD_REQUEST, "TRANSFER_4007", "송금 확인 정보가 유효하지 않습니다.",
+            "확인 시간이 지났어요. 보낼 내용을 다시 확인해 주세요."),
     TRANSFER_BLOCKED(HttpStatus.FORBIDDEN, "TRANSFER_4031", "위험 거래로 차단된 이체입니다.",
             "안전을 위해 이번 송금을 멈췄어요. 보호자에게 알려 드렸어요."),
     TRANSFER_NOT_FOUND(HttpStatus.NOT_FOUND, "TRANSFER_4040", "이체 내역을 찾을 수 없습니다.",

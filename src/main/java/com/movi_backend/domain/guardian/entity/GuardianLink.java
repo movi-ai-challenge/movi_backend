@@ -117,6 +117,18 @@ public class GuardianLink {
         this.acceptedAt = now;
     }
 
+    /**
+     * 초대·승인 없이 바로 연결을 성립시킨다.
+     *
+     * <p>이용자가 본인 계정에 보호자 번호를 직접 등록하는 경로다. 보호자 확인 화면이 없으므로
+     * 초대 토큰을 발급해 기다릴 대상이 없다. {@code guardianUser}는 그대로 {@code null}로 둔다 —
+     * 보호자가 Movi 회원이 아니어도 전화번호만으로 알림을 받기 때문이다.
+     */
+    public void activateWithoutInvite(final LocalDateTime now) {
+        this.status = GuardianLinkStatus.ACTIVE;
+        this.acceptedAt = now;
+    }
+
     public void reject() {
         this.status = GuardianLinkStatus.REJECTED;
     }

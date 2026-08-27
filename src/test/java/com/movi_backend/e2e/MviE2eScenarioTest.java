@@ -26,7 +26,6 @@ import com.movi_backend.domain.fds.client.FdsAssessmentClient;
 import com.movi_backend.domain.fds.entity.UserTransferProfile;
 import com.movi_backend.domain.fds.repository.FdsAssessmentRepository;
 import com.movi_backend.domain.fds.repository.UserTransferProfileRepository;
-import com.movi_backend.domain.guardian.entity.GuardianLink;
 import com.movi_backend.domain.guardian.repository.GuardianLinkRepository;
 import com.movi_backend.domain.guardian.repository.NotificationRepository;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
@@ -712,18 +711,26 @@ class MviE2eScenarioTest {
         profileRepository.save(profile);
     }
 
-    private void linkGuardian() {
-        final GuardianLink link = GuardianLink.builder()
-                .protecteeUser(user)
-                .guardianName("김보호")
-                .guardianPhone(sensitiveDataCrypto.encrypt("01055556666"))
-                .relation("자녀")
-                .inviteToken(UUID.randomUUID().toString())
-                .inviteExpiresAt(LocalDateTime.now().plusDays(7))
-                .permissionScope("[\"ALERT\"]")
-                .build();
-        link.accept(null, LocalDateTime.now());
-        guardianLinkRepository.save(link);
+    /**
+     * 보호자 등록은 실제 API로 한다.
+     *
+     * <p>링크를 리포지토리에 직접 심으면 등록 경로가 끊겨도 알림 시나리오는 통과한다.
+     * 실제로 한동안 등록 API가 없는 채로 알림 코드만 남아 있었고, 그때 이 테스트는 초록이었다.
+     * 등록부터 문자 발송까지가 한 줄로 이어져 있는지 보려면 입구도 API로 지나야 한다.
+     */
+    private void linkGuardian() throws Exception {
+        mockMvc.perform(post("/api/v1/guardian-links")
+                        .header("X-Dev-User-Id", user.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "guardianName": "김보호",
+                                  "guardianPhone": "01055556666",
+                                  "relation": "자녀"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
     }
 
     /**

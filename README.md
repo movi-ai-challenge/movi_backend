@@ -426,13 +426,11 @@ src/main/java/com/movi_backend
 - [도메인 가이드](docs/domain-guide.md)
 - [프론트·AI·백엔드 통합 명세](docs/integration-spec.md)
 - [AI Voice·FDS API 계약](docs/ai-api-contract.md)
-- [AI·Frontend·Backend 통합 회의록 및 조치 목록](docs/ai-backend-integration-gaps.md)
 - [API 응답 규약](docs/api-response.md)
 - [에러 코드](docs/error-codes.md)
 - [ERD](docs/ERD.md)
 - [MySQL 스키마](docs/schema.sql)
-- [백엔드 개발 일정](docs/schedule-backend.md)
-- [상세 실행 계획](docs/execution-plan.md)
+- [실행 기준 — 완료 조건·담당·남은 일](docs/execution-plan.md)
 
 ## README 유지 원칙
 

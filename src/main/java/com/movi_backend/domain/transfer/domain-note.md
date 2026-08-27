@@ -2,7 +2,7 @@
 
 이체 실행과 거래내역을 다룬다. **이 패키지에서 실제로 돈이 움직인다.**
 
-도메인 전반의 불변식은 [docs/domain-guide.md](../../../../../../docs/domain-guide.md), 파트 간 계약은 [docs/integration-spec.md](../../../../../../docs/integration-spec.md)가 기준이다. 이 문서는 패키지 내부 관점의 보충 설명이다.
+도메인 전반의 불변식은 [docs/domain-guide.md](../../../../../../../docs/domain-guide.md), 파트 간 계약은 [docs/integration-spec.md](../../../../../../../docs/integration-spec.md)가 기준이다. 이 문서는 패키지 내부 관점의 보충 설명이다.
 
 ## 책임
 

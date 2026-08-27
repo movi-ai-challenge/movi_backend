@@ -1,6 +1,7 @@
 package com.movi_backend.domain.transfer.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * 직접 입력 송금 실행 요청.
@@ -11,12 +12,18 @@ import jakarta.validation.constraints.NotBlank;
  *
  * <p>{@code idempotencyKey}는 프런트가 검토 응답을 받은 시점에 하나 만들고, 타임아웃 재시도와
  * 상태 조회에도 같은 값을 쓴다.
+ *
+ * <p>{@code deviceUuid}는 선택이다. 음성 세션이 기기를 들고 있는 것과 달리 직접 입력에는
+ * 세션이 없으므로 실행 요청이 직접 실어 보낸다. 없으면 비신뢰 기기로 평가된다.
  */
 public record TransferExecuteRequest(
         @NotBlank
         String confirmationId,
 
         @NotBlank
-        String idempotencyKey
+        String idempotencyKey,
+
+        @Size(max = 100)
+        String deviceUuid
 ) {
 }

@@ -1,6 +1,7 @@
 package com.movi_backend.domain.auth.application;
 
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
+import com.movi_backend.domain.auth.dto.request.PinRegisterRequest;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.entity.UserCredential;
@@ -28,6 +29,7 @@ public class AuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final SensitiveDataCrypto sensitiveDataCrypto;
     private final JwtTokenProvider jwtTokenProvider;
+    private final DeviceRegistrationService deviceRegistrationService;
 
     @Transactional(noRollbackFor = BusinessException.class)
     public LoginResponse loginWithPin(final PinLoginRequest request) {
@@ -40,6 +42,12 @@ public class AuthenticationService {
         final UserCredential credential = userCredentialRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PIN_NOT_REGISTERED));
         verifyPin(credential, request.pin());
+        deviceRegistrationService.registerTrusted(
+                user,
+                request.deviceUuid(),
+                request.deviceModel(),
+                request.osVersion()
+        );
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
         return LoginResponse.of(user.getId(), false, tokenPair);
@@ -50,18 +58,24 @@ public class AuthenticationService {
      * PIN 최초 등록. 카카오 가입 시점에는 전화번호를 받지 않으므로, PIN 로그인이 사용할
      * 전화번호를 이 시점에 함께 받아 {@code users.phone}을 채운다.
      */
-    public void registerPin(final Long userId, final String phoneNumber, final String pin) {
+    public void registerPin(final Long userId, final PinRegisterRequest request) {
         final User user = findActiveUser(userId);
         if (userCredentialRepository.existsByUserId(userId)) {
             throw new BusinessException(ErrorCode.PIN_ALREADY_REGISTERED);
         }
-        registerPhone(user, phoneNumber);
+        registerPhone(user, request.phoneNumber());
         final UserCredential credential = UserCredential.builder()
                 .user(user)
-                .pinHash(passwordEncoder.encode(pin))
+                .pinHash(passwordEncoder.encode(request.pin()))
                 .biometricEnabled(false)
                 .build();
         userCredentialRepository.save(credential);
+        deviceRegistrationService.registerTrusted(
+                user,
+                request.deviceUuid(),
+                request.deviceModel(),
+                request.osVersion()
+        );
     }
 
     /** 다른 계정이 이미 쓰는 번호는 거부한다. 보호자 알림이 엉뚱한 사람에게 갈 수 있다. */

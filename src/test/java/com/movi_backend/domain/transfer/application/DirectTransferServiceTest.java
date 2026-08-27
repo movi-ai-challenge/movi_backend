@@ -9,6 +9,8 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.account.entity.Account;
+import com.movi_backend.domain.auth.application.DeviceRegistrationService;
+import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.fds.type.RiskLevel;
@@ -49,6 +51,9 @@ class DirectTransferServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private DeviceRegistrationService deviceRegistrationService;
+
+    @Mock
     private TransferTargetResolver transferTargetResolver;
 
     @Mock
@@ -76,6 +81,7 @@ class DirectTransferServiceTest {
         transferConfirmationStore = new TransferConfirmationStore(properties);
         directTransferService = new DirectTransferService(
                 userRepository,
+                deviceRegistrationService,
                 transferTargetResolver,
                 new TransferValidationService(null, properties),
                 transferConfirmationStore,
@@ -158,7 +164,7 @@ class DirectTransferServiceTest {
         // when
         final TransferResultResponse result = directTransferService.execute(
                 USER_ID,
-                new TransferExecuteRequest(confirmationId, idempotencyKey)
+                new TransferExecuteRequest(confirmationId, idempotencyKey, null)
         );
 
         // then
@@ -184,13 +190,13 @@ class DirectTransferServiceTest {
         given(transferExecutionService.execute(any())).willReturn(riskReviewResult());
         directTransferService.execute(
                 USER_ID,
-                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString())
+                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString(), null)
         );
 
         // when & then — 사용자가 실행 버튼을 두 번 눌러 키가 새로 만들어진 상황
         assertThatThrownBy(() -> directTransferService.execute(
                 USER_ID,
-                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString())
+                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString(), null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CONFIRMATION_INVALID);
@@ -209,7 +215,7 @@ class DirectTransferServiceTest {
         // when
         final TransferResultResponse result = directTransferService.execute(
                 USER_ID,
-                new TransferExecuteRequest(confirmationId, idempotencyKey)
+                new TransferExecuteRequest(confirmationId, idempotencyKey, null)
         );
 
         // then
@@ -229,7 +235,8 @@ class DirectTransferServiceTest {
                 USER_ID,
                 new TransferExecuteRequest(
                         UUID.randomUUID().toString(),
-                        UUID.randomUUID().toString()
+                        UUID.randomUUID().toString(),
+                        null
                 )
         ))
                 .isInstanceOf(BusinessException.class)
@@ -248,7 +255,7 @@ class DirectTransferServiceTest {
         // when & then
         assertThatThrownBy(() -> directTransferService.execute(
                 4L,
-                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString())
+                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString(), null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CONFIRMATION_INVALID);
@@ -264,7 +271,7 @@ class DirectTransferServiceTest {
         // when & then
         assertThatThrownBy(() -> directTransferService.execute(
                 USER_ID,
-                new TransferExecuteRequest(confirmationId, "not-a-uuid")
+                new TransferExecuteRequest(confirmationId, "not-a-uuid", null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.BAD_REQUEST);
@@ -290,7 +297,7 @@ class DirectTransferServiceTest {
         // when
         final TransferResultResponse result = directTransferService.execute(
                 USER_ID,
-                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString())
+                new TransferExecuteRequest(confirmationId, UUID.randomUUID().toString(), null)
         );
 
         // then
@@ -327,5 +334,38 @@ class DirectTransferServiceTest {
                 "김영희",
                 null
         );
+    }
+
+    @Test
+    @DisplayName("실행 요청의 기기 식별자를 FDS 평가로 넘긴다")
+    void 실행_요청의_기기_식별자를_FDS_평가로_넘긴다() {
+        // given — 직접 입력에는 음성 세션이 없어 실행 요청이 기기를 실어 보낸다
+        final String confirmationId = review(50_000L).confirmationId();
+        final Device device = Device.builder()
+                .user(user)
+                .deviceUuid("device-uuid-1")
+                .build();
+        device.trust();
+        given(deviceRegistrationService.findOwnedDevice(USER_ID, "device-uuid-1"))
+                .willReturn(device);
+        given(transferExecutionService.findCompletedResult(any(), any()))
+                .willReturn(Optional.empty());
+        given(transferExecutionService.execute(any())).willReturn(completedResult());
+
+        // when
+        directTransferService.execute(
+                USER_ID,
+                new TransferExecuteRequest(
+                        confirmationId,
+                        UUID.randomUUID().toString(),
+                        "device-uuid-1"
+                )
+        );
+
+        // then
+        final ArgumentCaptor<ConfirmedTransferCommand> captor =
+                ArgumentCaptor.forClass(ConfirmedTransferCommand.class);
+        then(transferExecutionService).should().execute(captor.capture());
+        assertThat(captor.getValue().device()).isEqualTo(device);
     }
 }

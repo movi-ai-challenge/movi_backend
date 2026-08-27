@@ -1,6 +1,8 @@
 package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.Account;
+import com.movi_backend.domain.auth.application.DeviceRegistrationService;
+import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
@@ -59,6 +61,7 @@ public class DirectTransferService {
     private static final BigDecimal DIRECT_INPUT_CONFIDENCE = BigDecimal.ONE;
 
     private final UserRepository userRepository;
+    private final DeviceRegistrationService deviceRegistrationService;
     private final TransferTargetResolver transferTargetResolver;
     private final TransferValidationService transferValidationService;
     private final TransferConfirmationStore transferConfirmationStore;
@@ -122,7 +125,7 @@ public class DirectTransferService {
         }
 
         final TransferExecutionResult result = transferExecutionService.execute(
-                createCommand(userId, confirmation, idempotencyKey)
+                createCommand(userId, confirmation, idempotencyKey, request.deviceUuid())
         );
         if (result.status().isFinal()) {
             transferConfirmationStore.remove(confirmation.confirmationId());
@@ -139,7 +142,8 @@ public class DirectTransferService {
     private ConfirmedTransferCommand createCommand(
             final Long userId,
             final TransferConfirmation confirmation,
-            final String idempotencyKey
+            final String idempotencyKey,
+            final String deviceUuid
     ) {
         final User user = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
@@ -151,12 +155,13 @@ public class DirectTransferService {
                 userId,
                 confirmation.recipientId()
         );
+        final Device device = deviceRegistrationService.findOwnedDevice(userId, deviceUuid);
         return ConfirmedTransferCommand.of(
                 user,
                 fromAccount,
                 recipient,
                 null,
-                null,
+                device,
                 confirmation.amount(),
                 idempotencyKey,
                 DIRECT_INPUT_CONFIDENCE

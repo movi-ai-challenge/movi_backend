@@ -8,6 +8,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 /**
@@ -52,7 +53,13 @@ class SolapiLiveSendTest {
         final SensitiveDataCrypto crypto = new SensitiveDataCrypto(
                 new CryptoProperties(TEST_ENCRYPTION_KEY, TEST_HASH_KEY));
         final SolapiSmsNotificationSender sender = new SolapiSmsNotificationSender(
-                RestClient.builder().baseUrl(properties.baseUrl()).build(),
+                // RestClient 는 SolapiClientConfig 와 같은 방식으로 만든다.
+                // 기본 팩토리(JDK HttpClient)를 쓰면 운영과 다른 스택을 검증하게 되고,
+                // socksProxyHost 같은 JVM 프록시 설정도 무시돼 우회 검증이 불가능하다.
+                RestClient.builder()
+                        .baseUrl(properties.baseUrl())
+                        .requestFactory(requestFactory(properties))
+                        .build(),
                 new SolapiSignatureGenerator(),
                 properties,
                 crypto
@@ -72,6 +79,13 @@ class SolapiLiveSendTest {
         // then
         assertThat(messageId).isNotBlank();
         System.out.println("솔라피 발송 완료 messageId=" + messageId);
+    }
+
+    private SimpleClientHttpRequestFactory requestFactory(final SolapiProperties properties) {
+        final SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(properties.connectTimeout());
+        factory.setReadTimeout(properties.responseTimeout());
+        return factory;
     }
 
     private String requiredEnv(final String name) {

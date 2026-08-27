@@ -185,7 +185,10 @@ gh issue create --title "feat: 잔액조회 API" --body "..."   # 1. 이슈
 git checkout develop && git pull
 git checkout -b feat/12-balance-api                          # 2. 이슈 번호 접두
 # 3. 작업 후 PR 본문에 "Closes #12"
+gh issue close 12 --comment "PR #13 머지로 완료"     # 4. 머지 후 직접 닫는다
 ```
+
+**`Closes #12`로는 자동으로 닫히지 않습니다.** GitHub의 자동 종료는 기본 브랜치(`main`)로 머지될 때만 동작하는데 기능 PR은 전부 `develop`을 대상으로 합니다. `Closes`는 PR과 이슈를 서로 연결해 두는 용도로만 쓰고, 이슈는 머지 후 직접 닫습니다.
 
 이슈 본문에는 **무엇을·왜·완료 조건**을 적습니다. 완료 조건은 "무엇이 되면 done"인지 검증 가능한 기준이어야 합니다.
 

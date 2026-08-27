@@ -3,8 +3,8 @@ package com.movi_backend.domain.voice.application;
 import com.movi_backend.domain.account.application.BalanceInquiryService;
 import com.movi_backend.domain.account.dto.response.BalanceResponse;
 import com.movi_backend.domain.account.entity.Account;
-import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.transfer.application.TransactionQueryService;
+import com.movi_backend.domain.transfer.application.TransferTargetResolver;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
 import com.movi_backend.domain.transfer.application.TransferExecutionService;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
@@ -15,7 +15,6 @@ import com.movi_backend.domain.transfer.application.model.ValidatedTransferComma
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
-import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.domain.voice.application.model.PendingTransferSlots;
 import com.movi_backend.domain.voice.application.model.VoiceHistoryPeriod;
@@ -79,8 +78,7 @@ public class VoiceCommandService {
     private final TransferExecutionService transferExecutionService;
     private final TransactionQueryService transactionQueryService;
     private final BalanceInquiryService balanceInquiryService;
-    private final AccountRepository accountRepository;
-    private final TransferRecipientRepository transferRecipientRepository;
+    private final TransferTargetResolver transferTargetResolver;
     private final ObjectMapper objectMapper;
     private final AudioDurationValidator audioDurationValidator;
 
@@ -453,24 +451,11 @@ public class VoiceCommandService {
     }
 
     private Account findOwnedAccount(final Long userId, final Long accountId) {
-        final Account account = accountRepository.findById(accountId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
-        if (!Objects.equals(account.getUser().getId(), userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-        if (!account.isActive()) {
-            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE);
-        }
-        return account;
+        return transferTargetResolver.resolveOwnedAccount(userId, accountId);
     }
 
     private TransferRecipient findOwnedRecipient(final Long userId, final Long recipientId) {
-        final TransferRecipient recipient = transferRecipientRepository.findById(recipientId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND));
-        if (!Objects.equals(recipient.getUser().getId(), userId)) {
-            throw new BusinessException(ErrorCode.FORBIDDEN);
-        }
-        return recipient;
+        return transferTargetResolver.resolveOwnedRecipient(userId, recipientId);
     }
 
     private TransferCommandRequest createCommandRequest(
@@ -655,18 +640,7 @@ public class VoiceCommandService {
     }
 
     private Account findSourceAccount(final Long userId, final String accountAlias) {
-        final Account account;
-        if (accountAlias == null || accountAlias.isBlank()) {
-            account = accountRepository.findByUserIdAndPrimaryTrue(userId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.PRIMARY_ACCOUNT_NOT_SET));
-        } else {
-            account = accountRepository.findByUserIdAndAlias(userId, accountAlias.trim())
-                    .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
-        }
-        if (!account.isActive()) {
-            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE);
-        }
-        return account;
+        return transferTargetResolver.resolveSourceAccount(userId, accountAlias);
     }
 
     private PendingTransferSlots readPendingSlots(final VoiceSession session) {

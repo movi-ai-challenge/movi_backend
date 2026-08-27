@@ -233,7 +233,113 @@ Content-Type: multipart/form-data
 
 HIGH는 `403`과 `FDS_4031`, FDS 통신 실패는 `502/504`를 사용한다. 두 경우 모두 실제 오픈뱅킹 이체를 호출하지 않는다.
 
-### 5.6 이체 상태 조회
+### 5.6 직접 입력 송금 (키보드·터치)
+
+음성을 쓸 수 없는 상황에서도 송금을 끝낼 수 있어야 한다. 마이크 권한 거부, 조용한 장소,
+같은 슬롯 3회 재질문 실패가 모두 여기에 해당한다. **음성은 기본 경로이지 유일한 경로가 아니다.**
+
+검증은 음성과 갈라지지 않는다. 소유권·한도·잔액·FDS·멱등성은 같은 실행 서비스를 그대로 지난다.
+
+#### 5.6.1 등록 수취인 목록
+
+```http
+GET /api/transfers/recipients
+Authorization: Bearer {accessToken}
+```
+
+```json
+{
+  "code": "SUCCESS",
+  "message": "요청이 정상 처리되었습니다.",
+  "voiceMessage": "저장된 받는 분이 2명 있어요.",
+  "data": {
+    "totalCount": 2,
+    "recipients": [
+      {
+        "recipientId": 8,
+        "nickname": "엄마",
+        "holderName": "김영희",
+        "bankCode": "088",
+        "maskedAccountNumber": "***6789",
+        "transferCount": 4
+      }
+    ]
+  }
+}
+```
+
+여기 없는 사람에게는 보낼 수 없다. 프론트는 이름이나 계좌번호로 수취인을 만들어 내지 않는다 —
+음성으로 새 계좌번호를 부르는 것을 막는 것과 같은 이유다.
+
+#### 5.6.2 검토
+
+```http
+POST /api/transfers/review
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{ "recipientId": 8, "amount": 50000, "fromAccountId": null }
+```
+
+```json
+{
+  "code": "SUCCESS",
+  "message": "요청이 정상 처리되었습니다.",
+  "voiceMessage": "생활비 통장에서 엄마 님에게 5만원을 보낼까요?",
+  "data": {
+    "confirmationId": "c14c5b4d-a394-4d67-8788-bc716e5a60b6",
+    "fromAccount": { "accountId": 12, "alias": "생활비 통장", "bankName": "국민은행" },
+    "recipient": {
+      "recipientId": 8,
+      "nickname": "엄마",
+      "holderName": "김영희",
+      "maskedAccountNumber": "***6789"
+    },
+    "amount": 50000,
+    "expiresAt": "2026-08-28T10:05:00+09:00"
+  }
+}
+```
+
+`fromAccountId`를 비우면 기본 계좌에서 나간다. 이 응답 시점에는 돈이 움직이지 않는다.
+프론트는 `confirmationId`를 보관하고 UUID `idempotencyKey`를 **하나** 만든다.
+
+#### 5.6.3 실행
+
+```http
+POST /api/transfers
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+  "confirmationId": "c14c5b4d-a394-4d67-8788-bc716e5a60b6",
+  "idempotencyKey": "5f0e5c2c-52d1-4e3f-9a6f-5f8a4c1a2b3d"
+}
+```
+
+금액·수취인·출금 계좌를 다시 보내지 않는다. 백엔드가 검토 시점의 스냅샷을 소유하므로 이 요청은
+"그 확인을 실행한다"는 뜻만 갖는다. 실행 요청이 금액을 다시 실을 수 있으면 사용자가 검토한 값과
+다른 금액이 나갈 수 있다.
+
+응답 데이터는 5.5의 확인 완료 응답과 같은 필드(`transferId`, `status`, `riskLevel`, `amount`,
+`completedAt`)를 쓴다. **차단(`BLOCKED`)과 실패(`FAILED`)도 200으로 내려간다** — 사용자에게는
+"왜 돈이 나가지 않았는지"가 결과이기 때문이다. 프론트는 `status`를 그대로 표시하고 성공 여부를
+스스로 판단하지 않는다.
+
+#### 5.6.4 확인과 멱등성 규칙
+
+| 상황 | 처리 |
+|---|---|
+| 확인 유효시간 | 검토 응답 후 5분 (`movi.transfer.confirmation-expire-minutes`) |
+| 같은 확인 + 같은 키 재시도 | 통과. 이미 끝난 송금의 결과를 돌려준다 |
+| 같은 확인 + 다른 키 | `TRANSFER_4007`로 거부. 실행 버튼 두 번 누름이 두 건이 되지 않는다 |
+| 확인 없음·만료·다른 사용자 | `TRANSFER_4007`로 거부하고 이체하지 않는다 |
+| 응답을 못 받은 타임아웃 | 새 키를 만들지 말고 같은 키로 5.7 상태 조회 또는 재요청 |
+
+MVP에서 직접 입력 송금에 추가 인증(`reauthProof`)을 요구하지 않는다. 6.5절의 위험 기반 재인증
+정책이 확정되면 음성과 직접 입력에 같은 기준으로 적용한다.
+
+### 5.7 이체 상태 조회
 
 응답을 받지 못한 네트워크 타임아웃에서는 새 키를 만들지 않고 확인 요청에 사용한 키로 상태를 조회한다.
 

@@ -52,7 +52,7 @@ Content-Type: multipart/form-data
 
 | 파트 | 타입 | 필수 | 설명 |
 |---|---|---:|---|
-| `audio` | file | 예 | WebM/Opus 또는 WAV, 최대 5MB·15초 |
+| `audio` | file | 예 | WebM/Opus, WAV 또는 Safari/iOS MP4·M4A, 최대 5MB·15초 |
 | `requestId` | string | 예 | 백엔드 생성 UUID |
 | `voiceSessionId` | long | 예 | 백엔드 세션 ID |
 | `expectedIntent` | string | 아니요 | 재질문 중이면 `TRANSFER` 등, AI 분류의 강제값은 아님 |

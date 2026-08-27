@@ -158,7 +158,7 @@ Content-Type: multipart/form-data
 
 | 이름 | 형식 | 필수 | 제약 |
 |---|---|---:|---|
-| `audio` | file | 예 | WebM/Opus 또는 WAV, 최대 5MB·15초 |
+| `audio` | file | 예 | WebM/Opus, WAV 또는 Safari/iOS MP4·M4A, 최대 5MB·15초 |
 | `confirmationId` | string | 확인 발화만 | 확인 대기 응답에서 받은 동일 값 반환 |
 | `idempotencyKey` | UUID string | 확인 발화만 | 확인 화면에서 생성한 동일 키 재사용 |
 

@@ -114,6 +114,10 @@ MVP 범위에서 제외했다. 남은 시간에 다시 꺼내지 않는다.
 **AI staging이 준비되지 않으면** Mock으로 시연하되 화면과 음성에 Sandbox·시연임을 표시한다.
 **오픈뱅킹 승인이 늦으면** Mock 이체로 시연하되 같은 표시를 한다.
 
+여기서 Mock은 **백엔드의 Mock 어댑터**(`movi.*.client-type=mock`)를 말한다. AI Mock 서버의
+시나리오 강제 헤더(`X-Mock-Scenario`)는 [ai-api-contract.md](ai-api-contract.md) 4절대로
+운영 프로파일에서 계속 거부된다. 판정을 헤더로 조작할 수 있으면 시연이 아니라 연출이 된다.
+
 ---
 
 ## 7. 일일 공유 형식

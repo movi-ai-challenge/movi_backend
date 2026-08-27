@@ -46,7 +46,7 @@ class VoiceSessionControllerTest {
                 VoiceSessionStatus.ACTIVE,
                 expiresAt
         );
-        given(voiceSessionService.start(userId)).willReturn(response);
+        given(voiceSessionService.start(userId, null)).willReturn(response);
         final CurrentUserArgumentResolver resolver = new CurrentUserArgumentResolver(
                 new AuthProperties(true, 1L)
         );

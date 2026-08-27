@@ -76,7 +76,7 @@ PENDING → RISK_REVIEW → COMPLETED
 
 ## 확인 필요
 
-직접 입력 송금은 FDS에 `sttConfidence=1.0`, `trustedDevice=false`로 전달된다. 화면 입력에는 인식 오류가 없고 기기 신뢰 정보도 없기 때문인데, **모델 입장에서 음성 송금과 화면 송금은 위험 성격이 다르다.** 경로를 구분하는 피처(`channel` 등) 추가는 AI 파트와 계약을 확정한 뒤 별도 변경으로 처리한다. 그전까지는 직접 입력이 비신뢰 기기로 평가되므로 cold start에서 최소 MEDIUM이 된다 — 보수적인 쪽이라 그대로 둔다.
+직접 입력 송금은 FDS에 `sttConfidence=1.0`으로 전달된다. 화면 입력에는 인식 오류가 없기 때문인데, **모델 입장에서 음성 송금과 화면 송금은 위험 성격이 다르다.** 경로를 구분하는 피처(`channel` 등) 추가는 AI 파트와 계약을 확정한 뒤 별도 변경으로 처리한다.
 
 ## 변경 이력
 
@@ -91,3 +91,4 @@ PENDING → RISK_REVIEW → COMPLETED
   - 출금 계좌·수취인 소유권 조회를 `TransferTargetResolver`로 모아 음성 경로와 공유
   - `ErrorCode.CONFIRMATION_INVALID`(TRANSFER_4007) 추가
   - `movi.transfer.confirmation-expire-minutes`(기본 5분) 추가 — 화면 검토는 음성 확인 60초보다 길다
+- **2026-08-28** — 직접 입력 실행 요청이 `deviceUuid`를 받아 FDS 신뢰 기기 피처로 넘긴다 (#96). 음성 세션과 달리 기기를 들고 있을 세션이 없어 실행 요청이 직접 실어 보낸다.

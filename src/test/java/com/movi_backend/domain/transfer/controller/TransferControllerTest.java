@@ -57,20 +57,8 @@ class TransferControllerTest {
                 LocalDateTime.of(2026, 8, 16, 23, 0, 2)
         );
         given(transferQueryService.findStatus(userId, idempotencyKey)).willReturn(response);
-        final CurrentUserArgumentResolver resolver = new CurrentUserArgumentResolver(
-                new AuthProperties(true, 1L)
-        );
-        final MockMvc mockMvc = MockMvcBuilders
-                .standaloneSetup(new TransferController(
-                        transferQueryService,
-                        transferRecipientQueryService,
-                        directTransferService
-                ))
-                .setCustomArgumentResolvers(resolver)
-                .build();
-
         // when & then
-        mockMvc.perform(get("/api/transfers/status")
+        mockMvc().perform(get("/api/transfers/status")
                         .header("X-Dev-User-Id", userId)
                         .queryParam("idempotencyKey", idempotencyKey))
                 .andExpect(status().isOk())

@@ -21,12 +21,11 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 |---|---|
 | **[docs/integration-spec.md](docs/integration-spec.md)** | **파트 간 계약 — 충돌 시 최우선 기준** |
 | [docs/ai-api-contract.md](docs/ai-api-contract.md) | AI Voice·FDS 내부 API를 호출할 때 |
-| [docs/execution-plan.md](docs/execution-plan.md) | 오늘 무엇을 해야 하는지 |
+| [docs/execution-plan.md](docs/execution-plan.md) | 완료 조건·담당·남은 일이 궁금할 때 |
 | [docs/ERD.md](docs/ERD.md) · [docs/schema.sql](docs/schema.sql) | 테이블·컬럼을 다룰 때 |
 | [docs/domain-guide.md](docs/domain-guide.md) | 도메인 로직·불변식·테스트를 쓸 때 |
 | [docs/error-codes.md](docs/error-codes.md) | 예외를 던질 때 |
 | [docs/api-response.md](docs/api-response.md) | 컨트롤러 응답을 만들 때 |
-| [docs/schedule-backend.md](docs/schedule-backend.md) | 담당·우선순위가 궁금할 때 |
 
 ---
 

@@ -20,6 +20,23 @@ public final class SensitiveTextMasker {
         return SENSITIVE_NUMBER.matcher(text).find();
     }
 
+    /**
+     * 계좌번호를 뒤 네 자리만 남기고 가린다.
+     *
+     * <p>{@link #mask(String)}는 자유 문장 안의 긴 숫자를 찾아 가리는 용도라 자릿수가 짧으면
+     * 아무것도 가리지 않는다. 계좌번호는 길이와 상관없이 반드시 가려야 하므로 따로 둔다.
+     */
+    public static String maskAccountNumber(final String accountNumber) {
+        if (accountNumber == null || accountNumber.isBlank()) {
+            return null;
+        }
+        final String digits = accountNumber.replaceAll("\\D", "");
+        if (digits.length() <= VISIBLE_DIGITS) {
+            return "***";
+        }
+        return "***" + digits.substring(digits.length() - VISIBLE_DIGITS);
+    }
+
     public static String mask(final String text) {
         if (text == null || text.isBlank()) {
             return text;

@@ -126,6 +126,7 @@
 | TRANSFER_4004 | `DAILY_LIMIT_EXCEEDED` | 400 | 1일 이체 한도를 초과했습니다. | 오늘 보낼 수 있는 금액을 모두 쓰셨어요. |
 | TRANSFER_4005 | `SELF_TRANSFER_NOT_ALLOWED` | 400 | 본인 계좌로는 이체할 수 없습니다. | 같은 계좌로는 보낼 수 없어요. |
 | TRANSFER_4006 | `INVALID_STATUS_TRANSITION` | 400 | 처리할 수 없는 이체 상태입니다. | 이미 처리된 송금이에요. |
+| TRANSFER_4007 | `CONFIRMATION_INVALID` | 400 | 송금 확인 정보가 유효하지 않습니다. | 확인 시간이 지났어요. 보낼 내용을 다시 확인해 주세요. |
 | TRANSFER_4031 | `TRANSFER_BLOCKED` | 403 | 위험 거래로 차단된 이체입니다. | 안전을 위해 이번 송금을 멈췄어요. 보호자에게 알려 드렸어요. |
 | TRANSFER_4040 | `TRANSFER_NOT_FOUND` | 404 | 이체 내역을 찾을 수 없습니다. | 송금 내역을 찾을 수 없어요. |
 | TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 다시 말씀해 주세요. |

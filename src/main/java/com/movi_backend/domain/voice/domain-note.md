@@ -2,7 +2,7 @@
 
 음성 세션과 명령을 다룬다. STT·NLU는 AI 파트가 하고, **이 패키지는 그 결과를 검증하고 실행을 판단하는 쪽**이다.
 
-도메인 전반의 불변식은 [docs/domain-guide.md](../../../../../../docs/domain-guide.md), 파트 간 계약은 [docs/integration-spec.md](../../../../../../docs/integration-spec.md) 6절이 기준이다. 이 문서는 패키지 내부 관점의 보충 설명이다.
+도메인 전반의 불변식은 [docs/domain-guide.md](../../../../../../../docs/domain-guide.md), 파트 간 계약은 [docs/integration-spec.md](../../../../../../../docs/integration-spec.md) 6절이 기준이다. 이 문서는 패키지 내부 관점의 보충 설명이다.
 
 ## 책임
 
@@ -58,8 +58,17 @@ TRANSFER              → 검증 → 재질문 또는 확인 대기
 
 `VoiceCommand`에 저장하는 `sttText`와 `entities`는 `SensitiveTextMasker`를 거친다. 발화에 계좌번호가 섞여 들어오기 때문이다.
 
+### 세션은 기기를 들고 있는다
+
+세션에 붙은 기기가 이 세션에서 시작된 이체의 FDS 신뢰 기기 피처가 된다. 기기를 못 찾으면 붙이지 않고 그대로 진행한다 — 비신뢰로 평가돼 위험 쪽으로 기울 뿐이고, 세션 생성을 막을 이유는 아니다.
+
+`deviceUuid`는 인증 수단이 아니라 식별자다. 소유권 판정은 언제나 Access Token으로 한다.
+
 ## 변경 이력
 
+- **2026-08-28** — 음성 세션에 기기 연결 (#96). 기기 등록은 별도 트랜잭션이라 실패해도 로그인·세션 생성을 무너뜨리지 않는다. `POST /api/voice/sessions`가 선택 본문으로 `deviceUuid`를 받아 세션에 신뢰 기기를 붙인다. 그전까지 `VoiceSession.device`는 항상 `null`이라 FDS의 `trustedDevice`가 실서비스에서 언제나 `false`였고, Mock FDS 기준으로 **LOW 판정이 나올 수 없었다.**
+- **2026-08-27** — Safari/iOS 녹음 파일 지원 추가 (#91). `audio/mp4`·`audio/x-m4a`를 허용하고, MIME 문자열만 믿지 않도록 MP4의 `ftyp`·`moov`·`mvhd` box를 파싱해 버전 0·1 재생시간을 검증한다. 15초 초과와 손상된 box 크기·재생시간 누락은 AI 호출 전에 거부한다.
+- **2026-08-27** — 공개 Voice 응답에 마스킹된 `transcript` 추가 (#93). 실시간 AI 분석 응답은 계좌번호·전화번호 형태의 숫자를 가린 뒤 프론트에 전달하고, AI 호출 없이 저장 결과만 반환하는 멱등 재조회에서는 이전 발화를 재노출하지 않도록 `null`을 반환한다.
 - **2026-08-25** — `BALANCE` 의도 처리 추가 (#73). `HISTORY`와 같은 조회 흐름을 따르며 `BalanceInquiryService`를 그대로 호출한다. `VoiceCommandResponse`에 `balance` 필드 추가.
 - **2026-08-25** — `HISTORY` 의도 처리 추가 (#68). `validateIntent()`가 `TRANSFER` 외를 전부 거부해 "거래내역 알려줘"가 음성으로 동작하지 않던 문제를 해결했다. 함께 바뀐 것:
   - `VoiceSessionStatus`에 `CLARIFYING → ACTIVE` 전이 추가 (의도 전환)

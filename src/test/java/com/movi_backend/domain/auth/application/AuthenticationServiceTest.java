@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
+import com.movi_backend.domain.auth.application.DeviceRegistrationService;
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
 import com.movi_backend.domain.auth.entity.User;
@@ -47,6 +48,9 @@ class AuthenticationServiceTest {
     @Mock
     private JwtTokenProvider jwtTokenProvider;
 
+    @Mock
+    private DeviceRegistrationService deviceRegistrationService;
+
     @InjectMocks
     private AuthenticationService authenticationService;
 
@@ -66,7 +70,7 @@ class AuthenticationServiceTest {
 
         // when & then
         assertThatThrownBy(() -> authenticationService.loginWithPin(
-                new PinLoginRequest("010-1234-5678", "123456")
+                new PinLoginRequest("010-1234-5678", "123456", null, null, null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
@@ -87,7 +91,7 @@ class AuthenticationServiceTest {
 
         // when & then
         assertThatThrownBy(() -> authenticationService.loginWithPin(
-                new PinLoginRequest("01012345678", "000000")
+                new PinLoginRequest("01012345678", "000000", null, null, null)
         ))
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
@@ -112,7 +116,7 @@ class AuthenticationServiceTest {
 
         // when
         final LoginResponse response = authenticationService.loginWithPin(
-                new PinLoginRequest("01012345678", "123456")
+                new PinLoginRequest("01012345678", "123456", null, null, null)
         );
 
         // then
@@ -170,5 +174,46 @@ class AuthenticationServiceTest {
                 .pinHash("encoded-pin")
                 .biometricEnabled(false)
                 .build();
+    }
+
+    @Test
+    @DisplayName("PIN 로그인에 성공하면 그 기기를 신뢰 기기로 등록한다")
+    void PIN_로그인에_성공하면_그_기기를_신뢰_기기로_등록한다() {
+        // given
+        final User user = user(1L);
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.of(user));
+        given(userCredentialRepository.findByUserId(1L))
+                .willReturn(Optional.of(credential(user)));
+        given(passwordEncoder.matches("123456", "encoded-pin")).willReturn(true);
+        given(jwtTokenProvider.issueTokenPair(AuthUser.of(1L, UserType.GENERAL, 0L)))
+                .willReturn(JwtTokenPair.of("access-token", "refresh-token", 1800L));
+
+        // when
+        authenticationService.loginWithPin(new PinLoginRequest(
+                "01012345678", "123456", "device-uuid-1", "Galaxy S24", "Android 14"
+        ));
+
+        // then
+        then(deviceRegistrationService).should()
+                .registerTrusted(user.getId(), "device-uuid-1", "Galaxy S24", "Android 14");
+    }
+
+    @Test
+    @DisplayName("PIN이 틀리면 기기를 신뢰 기기로 등록하지 않는다")
+    void PIN이_틀리면_기기를_신뢰_기기로_등록하지_않는다() {
+        // given — 인증에 실패한 기기를 신뢰하면 신뢰 기기 피처 자체가 의미를 잃는다
+        final User user = user(1L);
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.of(user));
+        given(userCredentialRepository.findByUserId(1L))
+                .willReturn(Optional.of(credential(user)));
+        given(passwordEncoder.matches("000000", "encoded-pin")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.loginWithPin(new PinLoginRequest(
+                "01012345678", "000000", "device-uuid-1", null, null
+        ))).isInstanceOf(BusinessException.class);
+        then(deviceRegistrationService).shouldHaveNoInteractions();
     }
 }

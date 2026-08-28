@@ -19,7 +19,6 @@ import com.movi_backend.domain.account.infrastructure.openbanking.MockOpenBankin
 import com.movi_backend.domain.account.repository.BalanceSnapshotRepository;
 import com.movi_backend.domain.account.repository.OpenbankingConnectionRepository;
 import com.movi_backend.domain.account.type.AccountType;
-import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.auth.type.UserType;
@@ -48,6 +47,7 @@ import com.movi_backend.domain.voice.type.VoiceSessionStatus;
 import com.movi_backend.domain.voice.type.VoiceSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.domain.auth.application.DeviceRegistrationService;
 import com.movi_backend.global.security.SensitiveDataCrypto;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
@@ -56,6 +56,8 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -63,7 +65,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -164,6 +165,9 @@ class MviE2eScenarioTest {
 
     @Autowired
     private SensitiveDataCrypto sensitiveDataCrypto;
+
+    @Autowired
+    private DeviceRegistrationService deviceRegistrationService;
 
     @Autowired
     private EntityManager entityManager;
@@ -276,8 +280,7 @@ class MviE2eScenarioTest {
         makeProfileEstablished();
         stubUtterance(transferUtterance(50_000L, "엄마"));
 
-        final Long sessionId = startSession();
-        attachTrustedDevice(sessionId);
+        final Long sessionId = startSession(trustDevice());
         awaitConfirmation(sessionId);
 
         stubUtterance(confirmUtterance());
@@ -490,39 +493,16 @@ class MviE2eScenarioTest {
         makeRecipientFamiliar();
         makeProfileEstablished();
         stubUtterance(transferUtterance(50_000L, "엄마"));
-        final Long sessionId = startSession();
-        attachTrustedDevice(sessionId);
+        final Long sessionId = startSession(trustDevice());
         awaitConfirmation(sessionId);
         stubUtterance(confirmUtterance());
 
         final String idempotencyKey = UUID.randomUUID().toString();
-        final int threads = 4;
-        final ExecutorService pool = Executors.newFixedThreadPool(threads);
-        final CountDownLatch start = new CountDownLatch(1);
-        final CountDownLatch done = new CountDownLatch(threads);
-        final AtomicInteger succeeded = new AtomicInteger();
+        final ConcurrentRequestResult result = requestConcurrently(
+                () -> mockMvc.perform(voiceCommand(sessionId, idempotencyKey)).andReturn()
+        );
 
-        for (int i = 0; i < threads; i++) {
-            pool.submit(() -> {
-                try {
-                    start.await();
-                    final MvcResult result =
-                            mockMvc.perform(voiceCommand(sessionId, idempotencyKey)).andReturn();
-                    if (result.getResponse().getStatus() == 200) {
-                        succeeded.incrementAndGet();
-                    }
-                } catch (final Exception ignored) {
-                    // 경합에서 밀린 요청의 실패는 시나리오상 정상이다
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        pool.shutdownNow();
-
-        assertThat(succeeded.get()).isPositive();
+        result.assertOnlyExpectedStatuses();
         assertThat(transferRepository.findAll()).hasSize(1);
         assertThat(currentBalance()).isEqualTo(PRIMARY_BALANCE - 50_000L);
     }
@@ -586,10 +566,14 @@ class MviE2eScenarioTest {
     // ---------------------------------------------------------------- helpers
 
     private Long startSession() throws Exception {
+        return startSession(null);
+    }
+
+    private Long startSession(final String deviceUuid) throws Exception {
         final String body = mockMvc.perform(post("/api/voice/sessions")
                         .header("X-Dev-User-Id", user.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content(sessionStartBody(deviceUuid)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return voiceSessionRepository.findAll().stream()
@@ -726,29 +710,37 @@ class MviE2eScenarioTest {
         );
     }
 
-    /** Device 는 전용 리포지토리가 없어 정리도 EntityManager 로 한다. */
+    /** 시나리오마다 기기 신뢰 상태가 이어지지 않도록 비운다. */
     private void deleteAllDevices() {
         transactionTemplate.executeWithoutResult(status ->
                 entityManager.createQuery("delete from Device").executeUpdate());
     }
 
+    private String sessionStartBody(final String deviceUuid) {
+        if (deviceUuid == null) {
+            return "{}";
+        }
+        return "{\"deviceUuid\":\"%s\"}".formatted(deviceUuid);
+    }
+
     /**
      * 미등록 기기에서의 이체는 FDS가 위험 신호로 보아 MEDIUM이 된다.
-     * LOW 시나리오에서는 세션에 신뢰 기기를 붙인다.
+     * LOW 시나리오에서는 신뢰 기기를 등록하고 그 식별자로 세션을 연다.
+     *
+     * <p>세션에 기기를 리플렉션으로 심지 않는 이유는, 실제 API 경로로 LOW가 나오는지를
+     * 확인하는 것이 이 시나리오의 목적이기 때문이다. 기기 등록 경로가 없던 시절에는
+     * 이 테스트만 통과하고 실서비스에서는 LOW가 나올 수 없었다.
      */
-    private void attachTrustedDevice(final Long sessionId) {
-        transactionTemplate.executeWithoutResult(status -> {
-            final Device device = Device.builder()
-                    .user(entityManager.getReference(User.class, user.getId()))
-                    .deviceUuid(UUID.randomUUID().toString())
-                    .deviceModel("Galaxy E2E")
-                    .osVersion("Android 14")
-                    .build();
-            device.trust();
-            entityManager.persist(device);
-            final VoiceSession session = entityManager.find(VoiceSession.class, sessionId);
-            ReflectionTestUtils.setField(session, "device", device);
-        });
+    private String trustDevice() {
+        final String deviceUuid = UUID.randomUUID().toString();
+        transactionTemplate.executeWithoutResult(status ->
+                deviceRegistrationService.registerTrusted(
+                        user.getId(),
+                        deviceUuid,
+                        "Galaxy E2E",
+                        "Android 14"
+                ));
+        return deviceUuid;
     }
 
     /** 첫 거래 상대는 FDS가 MEDIUM으로 본다. LOW 시나리오에서는 거래 이력을 만들어 둔다. */
@@ -830,5 +822,73 @@ class MviE2eScenarioTest {
             throw new IllegalStateException("잔액을 읽지 못했습니다: " + body);
         }
         return Long.parseLong(matcher.group(1));
+    }
+
+    /**
+     * 같은 요청을 여러 스레드에서 동시에 보낸다.
+     *
+     * <p>예외를 삼키거나 {@code await} 결과를 버리면 요청이 멈춰도, 절반이 500으로 터져도
+     * 테스트가 초록불이 된다. 경합에서 밀린 요청이 <b>409로 밀리는 것과 500으로 터지는 것은
+     * 다르다</b> — 500은 사용자에게 오류 문구가 TTS로 읽히는 상황이다.
+     */
+    private ConcurrentRequestResult requestConcurrently(final ConcurrentRequest request)
+            throws InterruptedException {
+        final int threads = 4;
+        final ExecutorService pool = Executors.newFixedThreadPool(threads);
+        final CountDownLatch start = new CountDownLatch(1);
+        final CountDownLatch done = new CountDownLatch(threads);
+        final List<Integer> statuses = Collections.synchronizedList(new ArrayList<>());
+        final List<String> failures = Collections.synchronizedList(new ArrayList<>());
+
+        for (int index = 0; index < threads; index++) {
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    statuses.add(request.perform().getResponse().getStatus());
+                } catch (final Exception exception) {
+                    failures.add(exception.toString());
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        final boolean finished = done.await(30, TimeUnit.SECONDS);
+        pool.shutdownNow();
+        return new ConcurrentRequestResult(finished, List.copyOf(statuses), List.copyOf(failures));
+    }
+
+    @FunctionalInterface
+    private interface ConcurrentRequest {
+        MvcResult perform() throws Exception;
+    }
+
+    private record ConcurrentRequestResult(
+            boolean finished,
+            List<Integer> statuses,
+            List<String> failures
+    ) {
+
+        /**
+         * 200(기존 결과 반환)과 409(아직 처리 중)만 정상이다.
+         *
+         * <p>둘 다 "돈은 한 번만 나갔다"와 모순되지 않는다. 그 밖의 상태는 멱등성 처리가
+         * 아니라 결함이다.
+         */
+        private void assertOnlyExpectedStatuses() {
+            assertThat(this.finished)
+                    .withFailMessage("동시 요청이 30초 안에 끝나지 않았다: %s", this.statuses)
+                    .isTrue();
+            assertThat(this.failures)
+                    .withFailMessage("요청 중 예외 발생: %s", this.failures)
+                    .isEmpty();
+            assertThat(this.statuses)
+                    .withFailMessage("허용되지 않은 응답 상태: %s", this.statuses)
+                    .isNotEmpty()
+                    .allMatch(status -> status == 200 || status == 409);
+            assertThat(this.statuses)
+                    .withFailMessage("성공한 요청이 없다: %s", this.statuses)
+                    .contains(200);
+        }
     }
 }

@@ -5,6 +5,7 @@ import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.domain.voice.application.VoiceSessionService;
 import com.movi_backend.domain.voice.controller.docs.VoiceSessionApiDocs;
 import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
+import com.movi_backend.domain.voice.dto.request.VoiceSessionStartRequest;
 import com.movi_backend.domain.voice.dto.response.VoiceSessionStartResponse;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
@@ -12,8 +13,10 @@ import com.movi_backend.global.response.ApiResponse;
 import com.movi_backend.global.security.AuthUser;
 import com.movi_backend.global.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,10 +35,22 @@ public class VoiceSessionController implements VoiceSessionApiDocs {
     /** 인증된 사용자의 음성 세션을 시작하고 첫 음성 안내를 반환한다. */
     @PostMapping
     public ApiResponse<VoiceSessionStartResponse> start(
-            @CurrentUser final AuthUser authUser
+            @CurrentUser final AuthUser authUser,
+            @Valid @RequestBody(required = false) final VoiceSessionStartRequest request
     ) {
-        final VoiceSessionStartResponse response = voiceSessionService.start(authUser.userId());
+        final VoiceSessionStartResponse response = voiceSessionService.start(
+                authUser.userId(),
+                readDeviceUuid(request)
+        );
         return ApiResponse.success(response, START_VOICE_MESSAGE);
+    }
+
+    /** 본문 없이 호출하던 기존 클라이언트를 그대로 받는다. */
+    private String readDeviceUuid(final VoiceSessionStartRequest request) {
+        if (request == null) {
+            return null;
+        }
+        return request.deviceUuid();
     }
 
     /** 음성 파일을 분석해 이체 재질문 또는 최종 확인 응답을 반환한다. */

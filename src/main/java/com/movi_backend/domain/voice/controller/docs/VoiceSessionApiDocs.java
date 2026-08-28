@@ -1,6 +1,7 @@
 package com.movi_backend.domain.voice.controller.docs;
 
 import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
+import com.movi_backend.domain.voice.dto.request.VoiceSessionStartRequest;
 import com.movi_backend.domain.voice.dto.response.VoiceSessionStartResponse;
 import com.movi_backend.global.security.AuthUser;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,6 +32,11 @@ public interface VoiceSessionApiDocs {
                     들고 있는 주체가 세션입니다. 프론트와 AI는 앞선 발화의 금액·수취인을 보관하지 않습니다.
 
                     유효시간은 마지막 활동 후 5분입니다. 재질문이나 확인을 기다리는 동안은 60초로 짧아집니다.
+
+                    **본문은 선택입니다.** `deviceUuid`를 보내면 그 기기가 세션에 연결돼 이 세션에서 시작된
+                    이체의 FDS 위험도 평가에 신뢰 기기 여부로 들어갑니다. 기기는 PIN 인증(로그인 또는 최초
+                    등록)을 통과한 시점에 신뢰 기기로 등록되므로, **같은 `deviceUuid`를 그때도 함께 보내야**
+                    합니다. 보내지 않거나 등록되지 않은 기기면 비신뢰로 평가돼 위험도가 한 단계 올라갑니다.
                     """
     )
     @ApiResponses({
@@ -39,7 +45,8 @@ public interface VoiceSessionApiDocs {
                     description = "`AUTH_4010` 인증 필요")
     })
     com.movi_backend.global.response.ApiResponse<VoiceSessionStartResponse> start(
-            @Parameter(hidden = true) AuthUser authUser
+            @Parameter(hidden = true) AuthUser authUser,
+            VoiceSessionStartRequest request
     );
 
     @Operation(
@@ -72,14 +79,22 @@ public interface VoiceSessionApiDocs {
 
                     잔액조회, 송금, 거래내역 조회, 확인, 취소입니다. 이 밖의 의도는 `VOICE_4003`으로 거부합니다.
 
+                    ## 인식 문장
+
+                    응답의 `transcript`에는 현재 발화를 프론트가 확인할 수 있도록 인식 문장을 반환합니다.
+                    계좌번호·전화번호 형태의 긴 숫자는 마지막 네 자리만 남기고 마스킹합니다. 저장된
+                    멱등 결과만 다시 반환해 AI 분석을 새로 하지 않은 경우에는 `null`입니다.
+
                     ## 음성 파일 제약
 
-                    WebM/Opus 또는 WAV, **최대 5MB·15초**입니다. 재생 시간은 헤더에서 읽으므로
+                    WebM/Opus, WAV 또는 Safari/iOS MP4·M4A, **최대 5MB·15초**입니다.
+                    재생 시간은 헤더에서 읽으므로
                     형식이 올바르지 않으면 업로드 단계에서 거부됩니다.
 
                     ## 알아 둘 것
 
                     - **직접 계좌번호를 말하는 송금은 거부합니다.** 미리 등록한 수취인만 쓸 수 있습니다
+                    - `transcript` 원문은 공개 응답에 포함하지 않습니다
                     - 인식 신뢰도가 낮으면 실행하지 않고 다시 말해 달라고 합니다
                     - 확인 대기 중 금액이나 수취인이 바뀌면 기존 확인 정보를 버리고 새로 확인받습니다
                     - **고위험 송금은 403 `FDS_4031`로 차단**되며 실제 이체는 일어나지 않습니다
@@ -111,7 +126,7 @@ public interface VoiceSessionApiDocs {
     com.movi_backend.global.response.ApiResponse<VoiceCommandResponse> command(
             @Parameter(hidden = true) AuthUser authUser,
             @Parameter(description = "음성 세션 ID", example = "15") Long voiceSessionId,
-            @Parameter(description = "녹음 파일. WebM/Opus 또는 WAV, 최대 5MB·15초")
+            @Parameter(description = "녹음 파일. WebM/Opus, WAV 또는 MP4·M4A, 최대 5MB·15초")
             MultipartFile audio,
             @Parameter(description = "확인 발화에만 보낸다. 확인 대기 응답으로 받은 값을 그대로 되돌려 준다")
             String confirmationId,

@@ -25,6 +25,7 @@ import com.movi_backend.domain.transfer.application.model.ValidatedTransferComma
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.domain.transfer.application.TransferTargetResolver;
 import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransactionType;
 import com.movi_backend.domain.transfer.type.TransferSlot;
@@ -144,6 +145,8 @@ class VoiceCommandServiceTest {
 
         // then
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.CLARIFYING);
+        assertThat(response.transcript()).isEqualTo("엄마 계좌 ***3456으로 보내줘");
+        assertThat(response.transcript()).doesNotContain("110-123-123456");
         assertThat(response.missingSlots()).containsExactly(TransferSlot.AMOUNT);
         assertThat(response.toVoiceMessage()).isEqualTo("얼마를 보내시겠어요?");
         assertThat(session.getPendingSlots()).contains("엄마");
@@ -210,8 +213,7 @@ class VoiceCommandServiceTest {
                 transferExecutionService,
                 transactionQueryService,
                 balanceInquiryService,
-                accountRepository,
-                transferRecipientRepository,
+                new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 objectMapper,
                 audioDurationValidator
         );
@@ -225,6 +227,7 @@ class VoiceCommandServiceTest {
 
         // then
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+        assertThat(response.transcript()).isEqualTo("오만 원");
         assertThat(response.amount()).isEqualTo(50_000L);
         assertThat(response.confirmationId()).isNotBlank();
         assertThat(response.toVoiceMessage())
@@ -296,6 +299,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.CANCELED);
         assertThat(response.intent()).isEqualTo(VoiceIntent.CANCEL);
+        assertThat(response.transcript()).isEqualTo("아니 취소할게");
         assertThat(response.toVoiceMessage()).isEqualTo("송금을 취소했어요.");
         assertThat(session.getPendingSlots()).isNull();
         assertThat(session.getPendingIntent()).isNull();
@@ -375,6 +379,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.transferId()).isEqualTo(101L);
         assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(response.transcript()).isEqualTo("응 보내줘");
         assertThat(response.toVoiceMessage()).isEqualTo("김영희 님에게 5만원을 보냈어요.");
         assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
         assertThat(session.getPendingSlots()).isNull();
@@ -468,6 +473,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.transferId()).isEqualTo(101L);
         assertThat(response.status()).isEqualTo(TransferStatus.COMPLETED);
+        assertThat(response.transcript()).isNull();
         then(voiceAnalysisClient).shouldHaveNoInteractions();
         then(transferExecutionService).should(never()).execute(any());
     }
@@ -507,6 +513,30 @@ class VoiceCommandServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
         then(voiceSessionRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("코덱 정보가 포함된 MP4 음성 형식은 정규화해 길이를 검증한다")
+    void MP4_음성_형식은_정규화해_길이를_검증한다() {
+        // given
+        final VoiceSession otherUserSession = createSession(99L);
+        final MockMultipartFile mp4Audio = new MockMultipartFile(
+                "audio",
+                "voice.mp4",
+                "audio/mp4;codecs=mp4a.40.2",
+                new byte[]{1, 2, 3}
+        );
+        given(voiceSessionRepository.findById(SESSION_ID))
+                .willReturn(Optional.of(otherUserSession));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.process(USER_ID, SESSION_ID, mp4Audio))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+        then(audioDurationValidator).should().validate(mp4Audio, "audio/mp4");
+        then(voiceAnalysisClient).shouldHaveNoInteractions();
     }
 
     @Test
@@ -597,6 +627,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.intent()).isEqualTo(VoiceIntent.HISTORY);
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(response.transcript()).isEqualTo("거래내역 알려줘");
         assertThat(response.history().totalCount()).isEqualTo(2L);
         assertThat(response.history().items()).hasSize(2);
         assertThat(response.toVoiceMessage())
@@ -735,6 +766,7 @@ class VoiceCommandServiceTest {
         // then
         assertThat(response.intent()).isEqualTo(VoiceIntent.BALANCE);
         assertThat(response.state()).isEqualTo(VoiceSessionStatus.ACTIVE);
+        assertThat(response.transcript()).isEqualTo("잔액 알려줘");
         assertThat(response.balance().balanceAmount()).isEqualTo(53_000L);
         assertThat(response.toVoiceMessage()).isEqualTo("국민은행 생활비 통장에 5만 3천원 있어요.");
         assertThat(response.toVoiceMessage()).doesNotContain("53000");
@@ -911,8 +943,7 @@ class VoiceCommandServiceTest {
                 transferExecutionService,
                 transactionQueryService,
                 balanceInquiryService,
-                accountRepository,
-                transferRecipientRepository,
+                new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 new ObjectMapper(),
                 audioDurationValidator
         );

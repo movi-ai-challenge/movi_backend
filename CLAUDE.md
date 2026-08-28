@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **파트 간 통합 계약은 [docs/integration-spec.md](docs/integration-spec.md)가 최우선 기준입니다.** 다른 문서와 충돌하면 이 문서를 따르세요. AI 내부 API 규격은 [docs/ai-api-contract.md](docs/ai-api-contract.md), 일자별 실행계획은 [docs/execution-plan.md](docs/execution-plan.md)에 있습니다.
+> **파트 간 통합 계약은 [docs/integration-spec.md](docs/integration-spec.md)가 최우선 기준입니다.** 다른 문서와 충돌하면 이 문서를 따르세요. AI 내부 API 규격은 [docs/ai-api-contract.md](docs/ai-api-contract.md), 완료 조건과 담당 배분은 [docs/execution-plan.md](docs/execution-plan.md)에 있습니다.
 >
 > 도구 무관 공통 규약은 [AGENTS.md](AGENTS.md)에 있습니다. 특히 **이미 만들어진 공용 자산(엔티티 20개·에러코드·공통 응답·인증 컨텍스트)을 중복 생성하지 않도록** 해당 절을 먼저 확인하세요.
 >
 > 도메인별 상세 로직·불변식·테스트 작성 규칙은 [docs/domain-guide.md](docs/domain-guide.md)를 먼저 확인하세요.
 >
-> 데이터 모델은 [docs/ERD.md](docs/ERD.md), DDL은 [docs/schema.sql](docs/schema.sql), 개발 일정과 담당 배분은 [docs/schedule-backend.md](docs/schedule-backend.md)를 참조하세요.
+> 데이터 모델은 [docs/ERD.md](docs/ERD.md), DDL은 [docs/schema.sql](docs/schema.sql)에 있습니다.
 
 ## Project Overview
 
@@ -186,7 +186,13 @@ return ApiResponse.success(balance, "국민은행 통장에 5만 3천원 있어�
    git checkout develop && git pull
    git checkout -b feat/12-balance-api      # 12 = 이슈 번호
    ```
-3. **PR 본문에 이슈 연결** — `Closes #12`를 적으면 머지 시 이슈가 자동으로 닫힙니다
+3. **PR 본문에 이슈 연결** — `Closes #12`를 적어 PR과 이슈가 서로 보이게 합니다
+4. **머지 후 이슈를 직접 닫습니다**
+   ```bash
+   gh issue close <이슈번호> --comment "PR #<PR번호> 머지로 완료"
+   ```
+
+   **`Closes #12`로 자동으로 닫히지 않습니다.** GitHub의 자동 종료는 저장소 기본 브랜치(`main`)로 머지될 때만 동작하는데, 기능 PR은 전부 `develop`을 대상으로 하기 때문입니다. 이걸 모르고 두면 끝난 일이 이슈 목록에 계속 남아 무엇이 남았는지 알 수 없게 됩니다
 
 ```text
 main     — 배포 가능 상태

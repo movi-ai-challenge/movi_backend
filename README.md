@@ -107,7 +107,63 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 **CORS 허용 오리진은 `CorsProperties` 한 곳에서만 관리한다.** 프론트 주소가 늘면 이 클래스만 고치면 되고, 서버 설정은 건드리지 않는다. nginx 에도 CORS 를 두면 헤더가 두 번 나가 브라우저가 응답을 거부한다(이슈 #82).
 
-## 구현 진행 상황
+## 프로젝트 전체 현황
+
+> 갱신일: 2026-08-28 · 마감: 2026-08-31
+>
+> 백엔드 `develop@e0667fc` · 프런트 `main@7c94998` · AI `main@2026-08-26`
+
+세 파트 모두 **각자의 기능은 구현이 끝났고, 서로 연결하는 일이 남았습니다.**
+
+| 파트 | 구현 | 연동 | 지금 막고 있는 것 |
+|---|---|---|---|
+| 백엔드 | 완료 (293개 테스트 통과) | Mock 기준 완주 | AI staging URL 없음 |
+| 프런트 | 완료 (PR 8개 대기) | 백엔드 계약 반영 완료 | **PR 8개 미병합** |
+| AI | Voice·FDS 각각 동작 | 미연결 | 배포 주소·응답 계약 |
+
+### 파트 간 의존 관계
+
+```text
+AI staging URL ─────────┐
+                        ▼
+              백엔드 실 연동(#104) ──┐
+                                     ▼
+프런트 PR 8개 병합 ──────────────► staging E2E ──► 시연
+                        ▲
+배포 서버에 시드 적용 ───┘
+```
+
+**AI 응답이 가장 상위 의존성입니다.** 나머지는 모두 팀 내부에서 처리할 수 있습니다.
+
+### 남은 일과 담당
+
+| 우선순위 | 할 일 | 담당 | 상태 |
+|:---:|---|---|---|
+| P0 | 프런트 PR 8개 병합 | 프런트 | 전부 `MERGEABLE`, 즉시 가능 |
+| P0 | 배포 서버 yml에 `movi.seed.enabled: true` | 인프라 | 서버 접근 필요 |
+| P0 | AI Voice·FDS staging URL과 계약 확정 | AI | [movi_ai#1](https://github.com/movi-ai-challenge/movi_ai/issues/1) 미응답 |
+| P0 | `/api/openbanking/callback` 공개 경로 + 프런트 302 복귀 | 백엔드(계좌) | 미착수 — 프런트 연결 흐름이 막혀 있음 |
+| P1 | AI 계약 확정 후 백엔드 실 연동 전환 | 백엔드 | [#104](https://github.com/movi-ai-challenge/movi_backend/issues/104) |
+| P1 | 오픈뱅킹 Sandbox 실 이체 1건 종단 검증 | 백엔드(계좌) | Adapter는 구현 완료 |
+| P1 | staging E2E (인증 → 조회 → 송금 → 보호자 알림) | 전원 | 위 P0가 선행 |
+| P2 | 국내 SMS provider 연동 | 백엔드(알림) | 현재 Mock sender |
+| P2 | 접근성 실측 (200% 확대·VoiceOver·TalkBack) | 프런트 | |
+
+### 지금 당장 할 수 있는 것
+
+AI 답변을 기다리지 않고 오늘 처리 가능한 항목입니다.
+
+1. **프런트 PR 8개 병합** — 가장 큰 미반영 작업입니다. `#21 → #24·#25·#26 → #27 → #28 → #23` 순서를 권장합니다(#22는 #28이 대체하므로 함께 병합하지 않습니다)
+2. **OpenBanking callback 공개 + 302** — 백엔드 한 파일 수정이면 프런트 계좌 연결 흐름이 열립니다
+3. **배포 서버 시드 적용** — 이게 없으면 staging E2E와 시연이 시작되지 않습니다
+
+### 대안 계획
+
+8/30까지 AI staging이 준비되지 않으면 **백엔드 Mock 어댑터로 시연**하되 화면과 음성에 Sandbox·시연임을 표시합니다. 오픈뱅킹 승인이 늦어도 같은 방식입니다. 자세한 기준은 [docs/execution-plan.md](docs/execution-plan.md) 6절을 따릅니다.
+
+---
+
+## 백엔드 구현 진행 상황
 
 상태 표기는 다음 기준을 사용합니다.
 
@@ -118,7 +174,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 | 영역 | 상태 | 현재 구현 |
 |---|:---:|---|
 | 인증 | ✅ | 카카오 OAuth, PIN 로그인·등록, Access/Refresh JWT, 갱신·로그아웃, 운영 JWT 필터 |
-| 계좌 연결·관리 | ✅ | 오픈뱅킹 연결·콜백, 계좌 목록, 기본 계좌, 계좌 별칭 |
+| 계좌 연결·관리 | 🧪 | 계좌 목록·기본 계좌·별칭 완료. **콜백이 아직 인증 필요 경로이고 JSON을 반환해 프런트로 복귀하지 못한다** |
 | 잔액조회 | ✅ | 기본/별칭 계좌 조회, 실시간 재조회, BalanceSnapshot 저장, Mock/실 API Adapter, 음성 조회(BALANCE) |
 | 음성 세션 | ✅ | 업로드 검증, 슬롯 저장·병합, 재질문, 확인·취소, 만료·재시도 제한 |
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
@@ -132,7 +188,8 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 | 오픈뱅킹 Sandbox | 🧪 | OAuth·계좌·잔액·이체 Adapter 구현 완료, 실제 테스트베드 종단 검증 필요 |
 | 실제 SMS | 🧪 | 솔라피(Solapi) Adapter 구현 완료, 서버 IP에서 실발송·수신 확인. 배포 환경에 `provider: solapi` 적용 후 재확인 필요 |
 | 배포 | 🧪 | Docker·GitHub Actions·Nginx·헬스체크·롤백 구현, 운영 시크릿과 서버 기동 검증 진행 중 |
-| 전체 E2E·시드 | ⏳ | 도메인 단위·통합 테스트 존재, 실제 외부 연동 포함 종단 시나리오와 시연 데이터 필요 |
+| 시연 시드 | ✅ | `movi.seed.enabled=true`로 데모 사용자·계좌·수취인·보호자 생성. LOW/MEDIUM/HIGH 세 시나리오 재현 가능 |
+| 전체 E2E | 🧪 | 12개 시나리오 Mock 기반 통과, 실제 외부 연동 포함 종단 검증 필요 |
 
 ## 도메인별 구현
 
@@ -156,8 +213,9 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 ### 음성 세션
 
-- WebM/WAV, 최대 5MB·15초 검증
+- WebM/WAV와 Safari/iOS MP4·M4A, 최대 5MB·15초 검증
 - AI Voice 응답의 request/session ID, confidence, 필수 필드 검증
+- 공개 Voice 응답의 transcript를 마스킹해 계좌번호·전화번호 원문 차단
 - 최종 확인 발화의 `confirmationId`를 서버 세션 값과 대조
 - 금액·수취인 누락 시 기존 슬롯과 후속 발화 병합
 - 재질문·확인 대기 60초, 동일 슬롯 재질문 최대 3회
@@ -333,7 +391,37 @@ movi:
 SOLAPI_LIVE_TEST=true SOLAPI_API_KEY=키 SOLAPI_API_SECRET=시크릿 SOLAPI_SENDER_PHONE=발신번호 SOLAPI_TARGET_PHONE=수신번호 SOLAPI_MESSAGE=테스트 ./gradlew cleanTest test --tests "*SolapiLiveSendTest*"
 ```
 
-### 4. 개발 인증
+### 4. 시연 데이터 (선택)
+
+빈 DB에서는 로그인부터 막혀 시연도 E2E도 시작할 수 없습니다. 시드를 켜면 기동 시 데모 데이터를 만듭니다.
+
+```yaml
+movi:
+  seed:
+    enabled: true
+```
+
+`*.yml`은 애플리케이션 키로 암호화·해시한 값을 만들어야 해서 SQL 파일 대신 코드로 생성합니다. **이미 있으면 건너뛰고 아무것도 지우지 않습니다.**
+
+| 항목 | 값 |
+|---|---|
+| 데모 사용자 | `01012345678` / PIN `135790` (`movi.seed.pin`으로 변경) |
+| 소유권 검증용 타인 | `01099998888` / 같은 PIN |
+| 신뢰 기기 | `movi.seed.device-uuid` — 프런트가 이 값을 보내야 LOW 판정이 나옵니다 |
+| 계좌 | 생활비 통장(53만원, 기본) · 비상금 통장(120만원) |
+| 수취인 | 엄마·아들(거래 이력 있음) · 김영희(첫 거래) |
+
+세 위험도가 모두 재현됩니다.
+
+| 위험도 | 시연 방법 |
+|---|---|
+| LOW | 엄마에게 10만원 이하 — 이체 완료, 알림 없음 |
+| MEDIUM | 김영희에게 송금 또는 10만원 초과 — 이체 완료 + 보호자 알림 |
+| HIGH | **비상금 통장에서** 70만원 이상 — 차단 + 보호자 알림 |
+
+HIGH는 반드시 비상금 통장에서 보내야 합니다. 기본 계좌는 53만원이라 FDS가 아니라 잔액 부족에서 먼저 막힙니다.
+
+### 5. 개발 인증
 
 `movi.auth.dev-mode=true`인 로컬 환경에서만 다음 헤더로 사용자를 지정할 수 있습니다.
 
@@ -411,7 +499,7 @@ src/main/java/com/movi_backend
 - [x] 국내 SMS Provider Adapter 연결 (솔라피)
 - [ ] 은행 거래고유번호 영속화와 사후 대사 흐름
 - [ ] FDS 409 충돌 후 기존 평가 조회 계약 확정
-- [ ] MySQL 백업·복구 시험과 시연용 시드데이터
+- [ ] MySQL 백업·복구 시험
 - [ ] HTTPS·Nginx·방화벽 운영 점검
 
 ### P2 · 확장
@@ -436,13 +524,11 @@ src/main/java/com/movi_backend
 - [도메인 가이드](docs/domain-guide.md)
 - [프론트·AI·백엔드 통합 명세](docs/integration-spec.md)
 - [AI Voice·FDS API 계약](docs/ai-api-contract.md)
-- [AI·Frontend·Backend 통합 회의록 및 조치 목록](docs/ai-backend-integration-gaps.md)
 - [API 응답 규약](docs/api-response.md)
 - [에러 코드](docs/error-codes.md)
 - [ERD](docs/ERD.md)
 - [MySQL 스키마](docs/schema.sql)
-- [백엔드 개발 일정](docs/schedule-backend.md)
-- [상세 실행 계획](docs/execution-plan.md)
+- [실행 기준 — 완료 조건·담당·남은 일](docs/execution-plan.md)
 
 ## README 유지 원칙
 

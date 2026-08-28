@@ -21,6 +21,7 @@ public record VoiceCommandResponse(
         Long voiceSessionId,
         VoiceSessionStatus state,
         VoiceIntent intent,
+        String transcript,
         List<TransferSlot> missingSlots,
         String confirmationId,
         FromAccount fromAccount,
@@ -49,12 +50,14 @@ public record VoiceCommandResponse(
 
     public static VoiceCommandResponse clarifying(
             final VoiceSession session,
-            final List<TransferSlot> missingSlots
+            final List<TransferSlot> missingSlots,
+            final String transcript
     ) {
         return new VoiceCommandResponse(
                 session.getId(),
                 session.getStatus(),
                 VoiceIntent.TRANSFER,
+                transcript,
                 missingSlots,
                 null,
                 null,
@@ -75,12 +78,14 @@ public record VoiceCommandResponse(
             final String confirmationId,
             final Account account,
             final TransferRecipient transferRecipient,
-            final long amount
+            final long amount,
+            final String transcript
     ) {
         return new VoiceCommandResponse(
                 session.getId(),
                 session.getStatus(),
                 VoiceIntent.TRANSFER,
+                transcript,
                 List.of(),
                 confirmationId,
                 FromAccount.from(account),
@@ -96,11 +101,15 @@ public record VoiceCommandResponse(
         );
     }
 
-    public static VoiceCommandResponse canceled(final VoiceSession session) {
+    public static VoiceCommandResponse canceled(
+            final VoiceSession session,
+            final String transcript
+    ) {
         return new VoiceCommandResponse(
                 session.getId(),
                 session.getStatus(),
                 VoiceIntent.CANCEL,
+                transcript,
                 List.of(),
                 null,
                 null,
@@ -119,12 +128,14 @@ public record VoiceCommandResponse(
     /** 거래내역 조회 결과. 세션은 이어서 다른 명령을 받을 수 있도록 열어 둔다. */
     public static VoiceCommandResponse history(
             final VoiceSession session,
-            final History history
+            final History history,
+            final String transcript
     ) {
         return new VoiceCommandResponse(
                 session.getId(),
                 session.getStatus(),
                 VoiceIntent.HISTORY,
+                transcript,
                 List.of(),
                 null,
                 null,
@@ -141,10 +152,18 @@ public record VoiceCommandResponse(
     }
 
     public static VoiceCommandResponse executed(final TransferExecutionResult result) {
+        return executed(result, null);
+    }
+
+    public static VoiceCommandResponse executed(
+            final TransferExecutionResult result,
+            final String transcript
+    ) {
         return new VoiceCommandResponse(
                 null,
                 VoiceSessionStatus.COMPLETED,
                 VoiceIntent.CONFIRM,
+                transcript,
                 List.of(),
                 null,
                 null,
@@ -163,12 +182,14 @@ public record VoiceCommandResponse(
     /** 잔액조회 결과. 조회는 돈을 움직이지 않으므로 세션을 이어서 쓸 수 있게 열어 둔다. */
     public static VoiceCommandResponse balance(
             final VoiceSession session,
-            final BalanceResponse balance
+            final BalanceResponse balance,
+            final String transcript
     ) {
         return new VoiceCommandResponse(
                 session.getId(),
                 session.getStatus(),
                 VoiceIntent.BALANCE,
+                transcript,
                 List.of(),
                 null,
                 null,

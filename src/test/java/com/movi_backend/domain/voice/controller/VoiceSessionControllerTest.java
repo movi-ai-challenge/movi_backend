@@ -46,7 +46,7 @@ class VoiceSessionControllerTest {
                 VoiceSessionStatus.ACTIVE,
                 expiresAt
         );
-        given(voiceSessionService.start(userId)).willReturn(response);
+        given(voiceSessionService.start(userId, null)).willReturn(response);
         final CurrentUserArgumentResolver resolver = new CurrentUserArgumentResolver(
                 new AuthProperties(true, 1L)
         );
@@ -83,6 +83,7 @@ class VoiceSessionControllerTest {
                 sessionId,
                 VoiceSessionStatus.CLARIFYING,
                 VoiceIntent.TRANSFER,
+                "엄마 계좌 ***3456으로 보내줘",
                 List.of(TransferSlot.AMOUNT),
                 null,
                 null,
@@ -144,6 +145,8 @@ class VoiceSessionControllerTest {
                 .andExpect(jsonPath("$.code").value("SUCCESS"))
                 .andExpect(jsonPath("$.voiceMessage").value("얼마를 보내시겠어요?"))
                 .andExpect(jsonPath("$.data.state").value("CLARIFYING"))
+                .andExpect(jsonPath("$.data.transcript")
+                        .value("엄마 계좌 ***3456으로 보내줘"))
                 .andExpect(jsonPath("$.data.missingSlots[0]").value("AMOUNT"));
     }
 }

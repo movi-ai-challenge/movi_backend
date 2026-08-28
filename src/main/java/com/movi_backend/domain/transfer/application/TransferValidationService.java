@@ -43,7 +43,7 @@ public class TransferValidationService {
             return createClarification(missingSlots);
         }
 
-        validateAmount(command.amount());
+        validateAmountRange(command.amount());
         final TransferRecipient recipient = findRecipient(userId, command.recipient());
         return ValidatedTransferCommand.of(
                 command.amount(),
@@ -85,7 +85,13 @@ public class TransferValidationService {
         return TransferClarification.of(missingSlots, AMOUNT_QUESTION);
     }
 
-    private void validateAmount(final long amount) {
+    /**
+     * 이체 금액이 정책 범위 안인지 확인한다.
+     *
+     * <p>직접 입력 송금도 같은 한도를 쓴다. 경로마다 한도를 따로 두면 한쪽만 고쳐 놓고
+     * 다른 쪽으로 한도를 넘길 수 있다.
+     */
+    public void validateAmountRange(final long amount) {
         if (amount < transferProperties.minimumAmount()) {
             throw new BusinessException(ErrorCode.INVALID_AMOUNT);
         }

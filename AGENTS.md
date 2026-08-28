@@ -21,12 +21,11 @@ Movi는 시각장애인·시니어가 **화면 없이 음성만으로** 은행 �
 |---|---|
 | **[docs/integration-spec.md](docs/integration-spec.md)** | **파트 간 계약 — 충돌 시 최우선 기준** |
 | [docs/ai-api-contract.md](docs/ai-api-contract.md) | AI Voice·FDS 내부 API를 호출할 때 |
-| [docs/execution-plan.md](docs/execution-plan.md) | 오늘 무엇을 해야 하는지 |
+| [docs/execution-plan.md](docs/execution-plan.md) | 완료 조건·담당·남은 일이 궁금할 때 |
 | [docs/ERD.md](docs/ERD.md) · [docs/schema.sql](docs/schema.sql) | 테이블·컬럼을 다룰 때 |
 | [docs/domain-guide.md](docs/domain-guide.md) | 도메인 로직·불변식·테스트를 쓸 때 |
 | [docs/error-codes.md](docs/error-codes.md) | 예외를 던질 때 |
 | [docs/api-response.md](docs/api-response.md) | 컨트롤러 응답을 만들 때 |
-| [docs/schedule-backend.md](docs/schedule-backend.md) | 담당·우선순위가 궁금할 때 |
 
 ---
 
@@ -185,7 +184,10 @@ gh issue create --title "feat: 잔액조회 API" --body "..."   # 1. 이슈
 git checkout develop && git pull
 git checkout -b feat/12-balance-api                          # 2. 이슈 번호 접두
 # 3. 작업 후 PR 본문에 "Closes #12"
+gh issue close <이슈번호> --comment "PR #<PR번호> 머지로 완료"   # 4. 머지 후 직접 닫는다
 ```
+
+**`Closes #12`로는 자동으로 닫히지 않습니다.** GitHub의 자동 종료는 기본 브랜치(`main`)로 머지될 때만 동작하는데 기능 PR은 전부 `develop`을 대상으로 합니다. `Closes`는 PR과 이슈를 서로 연결해 두는 용도로만 쓰고, 이슈는 머지 후 직접 닫습니다.
 
 이슈 본문에는 **무엇을·왜·완료 조건**을 적습니다. 완료 조건은 "무엇이 되면 done"인지 검증 가능한 기준이어야 합니다.
 

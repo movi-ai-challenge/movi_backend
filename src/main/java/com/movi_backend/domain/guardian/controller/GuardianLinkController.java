@@ -1,6 +1,7 @@
 package com.movi_backend.domain.guardian.controller;
 
 import com.movi_backend.domain.guardian.application.GuardianLinkService;
+import com.movi_backend.domain.guardian.controller.docs.GuardianLinkApiDocs;
 import com.movi_backend.domain.guardian.dto.request.GuardianLinkCreateRequest;
 import com.movi_backend.domain.guardian.dto.response.GuardianLinkRegisterResponse;
 import com.movi_backend.global.response.ApiResponse;
@@ -22,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/guardian-links")
-public class GuardianLinkController {
+public class GuardianLinkController implements GuardianLinkApiDocs {
 
     private final GuardianLinkService guardianLinkService;
 

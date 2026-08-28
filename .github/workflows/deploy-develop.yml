@@ -242,6 +242,10 @@ jobs:
               --password-stdin
             sudo docker pull "$IMAGE_REFERENCE"
 
+            # AI 서버(movi-ai-fds / movi-ai-voice)와 통신할 공용 네트워크.
+            # 이미 있으면 그대로 쓴다.
+            sudo docker network create movi-net 2>/dev/null || true
+
             sudo docker rm --force "$BACKUP_CONTAINER_NAME" 2>/dev/null || true
 
             if sudo docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
@@ -271,6 +275,11 @@ jobs:
               restore_previous_container
               exit 1
             fi
+
+            # AI 서버를 컨테이너 이름으로 호출하려면 같은 네트워크에 있어야 한다.
+            #   http://movi-ai-fds:8000  /  http://movi-ai-voice:8001
+            # 네트워크를 교체하지 않고 추가로 연결하므로 기존 동작에 영향이 없다.
+            sudo docker network connect movi-net "$CONTAINER_NAME" 2>/dev/null || true
 
             attempt=1
             while [ "$attempt" -le 30 ]; do

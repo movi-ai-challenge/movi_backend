@@ -9,7 +9,7 @@
 
 Movi는 음성 인식 결과를 곧바로 금융 실행으로 연결하지 않습니다. 백엔드가 금액·수취인·계좌 소유권·한도·잔액을 다시 검증하고, 모든 송금에 FDS 평가와 멱등성 검사를 적용한 뒤에만 이체를 실행합니다.
 
-문서 기준: **2026-08-24 · `develop`**
+문서 기준: **2026-08-28 · `develop`**
 
 ## 왜 이 프로젝트를 만들었나
 
@@ -26,7 +26,8 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 ## 핵심 사용자 흐름
 
 ```text
-로그인
+로그인 (카카오 또는 PIN)
+  → 보호자 등록 (전화번호)
   → 음성 세션 시작
   → 음성 업로드
   → AI Voice API에서 STT·Intent·Entity 분석
@@ -34,9 +35,12 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
   → 누락 정보 재질문 또는 최종 확인
   → FDS 위험도 평가
   → LOW/MEDIUM 이체 실행 또는 HIGH 차단
+  → MEDIUM/HIGH면 등록된 보호자 번호로 경고 문자 발송
   → 거래·평가·알림 상태 저장
   → 텍스트 + voiceMessage 응답
 ```
+
+보호자를 등록하지 않으면 위험이 감지돼도 보낼 대상이 없어 문자가 나가지 않습니다.
 
 ## 이 프로젝트의 기술적 핵심
 
@@ -176,12 +180,13 @@ AI 답변을 기다리지 않고 오늘 처리 가능한 항목입니다.
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
 | FDS | ✅ | Mock/HTTP Client, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치 |
 | 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 단건 상세, 음성 안내, 음성 조회(HISTORY) |
+| 보호자 등록 | ✅ | 로그인 후 이름·전화번호·관계 등록, 즉시 연결, 본인·중복 번호 차단 |
 | 보호자 위험 알림 | ✅ | 활성 보호자 조회, 알림 이력, 송금과 트랜잭션 분리, 최대 3회 재시도 |
 | 민감정보 보호 | ✅ | 전화번호·토큰·수취 계좌번호 암호화, 로그·응답 마스킹 |
 | AI Voice staging | 🧪 | HTTP Client 구현 완료, 실제 모바일 음성과 staging 계약 검증 필요 |
 | AI FDS staging | 🧪 | HTTP Client 구현 완료, 실제 모델·정책 버전 및 오류 시나리오 검증 필요 |
 | 오픈뱅킹 Sandbox | 🧪 | OAuth·계좌·잔액·이체 Adapter 구현 완료, 실제 테스트베드 종단 검증 필요 |
-| 실제 SMS | ⏳ | Mock·Unavailable Adapter만 제공, 국내 SMS Provider 연동 필요 |
+| 실제 SMS | 🧪 | 솔라피(Solapi) Adapter 구현 완료, 서버 IP에서 실발송·수신 확인. 배포 환경에 `provider: solapi` 적용 후 재확인 필요 |
 | 배포 | 🧪 | Docker·GitHub Actions·Nginx·헬스체크·롤백 구현, 운영 시크릿과 서버 기동 검증 진행 중 |
 | 시연 시드 | ✅ | `movi.seed.enabled=true`로 데모 사용자·계좌·수취인·보호자 생성. LOW/MEDIUM/HIGH 세 시나리오 재현 가능 |
 | 전체 E2E | 🧪 | 12개 시나리오 Mock 기반 통과, 실제 외부 연동 포함 종단 검증 필요 |
@@ -263,6 +268,14 @@ PENDING → RISK_REVIEW → COMPLETED
 | MEDIUM | ALLOW_WITH_ALERT | 송금 실행 후 보호자 알림 |
 | HIGH | BLOCK | 송금 미실행, 보호자 긴급 알림 |
 
+### 보호자 등록
+
+- 로그인한 본인 계정에만 등록 가능 (`@CurrentUser`, 요청 본문으로 사용자 ID를 받지 않음)
+- 보호자 확인 절차 없이 즉시 `ACTIVE` — 확인 화면을 두지 않기로 해 초대·승인 단계가 없음
+- 보호자가 Movi 회원이 아니어도 등록됨. 알림은 전화번호로 발송하며 `guardian_user_id`는 비움
+- 본인 번호 등록 차단(`users.phone_hash` 대조), 같은 번호 중복 등록 차단
+- 전화번호는 AES 암호화 저장. 무작위 IV라 암호문 비교로는 중복을 가릴 수 없어 활성 링크만 복호화해 대조
+
 ### 보호자 알림
 
 - MEDIUM/HIGH 이체에서 활성 보호자별 알림 생성
@@ -270,6 +283,15 @@ PENDING → RISK_REVIEW → COMPLETED
 - 발송 결과를 `SENT` 또는 `FAILED`로 별도 기록
 - 일시 실패 시 같은 알림 ID를 사용해 최대 3회 재시도
 - 알림 실패가 완료·차단된 송금 상태를 되돌리지 않음
+
+### SMS 발송 (솔라피)
+
+- `SmsNotificationSender` 경계 뒤에 구현. `movi.sms.provider=solapi`일 때 활성화
+- 설정이 없으면 기존 `UnavailableSmsNotificationSender`가 쓰여 발송 실패로 기록됨 (성공으로 위장하지 않음)
+- local·test 프로필은 Mock 사용
+- 실패를 예외로 올림 — 호출부가 이를 잡아 재시도 큐에 넣는 구조라, 삼키면 재시도가 일어나지 않음
+- 요청마다 새 salt로 HMAC-SHA256 서명. 전화번호 원문과 API Secret은 로그에 남기지 않음
+- **솔라피 API 키에 IP 허용 목록이 걸려 있어, 등록되지 않은 IP에서는 403이 납니다.** 로컬에서 실발송을 시험하려면 콘솔에 해당 IP를 추가해야 합니다
 
 ## 주요 기술적 의사결정
 
@@ -309,6 +331,7 @@ AI와 금융 Sandbox 승인은 개발 일정과 독립적인 외부 변수입니
 | `POST` | `/api/v1/auth/pin/login` | PIN 로그인 |
 | `POST` | `/api/v1/auth/token/refresh` | JWT 갱신 |
 | `POST` | `/api/v1/auth/logout` | 로그아웃·기존 토큰 무효화 |
+| `POST` | `/api/v1/guardian-links` | 보호자 등록 (이름·전화번호·관계) |
 | `POST` | `/api/openbanking/connect` | 오픈뱅킹 연결 시작 |
 | `GET` | `/api/openbanking/callback` | 오픈뱅킹 callback |
 | `GET` | `/api/accounts` | 연결 계좌 목록 |
@@ -349,6 +372,24 @@ mysql -u root -p movi < docs/schema.sql
 ```
 
 기본 로컬 설정은 Voice, FDS, 오픈뱅킹, SMS Mock을 사용합니다.
+
+실제 문자를 보내려면 `movi.sms.provider`를 `solapi`로 바꾸고 아래를 채웁니다. 발신번호는 솔라피에 사전 등록된 번호여야 하고, API 키에 IP 허용 목록이 걸려 있으면 실행 위치의 IP도 콘솔에 등록해야 합니다.
+
+```yaml
+movi:
+  sms:
+    provider: solapi
+    solapi:
+      api-key: ...
+      api-secret: ...
+      sender-phone: ...
+```
+
+연동 상태만 빠르게 확인하려면 실발송 점검 테스트를 씁니다. 실제 문자가 나가고 비용이 들어 평소 테스트에서는 건너뜁니다.
+
+```bash
+SOLAPI_LIVE_TEST=true SOLAPI_API_KEY=키 SOLAPI_API_SECRET=시크릿 SOLAPI_SENDER_PHONE=발신번호 SOLAPI_TARGET_PHONE=수신번호 SOLAPI_MESSAGE=테스트 ./gradlew cleanTest test --tests "*SolapiLiveSendTest*"
+```
 
 ### 4. 시연 데이터 (선택)
 
@@ -450,11 +491,12 @@ src/main/java/com/movi_backend
 - [ ] 실제 AI Voice staging에서 모바일 녹음 파일 검증
 - [ ] 실제 AI FDS staging에서 정상·timeout·잘못된 응답 시나리오 검증
 - [ ] 오픈뱅킹 Sandbox에서 연결 → 잔액조회 → 송금 종단 검증
-- [ ] 로그인 → 음성 → FDS → 송금 → 보호자 알림 전체 E2E 작성
+- [x] 로그인 → 보호자 등록 → 음성 → FDS → 송금 → 보호자 알림 전체 E2E 작성
+- [ ] 배포 환경에서 `provider: solapi` 적용 후 실제 경고 문자 수신 확인
 
 ### P1 · 운영 안정성
 
-- [ ] 국내 SMS Provider Adapter 연결
+- [x] 국내 SMS Provider Adapter 연결 (솔라피)
 - [ ] 은행 거래고유번호 영속화와 사후 대사 흐름
 - [ ] FDS 409 충돌 후 기존 평가 조회 계약 확정
 - [ ] MySQL 백업·복구 시험

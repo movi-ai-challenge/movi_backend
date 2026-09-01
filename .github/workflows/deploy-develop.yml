@@ -258,10 +258,16 @@ jobs:
               fi
             }
 
+            # AI 컨테이너(movi-ai-voice / movi-ai-fds)와 같은 네트워크에 붙인다.
+            # 백엔드는 이 둘을 컨테이너 이름으로 호출하는데, 기본 bridge 에 남아
+            # 있으면 이름이 풀리지 않아 실 연동이 전부 실패한다.
+            sudo docker network create movi-net 2>/dev/null || true
+
             if ! sudo docker run \
               --name "$CONTAINER_NAME" \
               --detach \
               --restart unless-stopped \
+              --network movi-net \
               --publish "${HOST_PORT}:${CONTAINER_PORT}" \
               --env TZ=Asia/Seoul \
               --env SPRING_PROFILES_ACTIVE=prod \

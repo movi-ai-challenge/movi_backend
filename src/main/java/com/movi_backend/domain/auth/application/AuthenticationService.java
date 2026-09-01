@@ -1,5 +1,6 @@
 package com.movi_backend.domain.auth.application;
 
+import com.movi_backend.domain.auth.application.event.TrustedDeviceRegistrationRequested;
 import com.movi_backend.domain.auth.dto.request.PasswordLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinRegisterRequest;
@@ -20,6 +21,7 @@ import com.movi_backend.global.util.PhoneNumberNormalizer;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +35,7 @@ public class AuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final SensitiveDataCrypto sensitiveDataCrypto;
     private final JwtTokenProvider jwtTokenProvider;
-    private final DeviceRegistrationService deviceRegistrationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 일반 회원가입. 카카오를 거치지 않고 계정을 만들고 곧바로 로그인 상태로 만든다.
@@ -65,12 +67,12 @@ public class AuthenticationService {
                 .biometricEnabled(false)
                 .build());
 
-        deviceRegistrationService.registerTrusted(
+        eventPublisher.publishEvent(new TrustedDeviceRegistrationRequested(
                 user.getId(),
                 request.deviceUuid(),
                 request.deviceModel(),
                 request.osVersion()
-        );
+        ));
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
         return LoginResponse.of(user.getId(), true, tokenPair);
@@ -91,12 +93,12 @@ public class AuthenticationService {
         final UserCredential credential = userCredentialRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PASSWORD_NOT_REGISTERED));
         verifyPassword(credential, request.password());
-        deviceRegistrationService.registerTrusted(
+        eventPublisher.publishEvent(new TrustedDeviceRegistrationRequested(
                 user.getId(),
                 request.deviceUuid(),
                 request.deviceModel(),
                 request.osVersion()
-        );
+        ));
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
         return LoginResponse.of(user.getId(), false, tokenPair);
@@ -113,12 +115,12 @@ public class AuthenticationService {
         final UserCredential credential = userCredentialRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PIN_NOT_REGISTERED));
         verifyPin(credential, request.pin());
-        deviceRegistrationService.registerTrusted(
+        eventPublisher.publishEvent(new TrustedDeviceRegistrationRequested(
                 user.getId(),
                 request.deviceUuid(),
                 request.deviceModel(),
                 request.osVersion()
-        );
+        ));
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
         return LoginResponse.of(user.getId(), false, tokenPair);
@@ -133,12 +135,12 @@ public class AuthenticationService {
         final User user = findActiveUser(userId);
         registerPhone(user, request.phoneNumber());
         upsertPin(user, request.pin());
-        deviceRegistrationService.registerTrusted(
+        eventPublisher.publishEvent(new TrustedDeviceRegistrationRequested(
                 user.getId(),
                 request.deviceUuid(),
                 request.deviceModel(),
                 request.osVersion()
-        );
+        ));
     }
 
     /** 다른 계정이 이미 쓰는 번호는 거부한다. 보호자 알림이 엉뚱한 사람에게 갈 수 있다. */

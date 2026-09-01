@@ -4,9 +4,12 @@ import com.movi_backend.domain.account.dto.response.AccountListResponse;
 import com.movi_backend.domain.account.dto.response.AccountResponse;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
+import com.movi_backend.domain.transfer.repository.TransferRepository;
+import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -21,7 +24,12 @@ public class AccountService {
 
     private static final int MAX_ALIAS_LENGTH = 50;
 
+    /** 아직 결과가 정해지지 않은 이체 상태. 이 상태의 이체가 걸린 계좌는 해제하지 않는다. */
+    private static final Set<TransferStatus> IN_FLIGHT_TRANSFER_STATUSES =
+            Set.of(TransferStatus.PENDING, TransferStatus.RISK_REVIEW);
+
     private final AccountRepository accountRepository;
+    private final TransferRepository transferRepository;
 
     /** 연결된 계좌 목록. 기본 계좌가 먼저 온다. */
     @Transactional(readOnly = true)
@@ -82,6 +90,53 @@ public class AccountService {
             throw new BusinessException(ErrorCode.ACCOUNT_ALIAS_DUPLICATED);
         }
         return AccountResponse.from(target);
+    }
+
+    /**
+     * 계좌 연결을 해제한다 (명세서 1.5).
+     *
+     * <p>행을 지우지 않고 {@code is_active}만 내린다. 이 계좌를 참조하는 거래내역과 이체 이력이
+     * 남아 있어야 하고, 지난 이체를 되짚을 수 없게 되면 분쟁이 났을 때 근거가 사라진다.
+     *
+     * <p>기본 계좌를 해제하면 남은 계좌 중 하나를 기본으로 올린다. 기본 계좌가 비면 계좌를
+     * 지정하지 않은 음성 명령("잔액 알려줘")이 어느 계좌를 볼지 알 수 없어진다.
+     *
+     * @return 해제 후 남은 계좌 목록
+     */
+    @Transactional
+    public AccountListResponse disconnect(final Long userId, final Long accountId) {
+        final Account target = accountRepository.findByIdAndUserId(accountId, userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND));
+
+        if (!target.isActive()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_INACTIVE);
+        }
+
+        if (transferRepository.existsByFromAccountIdAndStatusIn(accountId, IN_FLIGHT_TRANSFER_STATUSES)) {
+            throw new BusinessException(ErrorCode.ACCOUNT_HAS_PENDING_TRANSFER);
+        }
+
+        final boolean wasPrimary = target.isPrimary();
+        target.deactivate();
+
+        final List<Account> remaining =
+                accountRepository.findAllByUserIdAndActiveTrueOrderByPrimaryDescIdAsc(userId);
+
+        if (wasPrimary) {
+            promoteNextPrimary(remaining);
+        }
+        return AccountListResponse.from(remaining);
+    }
+
+    /**
+     * 기본 계좌가 사라진 자리를 메운다. 남은 계좌가 없으면 아무것도 하지 않는다 —
+     * 마지막 계좌까지 해제하는 것은 사용자의 선택이므로 막지 않는다.
+     */
+    private void promoteNextPrimary(final List<Account> remaining) {
+        if (remaining.isEmpty()) {
+            return;
+        }
+        remaining.get(0).designateAsPrimary();
     }
 
     private String normalizeAlias(final String alias) {

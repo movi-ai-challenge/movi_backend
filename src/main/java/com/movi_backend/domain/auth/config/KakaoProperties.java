@@ -26,10 +26,11 @@ public record KakaoProperties(
         if (secureCookie == null) {
             secureCookie = true;
         }
-        // 프런트가 교환 코드로 옮겨오기 전까지는 기존 쿼리 방식도 함께 내보낸다.
-        // 옮겨온 뒤 false 로 바꾸면 리다이렉트 URL 에서 토큰이 사라진다.
+        // 프런트가 교환 코드(POST /api/v1/auth/kakao/token)로 옮겨왔으므로 기본값을 껐다.
+        // 리다이렉트 URL 은 브라우저 기록·프런트 호스트 로그·Referer 헤더에 남는다.
+        // 되돌려야 할 일이 생기면 movi.kakao.legacy-token-query=true 로 잠시 켠다.
         if (legacyTokenQuery == null) {
-            legacyTokenQuery = true;
+            legacyTokenQuery = false;
         }
     }
 

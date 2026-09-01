@@ -118,4 +118,36 @@ public interface AccountApiDocs {
             @Parameter(description = "별칭을 바꿀 계좌 ID", example = "12") Long accountId,
             AccountAliasChangeRequest request
     );
+
+    @Operation(
+            summary = "계좌 연결 해제",
+            description = """
+                    연결된 계좌를 목록에서 내립니다 (명세서 1.5).
+
+                    **행을 지우지 않고 비활성으로 표시합니다.** 이 계좌를 참조하는 거래내역과 이체 이력이
+                    남아 있어야 하며, 지난 이체를 되짚을 수 없게 되면 분쟁이 났을 때 근거가 사라집니다.
+                    해제한 계좌는 목록·잔액조회·이체 대상에서 모두 빠집니다.
+
+                    **보내는 중인 이체가 걸려 있으면 해제하지 않습니다.** `PENDING`·`RISK_REVIEW` 상태의
+                    이체가 있으면 `ACCOUNT_4005`로 거절합니다. 결과가 정해지지 않은 돈을 어디에도
+                    귀속시킬 수 없기 때문입니다.
+
+                    기본 계좌를 해제하면 **남은 계좌 중 하나가 자동으로 기본 계좌가 됩니다.** 기본 계좌가
+                    비면 계좌를 지정하지 않은 음성 명령이 어느 계좌를 볼지 알 수 없어집니다.
+                    마지막 계좌를 해제하는 것은 막지 않습니다.
+
+                    응답은 **해제 후 남은 계좌 목록**입니다. 화면이 다시 조회하지 않아도 되도록 했습니다.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "해제 완료. 남은 계좌 목록을 돌려준다"),
+            @ApiResponse(responseCode = "400", content = @Content,
+                    description = "`ACCOUNT_4002` 이미 해제된 계좌 · `ACCOUNT_4005` 진행 중인 이체가 있음"),
+            @ApiResponse(responseCode = "404", content = @Content,
+                    description = "`ACCOUNT_4040` 본인 계좌가 아니거나 존재하지 않음")
+    })
+    com.movi_backend.global.response.ApiResponse<AccountListResponse> disconnect(
+            @Parameter(hidden = true) AuthUser authUser,
+            @Parameter(description = "연결을 해제할 계좌 ID", example = "12") Long accountId
+    );
 }

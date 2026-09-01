@@ -12,6 +12,7 @@ import com.movi_backend.global.security.AuthUser;
 import com.movi_backend.global.security.CurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -70,5 +71,15 @@ public class AccountController implements AccountApiDocs {
                 request.alias()
         );
         return ApiResponse.success(account, "계좌 별칭을 바꿨어요.");
+    }
+
+    /** 계좌 연결 해제 (명세서 1.5) */
+    @DeleteMapping("/{accountId}")
+    public ApiResponse<AccountListResponse> disconnect(
+            @CurrentUser final AuthUser authUser,
+            @PathVariable final Long accountId
+    ) {
+        final AccountListResponse remaining = accountService.disconnect(authUser.userId(), accountId);
+        return ApiResponse.success(remaining, "계좌 연결을 해제했어요. " + remaining.toVoiceMessage());
     }
 }

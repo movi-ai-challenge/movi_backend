@@ -522,6 +522,52 @@ class TransferExecutionServiceTest {
         then(openBankingTransferPort).shouldHaveNoInteractions();
     }
 
+    @Test
+    @DisplayName("JSON 문자열로 감싸인 common_hours 도 읽어 내 이체를 완료한다")
+    void JSON_문자열로_감싸인_common_hours_도_읽어_낸다() {
+        // given — common_hours 는 JSON 컬럼인데 매핑이 String 이라 DB 에 따라 배열이 아니라
+        // 배열을 담은 JSON 문자열로 돌아온다. 이걸 못 읽으면 FDS 가 fail-closed 로 막혀
+        // 송금이 전면 차단된다. DB 가 바뀌었다는 이유로 돈이 안 나가면 안 된다.
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        given(userTransferProfileRepository.findById(USER_ID))
+                .willReturn(Optional.of(profileWithCommonHours("\"[10,14,19]\"")));
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        givenOpenBankingSuccess();
+        final TransferExecutionService service = createService();
+
+        // when
+        final TransferExecutionResult result = service.execute(command);
+
+        // then
+        assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("감싸이지 않은 common_hours 도 그대로 읽는다")
+    void 감싸이지_않은_common_hours_도_그대로_읽는다() {
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        given(userTransferProfileRepository.findById(USER_ID))
+                .willReturn(Optional.of(profileWithCommonHours("[10,14,19]")));
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        givenOpenBankingSuccess();
+        final TransferExecutionService service = createService();
+
+        final TransferExecutionResult result = service.execute(command);
+
+        assertThat(result.status()).isEqualTo(TransferStatus.COMPLETED);
+    }
+
+    private com.movi_backend.domain.fds.entity.UserTransferProfile profileWithCommonHours(
+            final String commonHours
+    ) {
+        final com.movi_backend.domain.fds.entity.UserTransferProfile profile =
+                com.movi_backend.domain.fds.entity.UserTransferProfile.builder().build();
+        profile.refresh(50_000L, 80_000L, new BigDecimal("10000.00"), commonHours, 12, 3);
+        return profile;
+    }
+
     private ConfirmedTransferCommand givenCommand(final long amount) {
         final String idempotencyKey = UUID.randomUUID().toString();
         given(user.getId()).willReturn(USER_ID);

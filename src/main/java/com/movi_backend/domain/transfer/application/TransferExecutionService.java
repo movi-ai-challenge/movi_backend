@@ -50,6 +50,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -284,12 +285,30 @@ public class TransferExecutionService {
             return List.of();
         }
         try {
-            return Arrays.stream(objectMapper.readValue(commonHours, int[].class))
+            return Arrays.stream(objectMapper.readValue(unwrapJsonString(commonHours), int[].class))
                     .boxed()
                     .toList();
         } catch (final JacksonException exception) {
             throw new BusinessException(ErrorCode.ASSESSMENT_FAILED, "FDS 프로필 형식 오류");
         }
+    }
+
+    /**
+     * JSON 문자열로 한 번 더 감싸인 값을 풀어 준다.
+     *
+     * <p>{@code common_hours}는 JSON 컬럼인데 매핑은 {@code String}이다. 이 조합은 DB마다
+     * 다르게 저장된다 — MySQL은 유효한 JSON 텍스트를 배열로 파싱해 넣지만, H2는 문자열 값으로
+     * 보고 {@code "[10,14,19]"}처럼 따옴표로 감싸 돌려준다.
+     *
+     * <p>감싸인 쪽을 그대로 {@code int[]}로 읽으면 실패하고, FDS 평가는 fail-closed 라
+     * <b>송금이 전면 차단된다.</b> DB가 바뀌었다는 이유로 돈이 안 나가면 안 된다.
+     */
+    private String unwrapJsonString(final String commonHours) {
+        final JsonNode node = objectMapper.readTree(commonHours);
+        if (node.isTextual()) {
+            return node.stringValue();
+        }
+        return commonHours;
     }
 
     private FdsAssessment saveAssessment(

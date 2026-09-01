@@ -43,13 +43,13 @@ class SecurityConfigCorsTest {
     void 허용한_오리진의_프리플라이트_요청에_CORS_헤더를_내려준다() throws Exception {
         // when & then
         mockMvc.perform(options(LOGOUT_PATH)
-                        .header(HttpHeaders.ORIGIN, "https://movi-ai-challenge.netlify.app")
+                        .header(HttpHeaders.ORIGIN, "https://movi-frontend-amber.vercel.app")
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
                         .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Authorization"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(
                         HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
-                        "https://movi-ai-challenge.netlify.app"
+                        "https://movi-frontend-amber.vercel.app"
                 ));
     }
 

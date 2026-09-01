@@ -13,10 +13,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "movi.cors")
 public record CorsProperties(List<String> allowedOrigins) {
 
+    /**
+     * 배포된 프론트엔드와 로컬 개발 서버만 연다.
+     *
+     * <p><b>미리보기 배포 주소에 와일드카드를 쓰지 않는다.</b> {@code https://*.vercel.app} 같은
+     * 패턴은 아무나 만든 앱에서 인증이 붙은 요청을 보낼 수 있게 한다. 미리보기 주소가 필요하면
+     * {@code movi.cors.allowed-origins}에 그 주소를 하나씩 적는다.
+     */
     private static final List<String> DEFAULT_ALLOWED_ORIGINS = List.of(
             "http://localhost:3000",
-            "https://movi-ai-challenge.netlify.app",
-            "https://*--movi-ai-challenge.netlify.app"
+            "https://movi-frontend-amber.vercel.app"
     );
 
     public CorsProperties {

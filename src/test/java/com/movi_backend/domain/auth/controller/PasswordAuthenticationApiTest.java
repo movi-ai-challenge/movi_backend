@@ -1,5 +1,6 @@
 package com.movi_backend.domain.auth.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -7,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.movi_backend.domain.auth.repository.DeviceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -33,6 +35,9 @@ class PasswordAuthenticationApiTest {
 
     @Autowired
     private WebApplicationContext webApplicationContext;
+
+    @Autowired
+    private DeviceRepository deviceRepository;
 
     private MockMvc mockMvc;
 
@@ -122,5 +127,29 @@ class PasswordAuthenticationApiTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("기기 식별자를 함께 보내도 가입되고, 그 기기가 등록된다")
+    void 기기_식별자를_보내도_가입된다() throws Exception {
+        // given — 프런트는 항상 deviceUuid 를 함께 보낸다. 기기 등록을 인증 트랜잭션 안에서
+        //         바로 부르면 아직 커밋되지 않은 users 행의 잠금을 기다리다 교착에 빠진다.
+        //         커밋 뒤에 처리되는지 확인한다.
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "deviceuser",
+                                  "password": "password1234",
+                                  "name": "문하늘",
+                                  "deviceUuid": "device-uuid-signup",
+                                  "deviceModel": "Galaxy S24",
+                                  "osVersion": "Android 14"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("SUCCESS"));
+
+        assertThat(deviceRepository.existsByDeviceUuid("device-uuid-signup")).isTrue();
     }
 }

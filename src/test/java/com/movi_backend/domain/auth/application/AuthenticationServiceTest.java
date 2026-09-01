@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
-import com.movi_backend.domain.auth.application.DeviceRegistrationService;
+import com.movi_backend.domain.auth.application.event.TrustedDeviceRegistrationRequested;
 import com.movi_backend.domain.auth.dto.request.PasswordLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinRegisterRequest;
@@ -30,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -52,7 +53,7 @@ class AuthenticationServiceTest {
     private JwtTokenProvider jwtTokenProvider;
 
     @Mock
-    private DeviceRegistrationService deviceRegistrationService;
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private AuthenticationService authenticationService;
@@ -216,8 +217,9 @@ class AuthenticationServiceTest {
         ));
 
         // then
-        then(deviceRegistrationService).should()
-                .registerTrusted(user.getId(), "device-uuid-1", "Galaxy S24", "Android 14");
+        then(eventPublisher).should().publishEvent(new TrustedDeviceRegistrationRequested(
+                user.getId(), "device-uuid-1", "Galaxy S24", "Android 14"
+        ));
     }
 
     @Test
@@ -235,7 +237,7 @@ class AuthenticationServiceTest {
         assertThatThrownBy(() -> authenticationService.loginWithPin(new PinLoginRequest(
                 "01012345678", "000000", "device-uuid-1", null, null
         ))).isInstanceOf(BusinessException.class);
-        then(deviceRegistrationService).shouldHaveNoInteractions();
+        then(eventPublisher).shouldHaveNoInteractions();
     }
 
     @Test
@@ -355,7 +357,7 @@ class AuthenticationServiceTest {
         assertThatThrownBy(() -> authenticationService.loginWithPassword(new PasswordLoginRequest(
                 "movi", "wrong-password", "device-uuid-1", null, null
         ))).isInstanceOf(BusinessException.class);
-        then(deviceRegistrationService).shouldHaveNoInteractions();
+        then(eventPublisher).shouldHaveNoInteractions();
     }
 
     @Test

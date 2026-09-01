@@ -1,5 +1,6 @@
 package com.movi_backend.domain.auth.application;
 
+import com.movi_backend.domain.auth.application.event.TrustedDeviceRegistrationRequested;
 import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.DeviceRepository;
@@ -12,6 +13,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * 사용자 기기 등록과 신뢰 승격.
@@ -45,6 +48,31 @@ public class DeviceRegistrationService {
      * 생기든 로그인을 실패시키면 안 된다. 같은 트랜잭션에 두면 제약 위반 한 번이 트랜잭션을
      * rollback-only로 만들어, 잡아도 로그인 커밋이 함께 무너진다.
      */
+    /**
+     * 인증 트랜잭션이 <b>커밋된 뒤</b> 기기를 등록한다.
+     *
+     * <p>커밋 전에 부르면 {@code devices}가 참조하는 {@code users} 행의 잠금을 기다리다
+     * 교착에 빠진다. 자세한 사정은 {@link TrustedDeviceRegistrationRequested}에 적어 두었다.
+     *
+     * <p>{@code fallbackExecution}을 켜 둔 것은 트랜잭션 밖에서 발행된 경우에도 그대로
+     * 처리하기 위해서다. 그때는 잠금이 없으므로 미룰 이유가 없다.
+     */
+    @TransactionalEventListener(
+            phase = TransactionPhase.AFTER_COMMIT,
+            fallbackExecution = true
+    )
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onTrustedDeviceRegistrationRequested(
+            final TrustedDeviceRegistrationRequested event
+    ) {
+        registerTrusted(
+                event.userId(),
+                event.deviceUuid(),
+                event.deviceModel(),
+                event.osVersion()
+        );
+    }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void registerTrusted(
             final Long userId,

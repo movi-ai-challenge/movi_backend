@@ -49,7 +49,7 @@ class KakaoAuthControllerCallbackTest {
     }
 
     @Test
-    @DisplayName("카카오 로그인에 성공하면 토큰을 담아 프론트엔드 콜백 주소로 리다이렉트한다")
+    @DisplayName("카카오 로그인에 성공하면 교환 코드만 담아 프론트엔드 콜백 주소로 리다이렉트한다")
     void 카카오_로그인에_성공하면_프론트엔드로_리다이렉트한다() throws Exception {
         // given
         final LoginResponse response = new LoginResponse(
@@ -74,13 +74,13 @@ class KakaoAuthControllerCallbackTest {
 
         assertThat(redirectUri.getScheme() + "://" + redirectUri.getHost() + redirectUri.getPath())
                 .isEqualTo("https://movi-frontend-amber.vercel.app/login/callback");
-        assertThat(params.getFirst("accessToken")).isEqualTo("access-token-value");
-        assertThat(params.getFirst("refreshToken")).isEqualTo("refresh-token-value");
-        assertThat(params.getFirst("userId")).isEqualTo("1");
-        assertThat(params.getFirst("newUser")).isEqualTo("true");
-        assertThat(params.getFirst("tokenType")).isEqualTo("Bearer");
-        assertThat(params.getFirst("accessTokenExpiresIn")).isEqualTo("1800");
         assertThat(params.getFirst("code")).isNotBlank();
+        assertThat(params.getFirst("newUser")).isEqualTo("true");
+
+        // 이 주소는 브라우저 기록·프런트 호스트 로그·Referer 헤더에 남는다.
+        // 토큰이 여기 실리면 회수할 방법이 없다.
+        assertThat(params)
+                .doesNotContainKeys("accessToken", "refreshToken", "tokenType", "accessTokenExpiresIn");
     }
 
     @Test

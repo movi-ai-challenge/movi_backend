@@ -39,7 +39,7 @@ import org.springframework.web.util.UriComponentsBuilder;
         "movi.jwt.secret=test-jwt-signing-key-must-be-at-least-32-bytes",
         "movi.crypto.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "movi.crypto.hash-key=YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=",
-        "movi.kakao.frontend-redirect-uri=https://movi-ai-challenge.netlify.app/login/callback",
+        "movi.kakao.frontend-redirect-uri=https://movi-frontend-amber.vercel.app/login/callback",
         "movi.kakao.legacy-token-query=false"
 })
 @ActiveProfiles("test")

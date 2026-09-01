@@ -131,16 +131,8 @@ public class AuthenticationService {
      */
     public void registerPin(final Long userId, final PinRegisterRequest request) {
         final User user = findActiveUser(userId);
-        if (userCredentialRepository.existsByUserId(userId)) {
-            throw new BusinessException(ErrorCode.PIN_ALREADY_REGISTERED);
-        }
         registerPhone(user, request.phoneNumber());
-        final UserCredential credential = UserCredential.builder()
-                .user(user)
-                .pinHash(passwordEncoder.encode(request.pin()))
-                .biometricEnabled(false)
-                .build();
-        userCredentialRepository.save(credential);
+        upsertPin(user, request.pin());
         deviceRegistrationService.registerTrusted(
                 user.getId(),
                 request.deviceUuid(),
@@ -179,6 +171,9 @@ public class AuthenticationService {
     }
 
     private void verifyPin(final UserCredential credential, final String pin) {
+        if (!credential.hasPin()) {
+            throw new BusinessException(ErrorCode.PIN_NOT_REGISTERED);
+        }
         final LocalDateTime now = LocalDateTime.now();
         if (credential.isLocked(now)) {
             throw new BusinessException(ErrorCode.PIN_LOCKED);
@@ -192,6 +187,32 @@ public class AuthenticationService {
             throw new BusinessException(ErrorCode.PIN_LOCKED);
         }
         throw new BusinessException(ErrorCode.PIN_MISMATCH);
+    }
+
+    /**
+     * PIN 을 등록한다.
+     *
+     * <p><b>자격증명 행의 존재만으로 "이미 등록됨"을 판단하지 않는다.</b> 일반 회원가입을 하면
+     * 비밀번호만 담긴 행이 먼저 생기는데, 그 행을 보고 거절하면 일반 가입자는 PIN 을 영영
+     * 등록할 수 없다. 실제로 {@code pin_hash} 가 차 있을 때만 거절하고, 비밀번호만 있는
+     * 행에는 PIN 을 채워 넣는다. 한 사용자가 두 수단을 함께 쓸 수 있어야 한다.
+     */
+    private void upsertPin(final User user, final String pin) {
+        final String pinHash = passwordEncoder.encode(pin);
+        final UserCredential existing = userCredentialRepository.findByUserId(user.getId())
+                .orElse(null);
+        if (existing == null) {
+            userCredentialRepository.save(UserCredential.builder()
+                    .user(user)
+                    .pinHash(pinHash)
+                    .biometricEnabled(false)
+                    .build());
+            return;
+        }
+        if (existing.hasPin()) {
+            throw new BusinessException(ErrorCode.PIN_ALREADY_REGISTERED);
+        }
+        existing.changePin(pinHash);
     }
 
     /**

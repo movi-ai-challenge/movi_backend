@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import com.movi_backend.domain.auth.application.DeviceRegistrationService;
 import com.movi_backend.domain.auth.dto.request.PasswordLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
+import com.movi_backend.domain.auth.dto.request.PinRegisterRequest;
 import com.movi_backend.domain.auth.dto.request.SignUpRequest;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
 import com.movi_backend.domain.auth.entity.User;
@@ -355,5 +356,72 @@ class AuthenticationServiceTest {
                 "movi", "wrong-password", "device-uuid-1", null, null
         ))).isInstanceOf(BusinessException.class);
         then(deviceRegistrationService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("일반 가입자도 PIN을 등록할 수 있다")
+    void 일반_가입자도_PIN을_등록할_수_있다() {
+        // given — 비밀번호만 담긴 자격증명 행이 이미 있다. 행의 존재만으로 거절하면
+        //         일반 가입자는 PIN 을 영영 등록할 수 없다.
+        final User user = userWithLoginId(1L, "movi");
+        final UserCredential credential = passwordCredential(user);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(sensitiveDataCrypto.encrypt("01012345678")).willReturn("encrypted-phone");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.empty());
+        given(userCredentialRepository.findByUserId(1L)).willReturn(Optional.of(credential));
+        given(passwordEncoder.encode("135790")).willReturn("encoded-pin");
+
+        // when
+        authenticationService.registerPin(
+                1L, new PinRegisterRequest("010-1234-5678", "135790", null, null, null)
+        );
+
+        // then — 새 행을 만들지 않고 기존 행에 PIN 을 채운다. 비밀번호도 그대로 남는다.
+        assertThat(credential.getPinHash()).isEqualTo("encoded-pin");
+        assertThat(credential.getPasswordHash()).isEqualTo("encoded-password");
+        then(userCredentialRepository).should(org.mockito.Mockito.never())
+                .save(org.mockito.ArgumentMatchers.any(UserCredential.class));
+    }
+
+    @Test
+    @DisplayName("PIN이 이미 있으면 다시 등록할 수 없다")
+    void PIN이_이미_있으면_다시_등록할_수_없다() {
+        // given
+        final User user = user(1L);
+        given(userRepository.findById(1L)).willReturn(Optional.of(user));
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(sensitiveDataCrypto.encrypt("01012345678")).willReturn("encrypted-phone");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.empty());
+        given(userCredentialRepository.findByUserId(1L))
+                .willReturn(Optional.of(credential(user)));
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.registerPin(
+                1L, new PinRegisterRequest("010-1234-5678", "135790", null, null, null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PIN_ALREADY_REGISTERED);
+    }
+
+    @Test
+    @DisplayName("PIN이 없는 계정의 PIN 로그인은 미등록으로 거절한다")
+    void PIN이_없으면_미등록으로_거절한다() {
+        // given — 비밀번호만 있는 계정. BCrypt 가 null 을 false 로 넘겨 "불일치"로
+        //         보이게 두지 않고, 무엇이 문제인지 분명한 코드를 준다.
+        final User user = userWithLoginId(1L, "movi");
+        given(sensitiveDataCrypto.hash("01012345678")).willReturn("phone-hash");
+        given(userRepository.findByPhoneHash("phone-hash")).willReturn(Optional.of(user));
+        given(userCredentialRepository.findByUserId(1L))
+                .willReturn(Optional.of(passwordCredential(user)));
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.loginWithPin(
+                new PinLoginRequest("01012345678", "135790", null, null, null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PIN_NOT_REGISTERED);
     }
 }

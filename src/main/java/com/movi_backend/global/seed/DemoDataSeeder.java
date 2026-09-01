@@ -63,7 +63,7 @@ public class DemoDataSeeder implements ApplicationRunner {
 
     private static final String DEMO_PHONE = "01012345678";
     private static final String OTHER_PHONE = "01099998888";
-    private static final String GUARDIAN_PHONE = "01055556666";
+    private static final String GUARDIAN_PHONE = "01099047809";
 
     private final UserRepository userRepository;
     private final UserCredentialRepository userCredentialRepository;

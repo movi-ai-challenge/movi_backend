@@ -11,7 +11,7 @@ import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferR
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
 import com.movi_backend.domain.account.entity.OpenbankingConnection;
-import com.movi_backend.domain.account.infrastructure.openbanking.MockOpenBankingClient;
+import com.movi_backend.domain.account.application.port.OpenBankingTransferPort;
 import com.movi_backend.domain.account.type.AccountType;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.type.UserType;
@@ -78,7 +78,7 @@ class TransferIdempotencyConcurrencyIntegrationTest {
     private FdsAssessmentClient fdsAssessmentClient;
 
     @MockitoBean
-    private MockOpenBankingClient openBankingClient;
+    private OpenBankingTransferPort openBankingTransferPort;
 
     @MockitoBean
     private TransferRiskAlertPort transferRiskAlertPort;
@@ -93,7 +93,7 @@ class TransferIdempotencyConcurrencyIntegrationTest {
                         .build());
         given(fdsAssessmentClient.assess(any(FdsAssessmentRequest.class)))
                 .willAnswer(invocation -> lowRiskResponse(invocation.getArgument(0)));
-        given(openBankingClient.transfer(any(), any()))
+        given(openBankingTransferPort.transfer(any(), any()))
                 .willReturn(OpenBankingTransferResult.of(
                         "test-bank-tran-id",
                         LocalDateTime.now(),
@@ -131,7 +131,7 @@ class TransferIdempotencyConcurrencyIntegrationTest {
                     command.user().getId()
             )).isPresent();
             verify(fdsAssessmentClient, times(1)).assess(any(FdsAssessmentRequest.class));
-            verify(openBankingClient, times(1)).transfer(any(), any());
+            verify(openBankingTransferPort, times(1)).transfer(any(), any());
         } finally {
             executor.shutdownNow();
         }
@@ -157,7 +157,7 @@ class TransferIdempotencyConcurrencyIntegrationTest {
                 secondCommand.user().getId()
         )).isPresent();
         verify(fdsAssessmentClient, times(2)).assess(any(FdsAssessmentRequest.class));
-        verify(openBankingClient, times(2)).transfer(any(), any());
+        verify(openBankingTransferPort, times(2)).transfer(any(), any());
     }
 
     private TransferExecutionResult executeTogether(

@@ -108,7 +108,7 @@ class MockBalanceInquiryAdapterTest {
     }
 
     private MockBalanceInquiryAdapter adapterWith(final MockOpenBankingClient client) {
-        return new MockBalanceInquiryAdapter(new ObjectProvider<>() {
+        return new MockBalanceInquiryAdapter(new ObjectProvider<MockOpenBankingClient>() {
             @Override
             public MockOpenBankingClient getIfAvailable() {
                 return client;
@@ -128,6 +128,6 @@ class MockBalanceInquiryAdapterTest {
             public MockOpenBankingClient getIfUnique() {
                 return client;
             }
-        });
+        }, new MockTransferLedger());
     }
 }

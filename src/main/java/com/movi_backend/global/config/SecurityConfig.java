@@ -35,6 +35,9 @@ public class SecurityConfig {
             "/api/v1/auth/kakao/**",
             "/api/v1/auth/pin/login",
             "/api/v1/auth/token/refresh",
+            // 은행이 브라우저를 돌려보내는 자리. 사용자의 토큰을 들고 올 수 없으므로
+            // 인증을 걸면 계좌 연결이 여기서 끊긴다. state 대조로 소유권을 확인한다.
+            "/api/openbanking/callback",
             "/actuator/health",
             "/actuator/info",
             "/actuator/prometheus",

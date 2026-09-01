@@ -30,12 +30,24 @@ public record OpenBankingProperties(
         String clientId,
         String clientSecret,
         String redirectUri,
+        String frontendRedirectUri,
         String scope,
         String clientUseCode
 ) {
     public static final String MODE_MOCK = "mock";
     private static final String DEFAULT_BASE_URL = "https://testapi.openbanking.or.kr";
     private static final String DEFAULT_SCOPE = "login inquiry transfer";
+
+    /**
+     * 은행에서 돌아온 브라우저를 보낼 프런트 화면.
+     *
+     * <p>기본값을 둔다. 이 값이 비면 콜백이 예외로 끝나 <b>계좌 연결이 통째로 막히는데</b>,
+     * 설정을 한 줄 빠뜨렸다는 이유로 그렇게 되면 안 된다. {@code CorsProperties}가 배포된
+     * 프런트 주소를 기본값으로 두는 것과 같은 이유다. 주소가 바뀌면
+     * {@code movi.openbanking.frontend-redirect-uri}로 덮어쓴다.
+     */
+    private static final String DEFAULT_FRONTEND_REDIRECT_URI =
+            "https://movi-frontend-amber.vercel.app/accounts/connect/callback";
 
     public OpenBankingProperties {
         if (mode == null || mode.isBlank()) {
@@ -52,6 +64,9 @@ public record OpenBankingProperties(
         }
         if (scope == null || scope.isBlank()) {
             scope = DEFAULT_SCOPE;
+        }
+        if (frontendRedirectUri == null || frontendRedirectUri.isBlank()) {
+            frontendRedirectUri = DEFAULT_FRONTEND_REDIRECT_URI;
         }
     }
 

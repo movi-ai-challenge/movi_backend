@@ -222,6 +222,7 @@ class OpenBankingApiClientTest {
                 "test-client-id",
                 "test-client-secret",
                 "http://localhost:8080/api/openbanking/callback",
+                "http://localhost:3000/accounts/connect/callback",
                 "login inquiry transfer",
                 "M000000000"
         );

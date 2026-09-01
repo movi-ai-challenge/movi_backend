@@ -30,7 +30,7 @@ import org.springframework.web.util.UriComponentsBuilder;
         "movi.jwt.secret=test-jwt-signing-key-must-be-at-least-32-bytes",
         "movi.crypto.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "movi.crypto.hash-key=YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk=",
-        "movi.kakao.frontend-redirect-uri=https://movi-ai-challenge.netlify.app/login/callback"
+        "movi.kakao.frontend-redirect-uri=https://movi-frontend-amber.vercel.app/login/callback"
 })
 @ActiveProfiles("test")
 class KakaoAuthControllerCallbackTest {
@@ -73,7 +73,7 @@ class KakaoAuthControllerCallbackTest {
         final var params = UriComponentsBuilder.fromUri(redirectUri).build().getQueryParams();
 
         assertThat(redirectUri.getScheme() + "://" + redirectUri.getHost() + redirectUri.getPath())
-                .isEqualTo("https://movi-ai-challenge.netlify.app/login/callback");
+                .isEqualTo("https://movi-frontend-amber.vercel.app/login/callback");
         assertThat(params.getFirst("accessToken")).isEqualTo("access-token-value");
         assertThat(params.getFirst("refreshToken")).isEqualTo("refresh-token-value");
         assertThat(params.getFirst("userId")).isEqualTo("1");

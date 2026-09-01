@@ -19,7 +19,7 @@ class CorsPropertiesTest {
 
         // then
         assertThat(properties.allowedOrigins())
-                .contains("http://localhost:3000", "https://movi-ai-challenge.netlify.app");
+                .contains("http://localhost:3000", "https://movi-frontend-amber.vercel.app");
     }
 
     @Test

@@ -52,8 +52,7 @@ class KakaoAuthControllerCallbackTest {
     @DisplayName("카카오 로그인에 성공하면 교환 코드만 담아 프론트엔드 콜백 주소로 리다이렉트한다")
     void 카카오_로그인에_성공하면_프론트엔드로_리다이렉트한다() throws Exception {
         // given
-        final LoginResponse response = new LoginResponse(
-                1L, true, "access-token-value", "refresh-token-value", "Bearer", 1800L
+        final LoginResponse response = new LoginResponse(1L, "문하늘", true, "access-token-value", "refresh-token-value", "Bearer", 1800L
         );
         given(kakaoLoginService.authenticate(any(), any(), any()))
                 .willReturn(new LoginHandoffStore.Handoff(1L, true));
@@ -87,8 +86,7 @@ class KakaoAuthControllerCallbackTest {
     @DisplayName("로그인 완료 후에는 OAuth state 쿠키를 만료시킨다")
     void 로그인_완료_후에는_state_쿠키를_만료시킨다() throws Exception {
         // given
-        final LoginResponse response = new LoginResponse(
-                1L, false, "access-token-value", "refresh-token-value", "Bearer", 1800L
+        final LoginResponse response = new LoginResponse(1L, "문하늘", false, "access-token-value", "refresh-token-value", "Bearer", 1800L
         );
         given(kakaoLoginService.authenticate(any(), any(), any()))
                 .willReturn(new LoginHandoffStore.Handoff(1L, false));

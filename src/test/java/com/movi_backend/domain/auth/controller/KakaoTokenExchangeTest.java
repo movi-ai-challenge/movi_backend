@@ -82,8 +82,7 @@ class KakaoTokenExchangeTest {
         // given
         given(kakaoLoginService.authenticate(any(), any(), any()))
                 .willReturn(new LoginHandoffStore.Handoff(1L, true));
-        given(kakaoLoginService.issueTokens(any(), anyBoolean())).willReturn(new LoginResponse(
-                1L, true, "access-token-value", "refresh-token-value", "Bearer", 1800L
+        given(kakaoLoginService.issueTokens(any(), anyBoolean())).willReturn(new LoginResponse(1L, "문하늘", true, "access-token-value", "refresh-token-value", "Bearer", 1800L
         ));
 
         // when & then
@@ -101,8 +100,7 @@ class KakaoTokenExchangeTest {
         // given — 코드가 새어 나가도 이미 교환됐으면 쓸 수 없어야 한다.
         given(kakaoLoginService.authenticate(any(), any(), any()))
                 .willReturn(new LoginHandoffStore.Handoff(1L, false));
-        given(kakaoLoginService.issueTokens(any(), anyBoolean())).willReturn(new LoginResponse(
-                1L, false, "access-token-value", "refresh-token-value", "Bearer", 1800L
+        given(kakaoLoginService.issueTokens(any(), anyBoolean())).willReturn(new LoginResponse(1L, "문하늘", false, "access-token-value", "refresh-token-value", "Bearer", 1800L
         ));
         final String code = codeFrom(callback());
 

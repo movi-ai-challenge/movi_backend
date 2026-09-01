@@ -75,7 +75,7 @@ public class AuthenticationService {
         ));
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
-        return LoginResponse.of(user.getId(), true, tokenPair);
+        return LoginResponse.of(user.getId(), user.getName(), true, tokenPair);
     }
 
     /**
@@ -101,7 +101,7 @@ public class AuthenticationService {
         ));
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
-        return LoginResponse.of(user.getId(), false, tokenPair);
+        return LoginResponse.of(user.getId(), user.getName(), false, tokenPair);
     }
 
     @Transactional(noRollbackFor = BusinessException.class)
@@ -123,7 +123,7 @@ public class AuthenticationService {
         ));
 
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
-        return LoginResponse.of(user.getId(), false, tokenPair);
+        return LoginResponse.of(user.getId(), user.getName(), false, tokenPair);
     }
 
     @Transactional

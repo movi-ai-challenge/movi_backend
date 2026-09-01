@@ -33,6 +33,8 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/kakao/**",
+            "/api/v1/auth/signup",
+            "/api/v1/auth/login",
             "/api/v1/auth/pin/login",
             "/api/v1/auth/token/refresh",
             // 은행이 브라우저를 돌려보내는 자리. 사용자의 토큰을 들고 올 수 없으므로

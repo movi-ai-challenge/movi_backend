@@ -22,6 +22,9 @@ import lombok.NoArgsConstructor;
  *
  * <p>{@code phone}은 AES 암호화 대상이며 로그에 원문으로 남기지 않는다.
  *
+ * <p>{@code loginId}는 카카오를 거치지 않는 일반 회원가입에서만 채워진다. 개인정보가 아니라
+ * 사용자가 직접 정한 식별자라 암호화하지 않고 평문 UNIQUE로 둔다. 카카오 전용 가입자는 {@code null}이다.
+ *
  * <p>카카오 최초 가입 시점에는 {@code phone}이 없다 — 카카오는 회원 정보로 받지 않는다.
  * PIN 로그인이 전화번호로 사용자를 찾으므로, PIN을 등록하는 시점({@link #registerPhone})에
  * 전화번호를 받아 채운다. PIN을 등록하기 전까지는 {@code phone}·{@code phoneHash}가 {@code null}이다.
@@ -39,6 +42,9 @@ public class User extends BaseTimeEntity {
 
     @Column(name = "name", nullable = false, length = 50)
     private String name;
+
+    @Column(name = "login_id", length = 30, unique = true)
+    private String loginId;
 
     @Column(name = "phone", length = 255)
     private String phone;
@@ -63,12 +69,14 @@ public class User extends BaseTimeEntity {
     @Builder
     private User(
             final String name,
+            final String loginId,
             final String phone,
             final String phoneHash,
             final LocalDate birthDate,
             final UserType userType
     ) {
         this.name = name;
+        this.loginId = loginId;
         this.phone = phone;
         this.phoneHash = phoneHash;
         this.birthDate = birthDate;

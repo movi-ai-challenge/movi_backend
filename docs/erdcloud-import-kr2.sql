@@ -7,6 +7,7 @@
 CREATE TABLE `회원_users` (
     user_id    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '사용자 ID',
     name       VARCHAR(50)  NOT NULL COMMENT '이름',
+    login_id   VARCHAR(30)  NULL COMMENT '일반 로그인 아이디(소문자 정규화). 카카오 전용 가입자는 NULL',
     phone      VARCHAR(255) NOT NULL COMMENT '전화번호(AES 암호화)',
     phone_hash VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date DATE         NULL COMMENT '생년월일',
@@ -16,7 +17,8 @@ CREATE TABLE `회원_users` (
     created_at DATETIME     NOT NULL COMMENT '생성일시',
     updated_at DATETIME     NOT NULL COMMENT '수정일시',
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_users_phone_hash (phone_hash)
+    UNIQUE KEY uk_users_phone_hash (phone_hash),
+    UNIQUE KEY uk_users_login_id (login_id)
 ) COMMENT '사용자';
 
 CREATE TABLE `소셜로그인_oauth_accounts` (
@@ -37,7 +39,8 @@ CREATE TABLE `소셜로그인_oauth_accounts` (
 CREATE TABLE `인증정보_user_credentials` (
     credential_id     BIGINT       NOT NULL AUTO_INCREMENT COMMENT '인증정보 ID',
     user_id           BIGINT       NOT NULL COMMENT '사용자 ID',
-    pin_hash          VARCHAR(255) NOT NULL COMMENT 'PIN 해시(BCrypt)',
+    pin_hash          VARCHAR(255) NULL COMMENT 'PIN 해시(BCrypt). 일반 가입자는 NULL',
+    password_hash     VARCHAR(255) NULL COMMENT '일반 로그인 비밀번호 해시(BCrypt). 카카오·PIN 전용은 NULL',
     biometric_enabled TINYINT      NOT NULL COMMENT '생체인증 사용 여부',
     failed_attempts   INT          NOT NULL COMMENT '연속 실패 횟수',
     locked_until      DATETIME     NULL COMMENT '잠금 해제 시각',
@@ -45,7 +48,7 @@ CREATE TABLE `인증정보_user_credentials` (
     PRIMARY KEY (credential_id),
     UNIQUE KEY uk_credential_user (user_id),
     CONSTRAINT fk_credential_user FOREIGN KEY (user_id) REFERENCES `회원_users` (user_id)
-) COMMENT 'PIN/생체 인증정보';
+) COMMENT 'PIN/비밀번호/생체 인증정보';
 
 CREATE TABLE `등록기기_devices` (
     device_id     BIGINT       NOT NULL AUTO_INCREMENT COMMENT '기기 ID',

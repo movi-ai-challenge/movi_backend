@@ -24,7 +24,7 @@ Voice-First Inclusive Banking · MVP 데이터 모델
 ```mermaid
 erDiagram
     users ||--o| oauth_accounts : "카카오 연동"
-    users ||--o| user_credentials : "PIN/생체"
+    users ||--o| user_credentials : "PIN/비밀번호/생체"
     users ||--o{ devices : "기기 등록"
     users ||--o| accessibility_settings : "접근성 설정"
     users ||--o| openbanking_connections : "오픈뱅킹 연결"
@@ -59,6 +59,7 @@ erDiagram
     users {
         bigint user_id PK
         varchar name
+        varchar login_id UK "일반 로그인 아이디. 카카오 전용은 NULL"
         varchar phone "AES-GCM 암호화"
         varchar phone_hash UK "HMAC-SHA256"
         date birth_date
@@ -82,7 +83,8 @@ erDiagram
     user_credentials {
         bigint credential_id PK
         bigint user_id FK
-        varchar pin_hash
+        varchar pin_hash "카카오 가입자의 PIN. 없으면 NULL"
+        varchar password_hash "일반 로그인 비밀번호. 없으면 NULL"
         boolean biometric_enabled
         int failed_attempts
         datetime locked_until
@@ -308,7 +310,8 @@ erDiagram
 
 ### ① 인증 플로우
 ```text
-앱 시작 → 카카오 로그인      → oauth_accounts (provider_user_id 조회/생성) + users
+앱 시작 → 일반 회원가입      → users (login_id) + user_credentials (password_hash)
+        → 또는 카카오 로그인 → oauth_accounts (provider_user_id 조회/생성) + users
         → PIN/생체인증       → user_credentials (pin_hash 검증, failed_attempts++)
         → (신규) 오픈뱅킹 연결 → openbanking_connections + accounts 벌크 등록
 ```

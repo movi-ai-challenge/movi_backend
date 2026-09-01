@@ -6,7 +6,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 import com.movi_backend.domain.auth.application.DeviceRegistrationService;
+import com.movi_backend.domain.auth.dto.request.PasswordLoginRequest;
 import com.movi_backend.domain.auth.dto.request.PinLoginRequest;
+import com.movi_backend.domain.auth.dto.request.SignUpRequest;
 import com.movi_backend.domain.auth.dto.response.LoginResponse;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.entity.UserCredential;
@@ -176,6 +178,24 @@ class AuthenticationServiceTest {
                 .build();
     }
 
+    private User userWithLoginId(final Long userId, final String loginId) {
+        final User user = User.builder()
+                .name("사용자")
+                .loginId(loginId)
+                .userType(UserType.GENERAL)
+                .build();
+        ReflectionTestUtils.setField(user, "id", userId);
+        return user;
+    }
+
+    private UserCredential passwordCredential(final User user) {
+        return UserCredential.builder()
+                .user(user)
+                .passwordHash("encoded-password")
+                .biometricEnabled(false)
+                .build();
+    }
+
     @Test
     @DisplayName("PIN 로그인에 성공하면 그 기기를 신뢰 기기로 등록한다")
     void PIN_로그인에_성공하면_그_기기를_신뢰_기기로_등록한다() {
@@ -213,6 +233,126 @@ class AuthenticationServiceTest {
         // when & then
         assertThatThrownBy(() -> authenticationService.loginWithPin(new PinLoginRequest(
                 "01012345678", "000000", "device-uuid-1", null, null
+        ))).isInstanceOf(BusinessException.class);
+        then(deviceRegistrationService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("일반 회원가입에 성공하면 곧바로 JWT를 반환한다")
+    void 일반_회원가입에_성공하면_곧바로_JWT를_반환한다() {
+        // given — 화면을 못 보는 사용자에게 가입 직후 로그인을 또 시키지 않는다
+        final JwtTokenPair tokenPair = JwtTokenPair.of("access-token", "refresh-token", 1800L);
+        given(userRepository.existsByLoginId("movi")).willReturn(false);
+        given(passwordEncoder.encode("password123")).willReturn("encoded-password");
+        given(userRepository.save(org.mockito.ArgumentMatchers.any(User.class)))
+                .willAnswer(invocation -> {
+                    final User saved = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(saved, "id", 1L);
+                    return saved;
+                });
+        given(jwtTokenProvider.issueTokenPair(AuthUser.of(1L, UserType.GENERAL, 0L)))
+                .willReturn(tokenPair);
+
+        // when
+        final LoginResponse response = authenticationService.signUp(new SignUpRequest(
+                "movi", "password123", "사용자", null, null, null, null
+        ));
+
+        // then
+        assertThat(response.newUser()).isTrue();
+        assertThat(response.accessToken()).isEqualTo("access-token");
+    }
+
+    @Test
+    @DisplayName("대문자로 가입한 아이디를 소문자로 정규화해 중복을 막는다")
+    void 아이디는_대소문자를_구분하지_않는다() {
+        // given — Movi 로 가입한 사람이 movi 로 로그인해도 같은 계정이어야 한다
+        given(userRepository.existsByLoginId("movi")).willReturn(true);
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.signUp(new SignUpRequest(
+                "MoVi", "password123", "사용자", null, null, null, null
+        )))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.LOGIN_ID_ALREADY_REGISTERED);
+        then(userRepository).should(org.mockito.Mockito.never())
+                .save(org.mockito.ArgumentMatchers.any(User.class));
+    }
+
+    @Test
+    @DisplayName("없는 아이디도 비밀번호 불일치와 같은 오류를 준다")
+    void 없는_아이디도_비밀번호_불일치와_같은_오류를_준다() {
+        // given — 응답이 갈리면 어떤 아이디가 가입돼 있는지 밖에서 확인할 수 있다
+        given(userRepository.findByLoginId("nobody")).willReturn(Optional.empty());
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.loginWithPassword(
+                new PasswordLoginRequest("nobody", "password123", null, null, null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PASSWORD_MISMATCH);
+    }
+
+    @Test
+    @DisplayName("카카오로만 가입해 비밀번호가 없는 계정은 일반 로그인을 거부한다")
+    void 비밀번호가_없는_계정은_일반_로그인을_거부한다() {
+        // given
+        final User user = userWithLoginId(1L, "movi");
+        given(userRepository.findByLoginId("movi")).willReturn(Optional.of(user));
+        given(userCredentialRepository.findByUserId(1L))
+                .willReturn(Optional.of(credential(user)));
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.loginWithPassword(
+                new PasswordLoginRequest("movi", "password123", null, null, null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PASSWORD_NOT_REGISTERED);
+    }
+
+    @Test
+    @DisplayName("비밀번호를 연속으로 틀리면 PIN 로그인까지 함께 잠긴다")
+    void 비밀번호_실패는_PIN_로그인까지_잠근다() {
+        // given — 계정 단위 잠금이라 수단을 바꿔 시도 횟수를 늘릴 수 없다
+        final User user = userWithLoginId(1L, "movi");
+        final UserCredential credential = UserCredential.builder()
+                .user(user)
+                .pinHash("encoded-pin")
+                .passwordHash("encoded-password")
+                .biometricEnabled(false)
+                .build();
+        for (int attempt = 0; attempt < UserCredential.MAX_FAILED_ATTEMPTS; attempt++) {
+            credential.recordFailure(LocalDateTime.now());
+        }
+        given(userRepository.findByLoginId("movi")).willReturn(Optional.of(user));
+        given(userCredentialRepository.findByUserId(1L)).willReturn(Optional.of(credential));
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.loginWithPassword(
+                new PasswordLoginRequest("movi", "password123", null, null, null)
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.PASSWORD_LOCKED);
+        then(passwordEncoder).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("비밀번호가 틀리면 기기를 신뢰 기기로 등록하지 않는다")
+    void 비밀번호가_틀리면_기기를_신뢰하지_않는다() {
+        // given
+        final User user = userWithLoginId(1L, "movi");
+        given(userRepository.findByLoginId("movi")).willReturn(Optional.of(user));
+        given(userCredentialRepository.findByUserId(1L))
+                .willReturn(Optional.of(passwordCredential(user)));
+        given(passwordEncoder.matches("wrong-password", "encoded-password")).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> authenticationService.loginWithPassword(new PasswordLoginRequest(
+                "movi", "wrong-password", "device-uuid-1", null, null
         ))).isInstanceOf(BusinessException.class);
         then(deviceRegistrationService).shouldHaveNoInteractions();
     }

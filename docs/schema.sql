@@ -10,6 +10,7 @@ SET NAMES utf8mb4;
 CREATE TABLE users (
     user_id      BIGINT       NOT NULL AUTO_INCREMENT,
     name         VARCHAR(50)  NOT NULL,
+    login_id     VARCHAR(30)  NULL     COMMENT '일반 로그인 아이디(소문자 정규화). 카카오 전용 가입자는 NULL',
     phone        VARCHAR(255) NULL     COMMENT 'AES 암호화. 카카오 가입 시점엔 없고 PIN 등록 시 채움',
     phone_hash   VARCHAR(64)  NULL COMMENT '전화번호 중복 확인용 HMAC-SHA256',
     birth_date   DATE         NULL,
@@ -19,7 +20,8 @@ CREATE TABLE users (
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
-    UNIQUE KEY uk_users_phone_hash (phone_hash)
+    UNIQUE KEY uk_users_phone_hash (phone_hash),
+    UNIQUE KEY uk_users_login_id (login_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE oauth_accounts (
@@ -41,7 +43,8 @@ CREATE TABLE oauth_accounts (
 CREATE TABLE user_credentials (
     credential_id     BIGINT       NOT NULL AUTO_INCREMENT,
     user_id           BIGINT       NOT NULL,
-    pin_hash          VARCHAR(255) NOT NULL COMMENT 'BCrypt',
+    pin_hash          VARCHAR(255) NULL COMMENT 'BCrypt. 카카오 가입자가 등록한 PIN. 일반 가입자는 NULL',
+    password_hash     VARCHAR(255) NULL COMMENT 'BCrypt. 일반 로그인 비밀번호. 카카오·PIN 전용 사용자는 NULL',
     biometric_enabled BOOLEAN      NOT NULL DEFAULT FALSE,
     failed_attempts   INT          NOT NULL DEFAULT 0,
     locked_until      DATETIME     NULL,

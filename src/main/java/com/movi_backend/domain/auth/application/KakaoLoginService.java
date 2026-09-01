@@ -84,7 +84,7 @@ public class KakaoLoginService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         validateActive(user);
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(user));
-        return LoginResponse.of(user.getId(), newUser, tokenPair);
+        return LoginResponse.of(user.getId(), user.getName(), newUser, tokenPair);
     }
 
     /**
@@ -102,7 +102,12 @@ public class KakaoLoginService {
     ) {
         final LoginUser loginUser = resolveUser(authorizationCode, state, stateCookie);
         final JwtTokenPair tokenPair = jwtTokenProvider.issueTokenPair(toAuthUser(loginUser.user()));
-        return LoginResponse.of(loginUser.user().getId(), loginUser.newUser(), tokenPair);
+        return LoginResponse.of(
+                loginUser.user().getId(),
+                loginUser.user().getName(),
+                loginUser.newUser(),
+                tokenPair
+        );
     }
 
     private LoginUser findOrCreateUser(final KakaoUserInfo kakaoUser) {

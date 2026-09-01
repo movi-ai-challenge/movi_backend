@@ -2,7 +2,7 @@ package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.BalanceSnapshot;
 import com.movi_backend.domain.account.application.BalanceInquiryService;
-import com.movi_backend.domain.account.application.port.OpenBankingClient;
+import com.movi_backend.domain.account.application.port.OpenBankingTransferPort;
 import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferCommand;
 import com.movi_backend.domain.account.application.port.dto.OpenBankingTransferResult;
 import com.movi_backend.domain.auth.entity.User;
@@ -68,7 +68,7 @@ public class TransferExecutionService {
     private final FdsAssessmentRepository fdsAssessmentRepository;
     private final FdsAssessmentClient fdsAssessmentClient;
     private final FdsAssessmentResponseValidator responseValidator;
-    private final OpenBankingClient openBankingClient;
+    private final OpenBankingTransferPort openBankingTransferPort;
     private final TransferRiskAlertPort transferRiskAlertPort;
     private final TransferProperties transferProperties;
     private final ObjectMapper objectMapper;
@@ -338,7 +338,7 @@ public class TransferExecutionService {
                     transfer.getToHolderName(),
                     transfer.getAmount()
             );
-            final OpenBankingTransferResult result = openBankingClient.transfer(
+            final OpenBankingTransferResult result = openBankingTransferPort.transfer(
                     command,
                     sensitiveDataCrypto.decrypt(
                             transfer.getFromAccount().getConnection().getAccessToken()

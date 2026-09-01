@@ -25,6 +25,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record OpenBankingProperties(
         String mode,
         String balanceMode,
+        String transferMode,
         String baseUrl,
         String clientId,
         String clientSecret,
@@ -43,6 +44,9 @@ public record OpenBankingProperties(
         if (balanceMode == null || balanceMode.isBlank()) {
             balanceMode = MODE_MOCK;
         }
+        if (transferMode == null || transferMode.isBlank()) {
+            transferMode = MODE_MOCK;
+        }
         if (baseUrl == null || baseUrl.isBlank()) {
             baseUrl = DEFAULT_BASE_URL;
         }
@@ -57,5 +61,9 @@ public record OpenBankingProperties(
 
     public boolean isBalanceMock() {
         return MODE_MOCK.equalsIgnoreCase(this.balanceMode);
+    }
+
+    public boolean isTransferMock() {
+        return MODE_MOCK.equalsIgnoreCase(this.transferMode);
     }
 }

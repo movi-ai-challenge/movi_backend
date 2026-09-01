@@ -55,16 +55,21 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   - 토큰 만료(`expires_at`) 확인 후 갱신 — 만료된 토큰으로 호출하면 오픈뱅킹이 거부한다
 - **Mock 어댑터 우선** — 오픈뱅킹 Sandbox 승인은 외부 변수다. 인터페이스를 먼저 정의하고 Mock 구현체로 개발한 뒤 실 API로 교체한다
 
-- **오픈뱅킹 Port는 두 개다.** 역할이 겹치지 않으니 용도에 맞는 쪽을 쓴다
+- **오픈뱅킹 Port는 세 개다.** 역할이 겹치지 않으니 용도에 맞는 쪽을 쓴다
 
-  | Port | 담당 | Mock 어댑터 | 전환 방식 |
-  |---|---|---|---|
-  | `BalanceInquiryPort` | 잔액조회 | `MockBalanceInquiryAdapter` | `@Profile("local","test")` |
-  | `OpenBankingClient` | 계좌 목록·이체 | `MockOpenBankingClient` | `movi.openbanking.mode` |
+  | Port | 담당 | Mock 어댑터 | 전환 방식 | 기본값 |
+  |---|---|---|---|---|
+  | `OpenBankingClient` | 인증·계좌 목록 | `MockOpenBankingClient` | `movi.openbanking.mode` | `mock` |
+  | `BalanceInquiryPort` | 잔액조회 | `MockBalanceInquiryAdapter` | `movi.openbanking.balance-mode` | `mock` |
+  | `OpenBankingTransferPort` | 출금이체 | `MockOpenBankingTransferAdapter` | `movi.openbanking.transfer-mode` | `mock` |
 
-  잔액은 호출 빈도와 캐시 정책(`balance_snapshots`)이 달라 분리했다. **새 오퍼레이션을 추가할 때 어느 Port에 넣을지 먼저 정하고, 같은 기능을 양쪽에 만들지 않는다.**
+  **잔액조회와 출금이체 API는 사업자 등록을 마친 이용기관에만 열린다.** 계좌 연결까지는 샌드박스로 진행해도 그 둘은 대역을 써야 하므로, "연결만 real" 조합이 가능하도록 스위치를 나눴다. 잔액은 호출 빈도와 캐시 정책(`balance_snapshots`)이 다른 이유도 있다.
 
-  `MockOpenBankingClient`는 잔액을 상태로 들고 이체할 때 차감한다. 고정값이면 잔액 부족 분기를 시연할 수 없기 때문이다. 같은 `tranId`로 재호출하면 새 이체를 만들지 않고 기존 결과를 돌려줘, 실제 오픈뱅킹의 멱등 동작을 Mock 단계에서 검증할 수 있다
+  **셋 다 기본값이 `mock`이다.** 실 API가 기본이면 설정을 빠뜨린 환경에서 진짜 돈이 나간다. `transfer-mode=real`은 `mode=real`을 함께 요구하며, 없으면 기동이 실패한다 — 잘못 조합한 설정으로 조용히 대역 이체를 실행하는 것보다 낫다.
+
+  **새 오퍼레이션을 추가할 때 어느 Port에 넣을지 먼저 정하고, 같은 기능을 양쪽에 만들지 않는다.**
+
+  `MockOpenBankingClient`는 자신이 만든 계좌의 잔액을 상태로 들고 이체할 때 차감한다. 실제로 연결된 계좌처럼 그쪽이 모르는 계좌는 `MockTransferLedger`가 같은 역할을 맡는다. 고정값이면 잔액 부족 분기를 시연할 수 없기 때문이다. 같은 `tranId`로 재호출하면 새 이체를 만들지 않고 기존 결과를 돌려줘, 실제 오픈뱅킹의 멱등 동작을 Mock 단계에서 검증할 수 있다
 - `balance_snapshots`는 API 호출 비용 절감 + FDS 피처(잔액 대비 이체 비율)용. 조회할 때마다 남긴다
 
 ### `transfer` — 이체·거래내역

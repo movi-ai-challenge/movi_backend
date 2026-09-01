@@ -217,6 +217,7 @@ class OpenBankingApiClientTest {
         return new OpenBankingProperties(
                 "real",
                 "real",
+                "real",
                 baseUrl,
                 "test-client-id",
                 "test-client-secret",

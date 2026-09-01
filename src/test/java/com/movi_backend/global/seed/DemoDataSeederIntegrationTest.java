@@ -122,6 +122,39 @@ class DemoDataSeederIntegrationTest {
         assertThat(accountRepository.count()).isEqualTo(accountCount);
     }
 
+    /**
+     * 시드용 번호를 사람이 회원가입으로 먼저 써 버린 상황.
+     *
+     * <p>운영에서 실제로 일어났다. 시드 사용자는 지워졌는데 두 번째 사용자 번호를 쓰는 계정이
+     * 남아 있어, 시더가 매 기동마다 UNIQUE 제약에 걸려 예외를 던졌다. ApplicationRunner 예외는
+     * 컨텍스트를 닫으므로 컨테이너가 971번 재시작했고 서비스는 502를 냈다.
+     *
+     * <p>시드를 못 만드는 것은 감수해도, 그 때문에 서버가 뜨지 못하는 것은 감수하지 않는다.
+     */
+    @Test
+    @DisplayName("시드 번호를 다른 계정이 이미 쓰고 있어도 기동을 막지 않는다")
+    void 시드_번호가_이미_쓰이고_있어도_기동을_막지_않는다() {
+        instance = this;
+        // given — 시드 사용자의 해시를 바꿔 가드가 못 찾게 만든다.
+        // 사용자를 지우면 계좌 FK에 걸리므로, 운영에서 일어난 상태(가드는 못 찾고
+        // 두 번째 번호는 남이 쓰는 중)만 똑같이 재현한다.
+        transactionTemplate.executeWithoutResult(status ->
+                entityManager.createQuery(
+                                "update User u set u.phoneHash = :changed where u.phoneHash = :demo")
+                        .setParameter("changed", "seed-guard-miss")
+                        .setParameter("demo", sensitiveDataCrypto.hash(DEMO_PHONE))
+                        .executeUpdate());
+        assertThat(userRepository.findByPhoneHash(sensitiveDataCrypto.hash(DEMO_PHONE)))
+                .as("가드가 시드 사용자를 못 찾아야 재현이 된다")
+                .isEmpty();
+        assertThat(userRepository.findByPhoneHash(sensitiveDataCrypto.hash(OTHER_PHONE)))
+                .as("두 번째 사용자 번호는 남아 있어야 충돌이 재현된다")
+                .isPresent();
+
+        // when & then — 예외가 밖으로 나가면 운영에서 프로세스가 죽는다
+        transactionTemplate.executeWithoutResult(status -> demoDataSeeder.run(null));
+    }
+
     @Test
     @DisplayName("시드된 사용자로 PIN 로그인이 된다")
     void 시드된_사용자로_PIN_로그인이_된다() {

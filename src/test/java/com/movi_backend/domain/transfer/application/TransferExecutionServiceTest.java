@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 
 import com.movi_backend.domain.account.entity.Account;
@@ -51,12 +52,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.TimeZone;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
@@ -86,6 +89,16 @@ class TransferExecutionServiceTest {
     @Mock private Device device;
     @Mock private BalanceSnapshot balanceSnapshot;
     @Mock private SensitiveDataCrypto sensitiveDataCrypto;
+
+    /**
+     * FDS 평가는 같은 출금계좌의 최근 출금을 함께 보낸다. 이력 자체를 검증하는 테스트가 아니면
+     * 빈 이력으로 두어, 이력 조회가 다른 검증을 흔들지 않게 한다.
+     */
+    @BeforeEach
+    void 이력_조회를_빈_결과로_둔다() {
+        lenient().when(transactionRepository.findHistory(any(), any(), any(), any(), any()))
+                .thenReturn(Page.empty());
+    }
 
     @Test
     @DisplayName("저위험 이체를 확인하면 FDS 평가 후 이체를 완료한다")
@@ -456,7 +469,8 @@ class TransferExecutionServiceTest {
         assertThat(result.status()).isEqualTo(TransferStatus.FAILED);
         assertThat(result.completedAt()).isNull();
         then(recipient).should(never()).recordTransfer(any());
-        then(transactionRepository).shouldHaveNoInteractions();
+        // FDS 평가가 같은 저장소에서 이력을 읽으므로, 검증 대상은 "기록하지 않았다"로 좁힌다.
+        then(transactionRepository).should(never()).save(any());
     }
 
     @Test
@@ -475,7 +489,7 @@ class TransferExecutionServiceTest {
         assertThat(result.status()).isEqualTo(TransferStatus.FAILED);
         then(openBankingTransferPort).shouldHaveNoInteractions();
         then(recipient).should(never()).recordTransfer(any());
-        then(transactionRepository).shouldHaveNoInteractions();
+        then(transactionRepository).should(never()).save(any());
     }
 
     @Test

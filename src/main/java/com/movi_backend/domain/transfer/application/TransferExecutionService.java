@@ -11,6 +11,7 @@ import com.movi_backend.domain.fds.client.FdsAssessmentResponseValidator;
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentRequest;
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentResponse;
 import com.movi_backend.domain.fds.client.dto.FdsContextFeature;
+import com.movi_backend.domain.fds.client.dto.FdsHistoryEntry;
 import com.movi_backend.domain.fds.client.dto.FdsProfileFeature;
 import com.movi_backend.domain.fds.client.dto.FdsRecipientFeature;
 import com.movi_backend.domain.fds.entity.FdsAssessment;
@@ -46,6 +47,8 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +63,15 @@ public class TransferExecutionService {
 
     private static final int COLD_START_TRANSFER_COUNT = 3;
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Seoul");
+
+    /**
+     * FDS 에 함께 보낼 과거 출금 범위.
+     *
+     * <p>30일은 {@link UserTransferProfile}의 집계 구간과 맞춘 것이다. 건수 상한은 요청 본문이
+     * 무한정 커지지 않게 두는 안전장치이고, 이 정도면 AI 의 평균·표준편차 계산에 충분하다.
+     */
+    private static final int HISTORY_DAYS = 30;
+    private static final int HISTORY_MAX_SIZE = 100;
 
     private final TransferRepository transferRepository;
     private final TransactionRepository transactionRepository;
@@ -272,8 +284,57 @@ public class TransferExecutionService {
                 command.fromAccount().getFintechUseNum(),
                 command.fromAccount().getBankCode(),
                 command.recipient().getBankCode(),
-                command.recipient().getAccountNum()
+                command.recipient().getAccountNum(),
+                loadRecentHistory(command)
         );
+    }
+
+    /**
+     * 같은 출금계좌의 최근 출금을 읽어 FDS 에 함께 보낸다.
+     *
+     * <p>이력을 비워 보내면 과거 대비 비율을 보는 AI 규칙이 발동하지 않아 금액이 얼마든 LOW 로만
+     * 판정된다 — 위험탐지가 켜져 있는데도 아무것도 걸리지 않는 상태가 된다
+     * ({@link FdsHistoryEntry} 에 실측값이 있다).
+     *
+     * <p>조회가 실패해도 이체를 막지 않는다. 이력은 정확도를 높이는 보조 정보이므로, 없으면
+     * 없는 대로 평가한다.
+     */
+    private List<FdsHistoryEntry> loadRecentHistory(final ConfirmedTransferCommand command) {
+        try {
+            return transactionRepository.findHistory(
+                            command.fromAccount().getId(),
+                            TransactionType.OUT,
+                            LocalDateTime.now().minusDays(HISTORY_DAYS),
+                            null,
+                            PageRequest.of(
+                                    0,
+                                    HISTORY_MAX_SIZE,
+                                    Sort.by(Sort.Direction.DESC, "tranDatetime")
+                            )
+                    ).getContent().stream()
+                    .map(this::toHistoryEntry)
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .toList();
+        } catch (final RuntimeException exception) {
+            log.warn("FDS 평가용 거래이력을 읽지 못해 이력 없이 평가합니다.", exception);
+            return List.of();
+        }
+    }
+
+    /** 상대 계좌가 비어 있는 거래는 AI 스키마로 옮길 수 없어 건너뛴다. */
+    private Optional<FdsHistoryEntry> toHistoryEntry(final Transaction transaction) {
+        final String counterpartyAccount = transaction.getCounterpartyAccount();
+        if (counterpartyAccount == null || counterpartyAccount.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(FdsHistoryEntry.of(
+                BigDecimal.valueOf(transaction.getAmount()),
+                transaction.getTranDatetime()
+                        .atZone(BUSINESS_ZONE)
+                        .toOffsetDateTime(),
+                counterpartyAccount
+        ));
     }
 
     private FdsProfileFeature createProfileFeature(final Long userId) {

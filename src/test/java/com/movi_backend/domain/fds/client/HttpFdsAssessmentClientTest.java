@@ -16,6 +16,8 @@ import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
+import com.movi_backend.global.security.CryptoProperties;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.net.SocketTimeoutException;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.DisplayName;
@@ -27,66 +29,130 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
+/**
+ * https://moviback.duckdns.org/ai/fds/openapi.json 을 그대로 검증한다. 필드명이 snake_case인
+ * 것도, rule_score·final_risk_score가 0~100인 것도 실제 서버에 요청을 보내 확인한 값이다.
+ */
 class HttpFdsAssessmentClientTest {
+
+    private static final CryptoProperties CRYPTO_PROPERTIES = new CryptoProperties(
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+            "YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk="
+    );
+    private static final SensitiveDataCrypto CRYPTO = new SensitiveDataCrypto(CRYPTO_PROPERTIES);
 
     private static final String RESPONSE_JSON = """
             {
-              "requestId": "fds-transfer-101",
-              "modelVersion": "isolation-forest-v1",
-              "policyVersion": "risk-policy-v1",
-              "scores": {
-                "anomalyScore": 0.22,
-                "ruleScore": 0.15,
-                "finalRiskScore": 0.18
-              },
-              "riskLevel": "LOW",
-              "decision": "ALLOW",
-              "reasonCodes": [],
-              "latencyMs": 57
+              "transaction_id": null,
+              "anomaly_score": 0.344090,
+              "threshold": 0.446117,
+              "is_anomaly": false,
+              "model": "isolation_forest",
+              "rule_score": 20.0,
+              "final_risk_score": 12.0,
+              "risk_level": "LOW",
+              "triggered_rules": ["NEW_RECIPIENT", "CROSS_BANK"]
             }
             """;
 
     @Test
-    @DisplayName("FDS API를 호출하면 JSON 계약을 전송하고 검증된 응답을 반환한다")
-    void FDS_API를_호출하면_JSON_계약을_전송하고_검증된_응답을_반환한다() {
+    @DisplayName("실제 AI 스키마로 요청을 보내고 0~100 점수를 0~1로 맞춰 반환한다")
+    void 실제_AI_스키마로_요청을_보내고_점수_스케일을_맞춘다() {
         // given
-        final RestClient.Builder builder = RestClient.builder()
-                .baseUrl("http://localhost:8000");
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
         final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(
-                builder.build(),
-                new FdsAssessmentResponseValidator()
-        );
-        final FdsAssessmentRequest request = FdsClientFixture.normalRequest();
-        server.expect(once(), requestTo("http://localhost:8000/internal/v1/fraud/predict"))
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(content().string(Matchers.containsString("fds-transfer-101")))
-                .andExpect(content().string(Matchers.containsString("balanceBefore")))
+                // 실제 AI 계약의 필드명이다. camelCase가 아니라 snake_case로 나가야 한다.
+                .andExpect(content().string(Matchers.containsString("\"current_transaction\"")))
+                .andExpect(content().string(Matchers.containsString("\"sender_account\"")))
+                .andExpect(content().string(Matchers.containsString("\"receiver_account\":\"110123456789\"")))
+                .andExpect(content().string(Matchers.containsString("\"history\":[]")))
                 .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
 
         // when
         final FdsAssessmentResponse response = client.assess(request);
 
         // then
+        assertThat(response.requestId()).isEqualTo(request.requestId());
         assertThat(response.riskLevel()).isEqualTo(RiskLevel.LOW);
         assertThat(response.decision()).isEqualTo(FdsDecision.ALLOW);
+        assertThat(response.reasonCodes()).containsExactly("NEW_RECIPIENT", "CROSS_BANK");
+        // rule_score 20.0, final_risk_score 12.0 은 0~100 스케일이다. 0~1로 나눠 맞춘다.
+        assertThat(response.scores().ruleScore()).isEqualByComparingTo("0.2");
+        assertThat(response.scores().finalRiskScore()).isEqualByComparingTo("0.12");
+        assertThat(response.scores().anomalyScore()).isEqualByComparingTo("0.344090");
         server.verify();
+    }
+
+    @Test
+    @DisplayName("수취인 계좌를 복호화해서 평문으로 보낸다")
+    void 수취인_계좌를_복호화해서_평문으로_보낸다() {
+        // given
+        final String plainAccountNumber = "004987654321";
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient(plainAccountNumber);
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andExpect(content().string(
+                        Matchers.containsString("\"receiver_account\":\"" + plainAccountNumber + "\"")))
+                .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
+
+        // when
+        client.assess(request);
+
+        // then
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("risk_level 이 비어 있으면 위험도 평가 실패로 처리하고 이체를 진행하지 않는다")
+    void risk_level_이_비어_있으면_평가_실패로_처리한다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+        final String responseWithoutRiskLevel = """
+                {
+                  "anomaly_score": 0.3,
+                  "threshold": 0.44,
+                  "is_anomaly": false,
+                  "model": "isolation_forest",
+                  "rule_score": 10.0,
+                  "final_risk_score": 8.0,
+                  "risk_level": null,
+                  "triggered_rules": []
+                }
+                """;
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andRespond(withSuccess(responseWithoutRiskLevel, MediaType.APPLICATION_JSON));
+
+        // when
+        final Throwable thrown = catchThrowable(() -> client.assess(request));
+
+        // then — AI가 규칙엔진 판정을 못 내려도 조용히 통과시키지 않는다.
+        assertThat(thrown)
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.ASSESSMENT_FAILED);
     }
 
     @Test
     @DisplayName("FDS API가 실패하면 위험도 평가 예외가 발생한다")
     void FDS_API가_실패하면_위험도_평가_예외가_발생한다() {
         // given
-        final RestClient.Builder builder = RestClient.builder()
-                .baseUrl("http://localhost:8000");
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
         final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(
-                builder.build(),
-                new FdsAssessmentResponseValidator()
-        );
-        final FdsAssessmentRequest request = FdsClientFixture.normalRequest();
-        server.expect(once(), requestTo("http://localhost:8000/internal/v1/fraud/predict"))
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
                 .andRespond(withServerError());
 
         // when
@@ -104,15 +170,11 @@ class HttpFdsAssessmentClientTest {
     @DisplayName("FDS API가 HTTP 504를 반환하면 위험도 평가 시간 초과 예외가 발생한다")
     void FDS_API가_HTTP_504를_반환하면_위험도_평가_시간_초과_예외가_발생한다() {
         // given
-        final RestClient.Builder builder = RestClient.builder()
-                .baseUrl("http://localhost:8000");
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
         final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(
-                builder.build(),
-                new FdsAssessmentResponseValidator()
-        );
-        final FdsAssessmentRequest request = FdsClientFixture.normalRequest();
-        server.expect(once(), requestTo("http://localhost:8000/internal/v1/fraud/predict"))
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
                 .andRespond(withStatus(HttpStatus.GATEWAY_TIMEOUT));
 
         // when
@@ -130,15 +192,11 @@ class HttpFdsAssessmentClientTest {
     @DisplayName("FDS API 응답이 시간 초과되면 위험도 평가 시간 초과 예외가 발생한다")
     void FDS_API_응답이_시간_초과되면_위험도_평가_시간_초과_예외가_발생한다() {
         // given
-        final RestClient.Builder builder = RestClient.builder()
-                .baseUrl("http://localhost:8000");
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
         final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(
-                builder.build(),
-                new FdsAssessmentResponseValidator()
-        );
-        final FdsAssessmentRequest request = FdsClientFixture.normalRequest();
-        server.expect(once(), requestTo("http://localhost:8000/internal/v1/fraud/predict"))
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
                 .andRespond(ignored -> {
                     throw new ResourceAccessException(
                             "FDS 응답 시간 초과",
@@ -155,5 +213,9 @@ class HttpFdsAssessmentClientTest {
                 .extracting(exception -> ((BusinessException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.ASSESSMENT_TIMEOUT);
         server.verify();
+    }
+
+    private FdsAssessmentRequest requestWithEncryptedRecipient(final String plainAccountNumber) {
+        return FdsClientFixture.normalRequestWithRecipientAccount(CRYPTO.encrypt(plainAccountNumber));
     }
 }

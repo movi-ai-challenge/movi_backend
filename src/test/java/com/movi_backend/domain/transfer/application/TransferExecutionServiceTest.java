@@ -578,6 +578,8 @@ class TransferExecutionServiceTest {
         given(recipient.getHolderName()).willReturn("김영희");
         given(recipient.getTransferCount()).willReturn(1);
         given(recipient.isFirstTime()).willReturn(false);
+        given(account.getFintechUseNum()).willReturn("199000000000000000000001");
+        given(account.getBankCode()).willReturn("004");
         given(device.isTrusted()).willReturn(true);
         given(balanceSnapshot.getAvailableAmount()).willReturn(1_000_000L);
         given(transferRepository.findLockedByIdempotencyKeyAndUserId(idempotencyKey, USER_ID))

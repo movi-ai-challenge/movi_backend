@@ -190,6 +190,7 @@ CREATE TABLE voice_commands (
 CREATE TABLE transactions (
     transaction_id       BIGINT       NOT NULL AUTO_INCREMENT,
     account_id           BIGINT       NOT NULL,
+    transfer_id          BIGINT       NULL     COMMENT '이 거래를 만든 이체. 외부 유입 거래는 NULL',
     tran_type            VARCHAR(10)  NOT NULL COMMENT 'IN/OUT',
     amount               BIGINT       NOT NULL,
     balance_after        BIGINT       NULL,
@@ -203,7 +204,9 @@ CREATE TABLE transactions (
     PRIMARY KEY (transaction_id),
     KEY idx_tran_account_time (account_id, tran_datetime DESC),
     KEY idx_tran_category (account_id, category),
-    CONSTRAINT fk_tran_account FOREIGN KEY (account_id) REFERENCES accounts (account_id)
+    KEY idx_transaction_transfer (transfer_id),
+    CONSTRAINT fk_tran_account FOREIGN KEY (account_id) REFERENCES accounts (account_id),
+    CONSTRAINT fk_transaction_transfer FOREIGN KEY (transfer_id) REFERENCES transfers (transfer_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE transfer_recipients (

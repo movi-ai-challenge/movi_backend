@@ -47,7 +47,8 @@ class TransactionControllerTest {
                 "송금",
                 LocalDateTime.of(2026, 8, 24, 10, 30),
                 "용돈",
-                TransactionSource.INTERNAL
+                TransactionSource.INTERNAL,
+                null
         );
         given(transactionQueryService.findAll(
                 userId,

@@ -931,6 +931,7 @@ class VoiceCommandServiceTest {
                 null,
                 LocalDateTime.of(2026, 8, dayOfMonth, 10, 0),
                 null,
+                null,
                 null
         );
     }

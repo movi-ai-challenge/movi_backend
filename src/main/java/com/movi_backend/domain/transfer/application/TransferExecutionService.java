@@ -155,7 +155,7 @@ public class TransferExecutionService {
         final LocalDateTime completedAt = executedTransfer.tranDateTime();
         transfer.complete(completedAt);
         command.recipient().recordTransfer(completedAt);
-        saveTransaction(command, balanceSnapshot, executedTransfer);
+        saveTransaction(command, transfer, balanceSnapshot, executedTransfer);
         if (response.decision().requiresGuardianAlert()) {
             sendRiskAlert(transfer, assessment);
         }
@@ -188,6 +188,7 @@ public class TransferExecutionService {
 
     private void saveTransaction(
             final ConfirmedTransferCommand command,
+            final Transfer transfer,
             final BalanceSnapshot balanceSnapshot,
             final OpenBankingTransferResult transferResult
     ) {
@@ -196,6 +197,8 @@ public class TransferExecutionService {
                 : balanceSnapshot.getAvailableAmount() - command.amount();
         final Transaction transaction = Transaction.builder()
                 .account(command.fromAccount())
+                // 거래내역에서 FDS 판정을 찾아가려면 이 연결이 있어야 한다.
+                .transfer(transfer)
                 .tranType(TransactionType.OUT)
                 .amount(command.amount())
                 .balanceAfter(balanceAfter)

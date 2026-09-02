@@ -2,6 +2,9 @@ package com.movi_backend.domain.transfer.application;
 
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
+import com.movi_backend.domain.fds.entity.FdsAssessment;
+import com.movi_backend.domain.fds.repository.FdsAssessmentRepository;
+import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.transfer.dto.response.TransactionDetailResponse;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.Transaction;
@@ -12,6 +15,10 @@ import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.response.PageResponse;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -27,6 +34,7 @@ public class TransactionQueryService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final AccountRepository accountRepository;
+    private final FdsAssessmentRepository fdsAssessmentRepository;
     private final TransactionRepository transactionRepository;
 
     @Transactional(readOnly = true)
@@ -59,12 +67,54 @@ public class TransactionQueryService {
                 endAt,
                 pageable
         );
+        final Map<Long, RiskLevel> riskLevels = findRiskLevels(transactions.getContent());
         return PageResponse.of(
-                transactions.getContent().stream().map(TransactionResponse::from).toList(),
+                transactions.getContent().stream()
+                        .map(transaction -> TransactionResponse.from(
+                                transaction,
+                                riskLevels.get(transaction.getId())
+                        ))
+                        .toList(),
                 page,
                 size,
                 transactions.getTotalElements()
         );
+    }
+
+    /**
+     * 목록에 실린 거래들의 FDS 판정을 한 번에 읽는다.
+     *
+     * <p>거래마다 따로 조회하면 목록 길이만큼 질의가 나간다. 이체를 거치지 않은 거래는
+     * 평가가 없으므로 결과에서 빠지고, 화면은 위험 표시를 하지 않는다.
+     */
+    private Map<Long, RiskLevel> findRiskLevels(final List<Transaction> transactions) {
+        final Map<Long, Long> transferIdByTransaction = new LinkedHashMap<>();
+        transactions.forEach(transaction -> {
+            if (transaction.getTransfer() != null) {
+                transferIdByTransaction.put(transaction.getId(), transaction.getTransfer().getId());
+            }
+        });
+        if (transferIdByTransaction.isEmpty()) {
+            return Map.of();
+        }
+
+        final Map<Long, RiskLevel> riskByTransfer = fdsAssessmentRepository
+                .findByTransferIdIn(List.copyOf(transferIdByTransaction.values()))
+                .stream()
+                .collect(Collectors.toMap(
+                        assessment -> assessment.getTransfer().getId(),
+                        FdsAssessment::getRiskLevel,
+                        (first, second) -> first
+                ));
+
+        final Map<Long, RiskLevel> result = new LinkedHashMap<>();
+        transferIdByTransaction.forEach((transactionId, transferId) -> {
+            final RiskLevel riskLevel = riskByTransfer.get(transferId);
+            if (riskLevel != null) {
+                result.put(transactionId, riskLevel);
+            }
+        });
+        return result;
     }
 
     /**

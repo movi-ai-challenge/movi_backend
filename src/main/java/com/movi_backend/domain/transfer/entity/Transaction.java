@@ -41,6 +41,16 @@ public class Transaction extends BaseCreatedEntity {
     @JoinColumn(name = "account_id", nullable = false)
     private Account account;
 
+    /**
+     * 이 거래를 만든 이체.
+     *
+     * <p>은행에서 내려받은 입출금처럼 우리 서비스를 거치지 않은 거래는 {@code null}이다.
+     * FDS 판정은 이체에 달려 있어, 거래내역에서 위험 표시를 하려면 이 연결이 필요하다.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "transfer_id")
+    private Transfer transfer;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "tran_type", nullable = false, length = 10)
     private TransactionType tranType;
@@ -74,6 +84,7 @@ public class Transaction extends BaseCreatedEntity {
     @Builder
     private Transaction(
             final Account account,
+            final Transfer transfer,
             final TransactionType tranType,
             final Long amount,
             final Long balanceAfter,
@@ -85,6 +96,7 @@ public class Transaction extends BaseCreatedEntity {
             final TransactionSource source
     ) {
         this.account = account;
+        this.transfer = transfer;
         this.tranType = tranType;
         this.amount = amount;
         this.balanceAfter = balanceAfter;

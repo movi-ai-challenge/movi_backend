@@ -259,7 +259,11 @@ public class TransferExecutionService {
                 FdsContextFeature.of(
                         command.device() != null && command.device().isTrusted(),
                         command.sttConfidence()
-                )
+                ),
+                command.fromAccount().getFintechUseNum(),
+                command.fromAccount().getBankCode(),
+                command.recipient().getBankCode(),
+                command.recipient().getAccountNum()
         );
     }
 

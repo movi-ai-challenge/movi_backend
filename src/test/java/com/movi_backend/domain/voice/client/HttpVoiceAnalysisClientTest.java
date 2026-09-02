@@ -7,6 +7,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisRequest;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -127,5 +129,84 @@ class HttpVoiceAnalysisClientTest {
                 VoiceIntent.TRANSFER,
                 List.of(VoiceSlot.AMOUNT)
         );
+    }
+
+    /**
+     * AI 는 FastAPI HTTPException 으로 내보내 계약 형태가 detail 안에 한 겹 감싸인다.
+     * 실제 운영에서 돌아오는 모양이라 그대로 넣는다.
+     */
+    private static final String WRAPPED_ERROR_JSON = """
+            {
+              "detail": {
+                "requestId": "voice-123",
+                "error": {
+                  "code": "%s",
+                  "message": "internal detail",
+                  "retryable": true
+                }
+              }
+            }
+            """;
+
+    private BusinessException analyzeExpectingFailure(
+            final HttpStatus status,
+            final String contractCode
+    ) {
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpVoiceAnalysisClient client = new HttpVoiceAnalysisClient(
+                builder.build(),
+                new ObjectMapper(),
+                new VoiceAnalysisResponseValidator()
+        );
+        server.expect(once(), requestTo("http://localhost:8000/internal/v1/voice/analyze"))
+                .andRespond(withStatus(status)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(WRAPPED_ERROR_JSON.formatted(contractCode)));
+
+        final Throwable thrown = catchThrowable(() -> client.analyze(createRequest()));
+
+        server.verify();
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        return (BusinessException) thrown;
+    }
+
+    @Test
+    @DisplayName("형식이 잘못된 오디오는 인식 실패가 아니라 미디어 타입 오류로 알린다")
+    void 형식_오류는_미디어_타입_오류로_알린다() {
+        // 전부 STT_FAILED 로 뭉개면 사용자는 "다시 말씀해 주세요"만 듣고
+        // 원인이 파일 형식이라는 것을 알 수 없다.
+        final BusinessException thrown =
+                analyzeExpectingFailure(HttpStatus.BAD_REQUEST, "UNSUPPORTED_AUDIO_FORMAT");
+
+        assertThat(thrown.getErrorCode()).isEqualTo(ErrorCode.UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    @Test
+    @DisplayName("너무 긴 오디오는 길이 초과로 알린다")
+    void 긴_오디오는_길이_초과로_알린다() {
+        final BusinessException thrown =
+                analyzeExpectingFailure(HttpStatus.BAD_REQUEST, "AUDIO_TOO_LONG");
+
+        assertThat(thrown.getErrorCode()).isEqualTo(ErrorCode.AUDIO_DURATION_EXCEEDED);
+    }
+
+    @Test
+    @DisplayName("인식된 문장이 없으면 STT 실패로 알린다")
+    void 빈_인식결과는_STT_실패다() {
+        final BusinessException thrown =
+                analyzeExpectingFailure(HttpStatus.UNPROCESSABLE_ENTITY, "EMPTY_TRANSCRIPT");
+
+        assertThat(thrown.getErrorCode()).isEqualTo(ErrorCode.STT_FAILED);
+    }
+
+    @Test
+    @DisplayName("모르는 코드가 와도 STT 실패로 처리하고 죽지 않는다")
+    void 모르는_코드는_STT_실패로_떨어진다() {
+        // AI 가 새 코드를 추가해도 백엔드가 500 으로 무너지면 안 된다.
+        final BusinessException thrown =
+                analyzeExpectingFailure(HttpStatus.INTERNAL_SERVER_ERROR, "SOME_NEW_CODE");
+
+        assertThat(thrown.getErrorCode()).isEqualTo(ErrorCode.STT_FAILED);
     }
 }

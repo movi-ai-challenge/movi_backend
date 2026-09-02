@@ -82,10 +82,14 @@ public class TransferExecutionService {
     ) {
         return transferRepository.findByIdempotencyKeyAndUserId(idempotencyKey, userId)
                 .filter(transfer -> transfer.getStatus().isFinal())
-                .map(transfer -> TransferExecutionResult.of(
-                        transfer,
-                        findAssessment(transfer.getId())
-                ));
+                .map(transfer -> {
+                    final FdsAssessment assessment = findAssessment(transfer.getId());
+                    return TransferExecutionResult.of(
+                            transfer,
+                            assessment,
+                            assessment.readReasonCodes(objectMapper)
+                    );
+                });
     }
 
     @Transactional
@@ -128,12 +132,12 @@ public class TransferExecutionService {
         if (response.decision() == FdsDecision.BLOCK) {
             transfer.block("고위험 거래");
             sendRiskAlert(transfer, assessment);
-            return TransferExecutionResult.of(transfer, assessment);
+            return TransferExecutionResult.of(transfer, assessment, response.reasonCodes());
         }
 
         final Optional<OpenBankingTransferResult> transferResult = executeTransfer(transfer);
         if (transferResult.isEmpty()) {
-            return TransferExecutionResult.of(transfer, assessment);
+            return TransferExecutionResult.of(transfer, assessment, response.reasonCodes());
         }
         final OpenBankingTransferResult executedTransfer = transferResult.get();
         final LocalDateTime completedAt = executedTransfer.tranDateTime();
@@ -143,7 +147,7 @@ public class TransferExecutionService {
         if (response.decision().requiresGuardianAlert()) {
             sendRiskAlert(transfer, assessment);
         }
-        return TransferExecutionResult.of(transfer, assessment);
+        return TransferExecutionResult.of(transfer, assessment, response.reasonCodes());
     }
 
     private void lockUser(final Long userId) {
@@ -214,7 +218,12 @@ public class TransferExecutionService {
         if (!transfer.getStatus().isFinal()) {
             throw new BusinessException(ErrorCode.DUPLICATE_TRANSFER);
         }
-        return TransferExecutionResult.of(transfer, findAssessment(transfer.getId()));
+        final FdsAssessment assessment = findAssessment(transfer.getId());
+        return TransferExecutionResult.of(
+                transfer,
+                assessment,
+                assessment.readReasonCodes(objectMapper)
+        );
     }
 
     private FdsAssessment findAssessment(final Long transferId) {

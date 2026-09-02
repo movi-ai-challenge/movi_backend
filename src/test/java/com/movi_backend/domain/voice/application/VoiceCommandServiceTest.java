@@ -363,7 +363,8 @@ class VoiceCommandServiceTest {
                         RiskLevel.LOW,
                         50_000L,
                         "김영희",
-                        LocalDateTime.now()
+                        LocalDateTime.now(),
+                        List.of()
                 ));
         final VoiceCommandService service = createService();
 
@@ -454,7 +455,8 @@ class VoiceCommandServiceTest {
                 RiskLevel.LOW,
                 50_000L,
                 "김영희",
-                LocalDateTime.now()
+                LocalDateTime.now(),
+                List.of()
         );
         given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
         given(transferExecutionService.findCompletedResult(USER_ID, idempotencyKey))

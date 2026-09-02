@@ -18,6 +18,7 @@ import com.movi_backend.domain.transfer.type.TransferStatus;
 import com.movi_backend.global.security.AuthProperties;
 import com.movi_backend.global.security.CurrentUserArgumentResolver;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -82,7 +83,8 @@ class TransferControllerTest {
                 RiskLevel.HIGH,
                 800_000L,
                 "김영희",
-                null
+                null,
+                List.of()
         );
         given(directTransferService.execute(eq(userId), any())).willReturn(response);
 

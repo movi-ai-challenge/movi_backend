@@ -33,7 +33,9 @@ public record VoiceCommandResponse(
         RiskLevel riskLevel,
         LocalDateTime completedAt,
         History history,
-        BalanceResponse balance
+        BalanceResponse balance,
+        /** FDS 가 짚은 근거. 위험도가 LOW 여도 알려 줄 값어치가 있다. */
+        List<String> riskReasons
 ) {
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
@@ -69,7 +71,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                null
+                null,
+                List.of()
         );
     }
 
@@ -97,7 +100,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                null
+                null,
+                List.of()
         );
     }
 
@@ -121,7 +125,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                null
+                null,
+                List.of()
         );
     }
 
@@ -147,7 +152,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 history,
-                null
+                null,
+                List.of()
         );
     }
 
@@ -175,7 +181,8 @@ public record VoiceCommandResponse(
                 result.riskLevel(),
                 result.completedAt(),
                 null,
-                null
+                null,
+                result.riskReasons()
         );
     }
 
@@ -201,8 +208,22 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                balance
+                balance,
+                List.of()
         );
+    }
+
+    /**
+     * 위험 근거를 뒤에 덧붙인다.
+     *
+     * <p>화면을 보지 않는 사용자는 이 문장만 듣는다. "위험해서 막았어요"만으로는
+     * 무엇을 고쳐 다시 시도해야 할지 알 수 없다.
+     */
+    private String withRiskReasons(final String message) {
+        if (this.riskReasons == null || this.riskReasons.isEmpty()) {
+            return message;
+        }
+        return message + " " + String.join(", ", this.riskReasons) + ".";
     }
 
     public String toVoiceMessage() {
@@ -217,13 +238,13 @@ public record VoiceCommandResponse(
         }
         if (this.status == TransferStatus.COMPLETED) {
             final String formattedAmount = KoreanMoneyFormatter.format(this.amount);
-            return "%s 님에게 %s을 보냈어요.".formatted(
+            return withRiskReasons("%s 님에게 %s을 보냈어요.".formatted(
                     this.recipientNameForResult(),
                     formattedAmount
-            );
+            ));
         }
         if (this.status == TransferStatus.BLOCKED) {
-            return ErrorCode.HIGH_RISK_BLOCKED.getVoiceMessage();
+            return withRiskReasons(ErrorCode.HIGH_RISK_BLOCKED.getVoiceMessage());
         }
         if (this.status == TransferStatus.FAILED) {
             return ErrorCode.TRANSFER_EXECUTION_FAILED.getVoiceMessage();

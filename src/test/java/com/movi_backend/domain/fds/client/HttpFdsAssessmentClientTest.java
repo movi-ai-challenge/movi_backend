@@ -112,6 +112,88 @@ class HttpFdsAssessmentClientTest {
     }
 
     @Test
+    @DisplayName("과거 출금을 history 에 실어 보낸다 - 이력이 비면 AI 가 금액 이상을 잡지 못한다")
+    void 과거_출금을_history_에_실어_보낸다() {
+        // given
+        final String plainCounterparty = "110999888777";
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = FdsClientFixture.requestWithHistory(
+                CRYPTO.encrypt("110123456789"),
+                FdsClientFixture.historyOf(2, CRYPTO.encrypt(plainCounterparty))
+        );
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andExpect(method(HttpMethod.POST))
+                // 이력도 현재 거래와 같은 snake_case 스키마로 나간다.
+                .andExpect(content().string(Matchers.containsString("\"history\":[{")))
+                .andExpect(content().string(Matchers.containsString("\"amount\":10000")))
+                .andExpect(content().string(Matchers.containsString("\"amount\":20000")))
+                // 이력의 계좌도 복호화해 보낸다. 현재 수취인과 표기가 어긋나면 재이체인데도
+                // AI 가 매번 NEW_RECIPIENT 로 잡는다.
+                .andExpect(content().string(
+                        Matchers.containsString("\"receiver_account\":\"" + plainCounterparty + "\"")))
+                .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
+
+        // when
+        client.assess(request);
+
+        // then
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("이력의 medium 은 현재 거래와 같게 보낸다 - 없는 정보로 UNUSUAL_MEDIUM 을 만들지 않는다")
+    void 이력의_medium_은_현재_거래와_같게_보낸다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        // sttConfidence 가 있으므로 현재 거래의 medium 은 VOICE 다.
+        final FdsAssessmentRequest request = FdsClientFixture.requestWithHistory(
+                CRYPTO.encrypt("110123456789"),
+                FdsClientFixture.historyOf(1, CRYPTO.encrypt("110999888777"))
+        );
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andExpect(content().string(Matchers.not(Matchers.containsString("\"medium\":\"APP\""))))
+                .andExpect(content().string(Matchers.containsString("\"medium\":\"VOICE\"")))
+                .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
+
+        // when
+        client.assess(request);
+
+        // then
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("복호화되지 않는 이력은 건너뛰고 평가를 계속한다")
+    void 복호화되지_않는_이력은_건너뛴다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        // 오픈뱅킹에서 받아 저장한 거래처럼 우리 키로 암호화되지 않은 값이 섞일 수 있다.
+        final FdsAssessmentRequest request = FdsClientFixture.requestWithHistory(
+                CRYPTO.encrypt("110123456789"),
+                FdsClientFixture.historyOf(1, "not-encrypted-at-all")
+        );
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andExpect(content().string(Matchers.containsString("\"history\":[]")))
+                .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
+
+        // when
+        final FdsAssessmentResponse response = client.assess(request);
+
+        // then - 이력 한 건이 깨졌다고 이체가 막히면 안 된다.
+        assertThat(response.riskLevel()).isEqualTo(RiskLevel.LOW);
+        server.verify();
+    }
+
+    @Test
     @DisplayName("risk_level 이 비어 있으면 위험도 평가 실패로 처리하고 이체를 진행하지 않는다")
     void risk_level_이_비어_있으면_평가_실패로_처리한다() {
         // given

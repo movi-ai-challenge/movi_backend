@@ -30,7 +30,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 시연·E2E용 시드 데이터.
@@ -76,17 +76,30 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final SensitiveDataCrypto sensitiveDataCrypto;
     private final PasswordEncoder passwordEncoder;
     private final SeedProperties seedProperties;
+    private final TransactionTemplate transactionTemplate;
 
+    /**
+     * <b>시드 실패가 서비스를 내리지 않는다.</b> 이 클래스는 {@link ApplicationRunner}라 예외를
+     * 그대로 올리면 Spring Boot가 컨텍스트를 닫고 프로세스를 종료한다. 컨테이너 재시작 정책과
+     * 맞물리면 무한 재시작이 된다. 실제로 운영에서 시드 번호가 이미 쓰이고 있다는 이유만으로
+     * 서버가 971번 재기동한 적이 있다.
+     *
+     * <p>시연 데이터가 없는 것은 불편이고, 서비스가 뜨지 않는 것은 장애다. 둘을 맞바꾸지 않는다.
+     */
     @Override
-    @Transactional
     public void run(final ApplicationArguments args) {
-        if (userRepository.findByPhoneHash(hash(DEMO_PHONE)).isPresent()) {
-            log.info("[SEED] 이미 시드된 환경입니다. 건너뜁니다.");
-            return;
+        try {
+            transactionTemplate.executeWithoutResult(status -> seedAll());
+        } catch (final RuntimeException exception) {
+            log.warn("[SEED] 시연 데이터를 만들지 못했습니다. 서비스는 그대로 기동합니다. 원인={}",
+                    exception.getClass().getSimpleName());
         }
+    }
+
+    private void seedAll() {
         seedDemoUser();
         seedOtherUser();
-        log.info("[SEED] 시연 데이터를 생성했습니다. PIN 로그인: {} / {}",
+        log.info("[SEED] 시연 데이터를 확인했습니다. PIN 로그인: {} / {}",
                 DEMO_PHONE, seedProperties.pin());
     }
 
@@ -97,6 +110,10 @@ public class DemoDataSeeder implements ApplicationRunner {
      * Mock FDS가 MEDIUM으로 올려 정상 송금 시연에도 보호자 알림이 나간다.
      */
     private void seedDemoUser() {
+        if (isPhoneTaken(DEMO_PHONE)) {
+            log.info("[SEED] 시연 사용자가 이미 있습니다. 건너뜁니다.");
+            return;
+        }
         final User user = userRepository.save(User.builder()
                 .name("김철수")
                 .phone(encrypt(DEMO_PHONE))
@@ -129,6 +146,10 @@ public class DemoDataSeeder implements ApplicationRunner {
      * 이 사용자로 이체하지는 않으므로 Mock이 모르는 계좌번호로 둔다.
      */
     private void seedOtherUser() {
+        if (isPhoneTaken(OTHER_PHONE)) {
+            log.info("[SEED] 두 번째 사용자의 번호가 이미 쓰이고 있습니다. 건너뜁니다.");
+            return;
+        }
         final User user = userRepository.save(User.builder()
                 .name("이순자")
                 .phone(encrypt(OTHER_PHONE))
@@ -267,5 +288,16 @@ public class DemoDataSeeder implements ApplicationRunner {
 
     private String hash(final String plainText) {
         return sensitiveDataCrypto.hash(plainText);
+    }
+
+    /**
+     * 시드 대상 번호를 이미 누가 쓰고 있는지 본다.
+     *
+     * <p>시드 사용자가 만든 계정인지, 사람이 회원가입으로 만든 계정인지는 구분하지 않는다.
+     * {@code users.phone_hash}에 UNIQUE 제약이 있어 어느 쪽이든 INSERT 하면 터진다.
+     * 실제로 시드용 번호를 쓰는 테스트 계정 하나 때문에 운영이 멈춘 적이 있다.
+     */
+    private boolean isPhoneTaken(final String phoneNumber) {
+        return userRepository.findByPhoneHash(hash(phoneNumber)).isPresent();
     }
 }

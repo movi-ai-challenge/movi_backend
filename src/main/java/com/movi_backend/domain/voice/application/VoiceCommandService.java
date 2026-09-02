@@ -124,6 +124,51 @@ public class VoiceCommandService {
 
         final PendingTransferSlots previousSlots = readPendingSlots(session);
         final VoiceAnalysisResponse analysis = analyze(audio, session, previousSlots);
+        return decide(userId, session, analysis, previousSlots, confirmationId, idempotencyKey, now);
+    }
+
+    /**
+     * 이미 분석된 결과로 다음 행동을 정한다.
+     *
+     * <p>오디오가 필요한 것은 형식 검증과 분석까지다. 그 뒤의 슬롯 채우기·소유권·한도·
+     * 확인·FDS·이체는 전부 {@link VoiceAnalysisResponse} 만 보고 돈다. 실시간 스트리밍은
+     * 분석까지를 이미 마친 상태로 도착하므로, 여기서부터 같은 경로를 태운다.
+     *
+     * <p>이 분리가 없으면 스트리밍이 검증 흐름을 따로 구현하게 되고, 두 경로의 판단이
+     * 어긋나는 순간 한쪽에서만 막히는 이체가 생긴다.
+     */
+    @Transactional
+    public VoiceCommandResponse processAnalyzed(
+            final Long userId,
+            final Long voiceSessionId,
+            final VoiceAnalysisResponse analysis,
+            final String confirmationId,
+            final String idempotencyKey
+    ) {
+        final LocalDateTime now = LocalDateTime.now();
+        final VoiceSession session = findOwnedSession(userId, voiceSessionId);
+        final VoiceCommandResponse replayedResponse = findReplayedResponse(
+                userId,
+                idempotencyKey
+        );
+        if (replayedResponse != null) {
+            return replayedResponse;
+        }
+        validateSession(session, now);
+
+        final PendingTransferSlots previousSlots = readPendingSlots(session);
+        return decide(userId, session, analysis, previousSlots, confirmationId, idempotencyKey, now);
+    }
+
+    private VoiceCommandResponse decide(
+            final Long userId,
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final PendingTransferSlots previousSlots,
+            final String confirmationId,
+            final String idempotencyKey,
+            final LocalDateTime now
+    ) {
         final String transcript = SensitiveTextMasker.mask(analysis.transcript());
         if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
             return processConfirmationResponse(

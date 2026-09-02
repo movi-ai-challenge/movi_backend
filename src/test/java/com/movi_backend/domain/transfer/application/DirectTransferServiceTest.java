@@ -27,6 +27,7 @@ import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -291,7 +292,8 @@ class DirectTransferServiceTest {
                 RiskLevel.HIGH,
                 50_000L,
                 "김영희",
-                null
+                null,
+                List.of()
         ));
 
         // when
@@ -321,7 +323,8 @@ class DirectTransferServiceTest {
                 RiskLevel.LOW,
                 50_000L,
                 "김영희",
-                LocalDateTime.of(2026, 8, 28, 10, 0)
+                LocalDateTime.of(2026, 8, 28, 10, 0),
+                List.of()
         );
     }
 
@@ -332,7 +335,8 @@ class DirectTransferServiceTest {
                 RiskLevel.LOW,
                 50_000L,
                 "김영희",
-                null
+                null,
+                List.of()
         );
     }
 

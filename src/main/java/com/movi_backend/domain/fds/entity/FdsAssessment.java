@@ -5,6 +5,10 @@ import com.movi_backend.domain.fds.type.FdsDecision;
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.transfer.entity.Transfer;
 import jakarta.persistence.Column;
+import java.util.ArrayList;
+import java.util.List;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -103,5 +107,31 @@ public class FdsAssessment {
     /** 보호자에게 알림을 보내야 하는 평가인지 여부 */
     public boolean requiresGuardianAlert() {
         return this.decision.requiresGuardianAlert();
+    }
+
+    /**
+     * 이 평가가 짚은 근거 코드.
+     *
+     * <p>{@code features} JSON 안에 이미 저장돼 있어 컬럼을 따로 두지 않는다. 이체를
+     * 다시 조회하는 경로(멱등 재요청 등)에서도 같은 근거를 꺼낼 수 있어야, 사용자가
+     * 두 번 물어봤을 때 다른 이유를 듣지 않는다.
+     *
+     * <p>읽지 못하면 빈 목록이다. 근거를 못 읽는 것이 이체 조회를 실패시킬 이유는 아니다.
+     */
+    public List<String> readReasonCodes(final ObjectMapper objectMapper) {
+        if (this.features == null || this.features.isBlank()) {
+            return List.of();
+        }
+        try {
+            final JsonNode codes = objectMapper.readTree(this.features).path("reasonCodes");
+            if (!codes.isArray()) {
+                return List.of();
+            }
+            final List<String> parsed = new ArrayList<>();
+            codes.forEach(node -> parsed.add(node.asString()));
+            return List.copyOf(parsed);
+        } catch (final RuntimeException exception) {
+            return List.of();
+        }
     }
 }

@@ -34,6 +34,31 @@ final class FdsClientFixture {
         );
     }
 
+    static FdsAssessmentRequest normalRequestWithRecipientAccount(final String toAccountNumEncrypted) {
+        return FdsAssessmentRequest.of(
+                "fds-transfer-101",
+                101L,
+                3L,
+                new BigDecimal("50000"),
+                new BigDecimal("320000"),
+                OffsetDateTime.of(2026, 8, 14, 14, 30, 0, 0, ZoneOffset.ofHours(9)),
+                FdsRecipientFeature.of(5, false),
+                FdsProfileFeature.of(
+                        new BigDecimal("42000"),
+                        new BigDecimal("100000"),
+                        new BigDecimal("11000"),
+                        8,
+                        3,
+                        List.of(9, 12, 18)
+                ),
+                FdsContextFeature.of(true, new BigDecimal("0.93")),
+                "199000000000000000000001",
+                "004",
+                "088",
+                toAccountNumEncrypted
+        );
+    }
+
     static FdsAssessmentRequest requestOf(
             final BigDecimal amount,
             final FdsRecipientFeature recipient,
@@ -49,7 +74,11 @@ final class FdsClientFixture {
                 OffsetDateTime.of(2026, 8, 14, 14, 30, 0, 0, ZoneOffset.ofHours(9)),
                 recipient,
                 profile,
-                context
+                context,
+                "199000000000000000000001",
+                "004",
+                "088",
+                "encrypted-recipient-account-num"
         );
     }
 

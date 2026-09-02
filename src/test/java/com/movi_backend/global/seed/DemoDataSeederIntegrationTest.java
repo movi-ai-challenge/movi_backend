@@ -1,6 +1,7 @@
 package com.movi_backend.global.seed;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.movi_backend.domain.account.application.BalanceInquiryService;
 import com.movi_backend.domain.account.dto.response.BalanceResponse;
@@ -151,8 +152,13 @@ class DemoDataSeederIntegrationTest {
                 .as("두 번째 사용자 번호는 남아 있어야 충돌이 재현된다")
                 .isPresent();
 
-        // when & then — 예외가 밖으로 나가면 운영에서 프로세스가 죽는다
-        transactionTemplate.executeWithoutResult(status -> demoDataSeeder.run(null));
+        // when & then — 가드가 두 번째 사용자를 건너뛰어 예외 없이 끝난다.
+        // 바깥 트랜잭션으로 감싸지 않는다. 감싸면 시더의 트랜잭션이 거기 합류해
+        // 운영과 다른 상태를 보게 된다.
+        assertThatCode(() -> demoDataSeeder.run(null)).doesNotThrowAnyException();
+        assertThat(userRepository.findByPhoneHash(sensitiveDataCrypto.hash(OTHER_PHONE)))
+                .as("이미 쓰이는 번호로 사용자를 새로 만들지 않는다")
+                .isPresent();
     }
 
     @Test

@@ -208,7 +208,16 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                     null,
                     null
             );
-            sendJson(downstream, Map.of("type", "command", "data", response));
+            /*
+             * 낭독 문구를 함께 보낸다. 화면을 보지 않는 사용자에게는 이 문장이
+             * 유일한 안내다. 컨트롤러가 REST 응답에 싣는 것과 같은 값을 써야
+             * 두 경로에서 다른 말이 들리지 않는다. 금액도 여기서 한국어로 바뀐다.
+             */
+            sendJson(downstream, Map.of(
+                    "type", "command",
+                    "data", response,
+                    "voiceMessage", response.toVoiceMessage()
+            ));
         } catch (final BusinessException exception) {
             sendJson(downstream, Map.of(
                     "type", "commandError",

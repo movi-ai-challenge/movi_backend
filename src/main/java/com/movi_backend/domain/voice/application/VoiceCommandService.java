@@ -17,6 +17,7 @@ import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.domain.voice.application.model.PendingTransferSlots;
+import com.movi_backend.domain.voice.application.model.VoiceStreamContext;
 import com.movi_backend.domain.voice.application.model.VoiceHistoryPeriod;
 import com.movi_backend.domain.voice.client.VoiceAnalysisClient;
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisRequest;
@@ -278,6 +279,21 @@ public class VoiceCommandService {
             voiceSessionExpirationService.expire(session.getId(), now);
             throw new BusinessException(ErrorCode.RETRY_LIMIT_EXCEEDED);
         }
+    }
+
+    /**
+     * 실시간 스트림이 연결될 때 지금 무엇을 되묻고 있는지 알려 준다.
+     *
+     * <p>재질문 중이면 이어지는 발화가 "김민수"처럼 짧다. 그 말만 놓고 전체 의도를
+     * 다시 분석하면 이체라는 것을 잃어버리므로, 무엇을 물어봤는지 AI 에 미리 넘긴다.
+     */
+    @Transactional(readOnly = true)
+    public VoiceStreamContext findStreamContext(final Long userId, final Long voiceSessionId) {
+        final VoiceSession session = findOwnedSession(userId, voiceSessionId);
+        return new VoiceStreamContext(
+                session.getPendingIntent(),
+                findExpectedSlots(readPendingSlots(session))
+        );
     }
 
     private VoiceAnalysisResponse analyze(

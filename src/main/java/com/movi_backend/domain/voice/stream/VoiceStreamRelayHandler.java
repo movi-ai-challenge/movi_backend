@@ -1,12 +1,15 @@
 package com.movi_backend.domain.voice.stream;
 
 import com.movi_backend.domain.voice.application.VoiceCommandService;
+import com.movi_backend.domain.voice.application.model.VoiceStreamContext;
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisResponse;
 import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.security.AuthUser;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
@@ -52,12 +55,12 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
             return;
         }
 
-        // 세션 번호를 AI 로도 넘긴다. 분석 결과에 같은 값이 실려 돌아와야 어느
-        // 대화에 속한 명령인지 대조할 수 있다.
+        // 세션 번호와 재질문 문맥을 AI 로 넘긴다. 되묻는 중이면 이어지는 발화가
+        // "김민수"처럼 짧아, 무엇을 물어봤는지 모르면 전체 의도를 다시 분석하다
+        // 이체라는 것을 잃어버린다.
         final Long voiceSessionId = (Long) downstream.getAttributes()
                 .get(VoiceStreamAuthInterceptor.VOICE_SESSION_ATTRIBUTE);
-        final String upstreamUrl = properties.url()
-                + "?voiceSessionId=" + (voiceSessionId == null ? 0L : voiceSessionId);
+        final String upstreamUrl = buildUpstreamUrl(authUser, voiceSessionId);
 
         final WebSocketSession upstream = new StandardWebSocketClient()
                 .execute(new UpstreamHandler(downstream), upstreamUrl)
@@ -124,6 +127,50 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
         }
     }
 
+
+    private String buildUpstreamUrl(final AuthUser authUser, final Long voiceSessionId) {
+        final StringBuilder url = new StringBuilder(properties.url())
+                .append("?voiceSessionId=")
+                .append(voiceSessionId == null ? 0L : voiceSessionId);
+        if (voiceSessionId == null) {
+            return url.toString();
+        }
+
+        final VoiceStreamContext context = readStreamContext(authUser, voiceSessionId);
+        appendIfPresent(url, "expectedIntent", context.pendingIntentParameter());
+        appendIfPresent(url, "expectedSlots", context.expectedSlotsParameter());
+        return url.toString();
+    }
+
+    /**
+     * 문맥을 못 읽어도 연결은 연다. 재질문 정보가 없으면 전체 분석으로 떨어질 뿐,
+     * 사용자가 말을 시작하지 못하게 막을 이유는 아니다.
+     */
+    private VoiceStreamContext readStreamContext(
+            final AuthUser authUser,
+            final Long voiceSessionId
+    ) {
+        try {
+            return voiceCommandService.findStreamContext(authUser.userId(), voiceSessionId);
+        } catch (final RuntimeException exception) {
+            log.debug("대화 문맥을 읽지 못했습니다: {}", exception.getClass().getSimpleName());
+            return VoiceStreamContext.empty();
+        }
+    }
+
+    private void appendIfPresent(
+            final StringBuilder url,
+            final String name,
+            final String value
+    ) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        url.append('&')
+                .append(name)
+                .append('=')
+                .append(URLEncoder.encode(value, StandardCharsets.UTF_8));
+    }
 
     /**
      * AI 가 분석 결과를 보내오면 기존 명령 처리 흐름을 태운다.

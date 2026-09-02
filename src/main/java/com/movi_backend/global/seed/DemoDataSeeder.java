@@ -90,6 +90,11 @@ public class DemoDataSeeder implements ApplicationRunner {
     public void run(final ApplicationArguments args) {
         try {
             transactionTemplate.executeWithoutResult(status -> seedAll());
+        } catch (final SeedStepFailedException exception) {
+            log.warn("[SEED] '{}' 단계에서 시연 데이터를 만들지 못했습니다. "
+                            + "서비스는 그대로 기동합니다. 원인={}",
+                    exception.step(),
+                    exception.causeType());
         } catch (final RuntimeException exception) {
             log.warn("[SEED] 시연 데이터를 만들지 못했습니다. 서비스는 그대로 기동합니다. 원인={}",
                     exception.getClass().getSimpleName());
@@ -97,10 +102,48 @@ public class DemoDataSeeder implements ApplicationRunner {
     }
 
     private void seedAll() {
-        seedDemoUser();
-        seedOtherUser();
+        runStep("시연 사용자", this::seedDemoUser);
+        runStep("두 번째 사용자", this::seedOtherUser);
         log.info("[SEED] 시연 데이터를 확인했습니다. PIN 로그인: {} / {}",
                 DEMO_PHONE, seedProperties.pin());
+    }
+
+    /**
+     * 어느 단계에서 실패했는지 붙여서 다시 던진다.
+     *
+     * <p>시드는 사용자·계좌·기기·거래를 차례로 만들고 각각 UNIQUE 제약이 있다. 예외 클래스
+     * 이름만 남기면 어디를 봐야 할지 알 수 없다. 실제로 운영은 {@code users.phone_hash} 에서,
+     * 같은 상황을 재현한 로컬은 {@code accounts.fintech_use_num} 에서 걸렸다.
+     *
+     * <p><b>예외 메시지는 싣지 않는다.</b> {@code Duplicate entry '199000...'} 처럼 계좌
+     * 식별자가 그대로 들어 있어, 로그에 남기면 민감정보를 남기지 않는다는 규칙을 어긴다.
+     * 단계 이름만으로도 어느 코드를 볼지는 정해진다.
+     */
+    private void runStep(final String step, final Runnable seeding) {
+        try {
+            seeding.run();
+        } catch (final RuntimeException exception) {
+            throw new SeedStepFailedException(step, exception);
+        }
+    }
+
+    /** 실패한 시드 단계를 알리는 예외. 원인 예외는 트랜잭션 롤백을 위해 그대로 감싼다. */
+    private static final class SeedStepFailedException extends RuntimeException {
+
+        private final String step;
+
+        private SeedStepFailedException(final String step, final RuntimeException cause) {
+            super(cause);
+            this.step = step;
+        }
+
+        private String step() {
+            return this.step;
+        }
+
+        private String causeType() {
+            return getCause().getClass().getSimpleName();
+        }
     }
 
     /**

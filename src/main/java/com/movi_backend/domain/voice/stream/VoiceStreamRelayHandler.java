@@ -1,11 +1,18 @@
 package com.movi_backend.domain.voice.stream;
 
+import com.movi_backend.domain.voice.application.VoiceCommandService;
+import com.movi_backend.domain.voice.client.dto.VoiceAnalysisResponse;
+import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
+import com.movi_backend.global.error.BusinessException;
+import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.security.AuthUser;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -29,6 +36,8 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
 
     private final VoiceStreamProperties properties;
+    private final VoiceCommandService voiceCommandService;
+    private final ObjectMapper objectMapper;
 
     /** 브라우저 세션 → AI 세션. 한쪽을 닫을 때 반대쪽을 찾아야 한다. */
     private final Map<String, WebSocketSession> upstreamByDownstream = new ConcurrentHashMap<>();
@@ -43,8 +52,15 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
             return;
         }
 
+        // 세션 번호를 AI 로도 넘긴다. 분석 결과에 같은 값이 실려 돌아와야 어느
+        // 대화에 속한 명령인지 대조할 수 있다.
+        final Long voiceSessionId = (Long) downstream.getAttributes()
+                .get(VoiceStreamAuthInterceptor.VOICE_SESSION_ATTRIBUTE);
+        final String upstreamUrl = properties.url()
+                + "?voiceSessionId=" + (voiceSessionId == null ? 0L : voiceSessionId);
+
         final WebSocketSession upstream = new StandardWebSocketClient()
-                .execute(new UpstreamHandler(downstream), properties.url())
+                .execute(new UpstreamHandler(downstream), upstreamUrl)
                 .get();
         upstreamByDownstream.put(downstream.getId(), upstream);
         log.info("음성 스트림 중계를 시작합니다: userId={}", authUser.userId());
@@ -108,6 +124,79 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
         }
     }
 
+
+    /**
+     * AI 가 분석 결과를 보내오면 기존 명령 처리 흐름을 태운다.
+     *
+     * <p>인식 결과를 화면에 보여주는 것과, 그 말을 실제 금융 동작으로 잇는 것은 다른
+     * 일이다. 여기서 {@code VoiceCommandService} 로 넘겨야 슬롯 검증·소유권·한도·FDS 가
+     * 배치 경로와 똑같이 적용된다. 스트리밍만 다른 판단을 하면 한쪽에서만 막히는
+     * 이체가 생긴다.
+     *
+     * <p>확인 발화와 실제 이체는 여기서 다루지 않는다. 확인에는 confirmationId 와
+     * 멱등키가 필요하고, 그 교환은 기존 REST 흐름이 담당한다.
+     */
+    private void handleAnalysis(final WebSocketSession downstream, final String payload) {
+        final JsonNode node = readJson(payload);
+        if (node == null || !"analysis".equals(node.path("type").asString(null))) {
+            return;
+        }
+
+        final AuthUser authUser = (AuthUser) downstream.getAttributes()
+                .get(VoiceStreamAuthInterceptor.AUTH_USER_ATTRIBUTE);
+        final Long voiceSessionId = (Long) downstream.getAttributes()
+                .get(VoiceStreamAuthInterceptor.VOICE_SESSION_ATTRIBUTE);
+        if (authUser == null || voiceSessionId == null) {
+            // 세션 없이 연결한 경우다. 인식 결과만 보여주고 명령으로 처리하지 않는다.
+            return;
+        }
+
+        try {
+            final VoiceAnalysisResponse analysis =
+                    objectMapper.treeToValue(node, VoiceAnalysisResponse.class);
+            final VoiceCommandResponse response = voiceCommandService.processAnalyzed(
+                    authUser.userId(),
+                    voiceSessionId,
+                    analysis,
+                    null,
+                    null
+            );
+            sendJson(downstream, Map.of("type", "command", "data", response));
+        } catch (final BusinessException exception) {
+            sendJson(downstream, Map.of(
+                    "type", "commandError",
+                    "code", exception.getErrorCode().getCode(),
+                    "voiceMessage", exception.getErrorCode().getVoiceMessage()
+            ));
+        } catch (final Exception exception) {
+            log.warn("음성 명령 처리에 실패했습니다: {}", exception.getClass().getSimpleName());
+            sendJson(downstream, Map.of(
+                    "type", "commandError",
+                    "code", ErrorCode.STT_FAILED.getCode(),
+                    "voiceMessage", ErrorCode.STT_FAILED.getVoiceMessage()
+            ));
+        }
+    }
+
+    private JsonNode readJson(final String payload) {
+        try {
+            return objectMapper.readTree(payload);
+        } catch (final Exception exception) {
+            return null;
+        }
+    }
+
+    private void sendJson(final WebSocketSession session, final Object body) {
+        if (!session.isOpen()) {
+            return;
+        }
+        try {
+            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(body)));
+        } catch (final Exception exception) {
+            log.debug("결과 전송 실패: {}", exception.getClass().getSimpleName());
+        }
+    }
+
     /** AI 가 보내는 인식 결과를 브라우저로 그대로 흘린다. */
     @RequiredArgsConstructor
     private final class UpstreamHandler extends AbstractWebSocketHandler {
@@ -119,9 +208,11 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                 final WebSocketSession upstream,
                 final TextMessage message
         ) throws Exception {
-            if (downstream.isOpen()) {
-                downstream.sendMessage(message);
+            if (!downstream.isOpen()) {
+                return;
             }
+            downstream.sendMessage(message);
+            handleAnalysis(downstream, message.getPayload());
         }
 
         @Override

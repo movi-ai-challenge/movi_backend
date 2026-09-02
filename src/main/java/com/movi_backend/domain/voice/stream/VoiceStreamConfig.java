@@ -1,5 +1,6 @@
 package com.movi_backend.domain.voice.stream;
 
+import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.global.config.CorsProperties;
 import com.movi_backend.global.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 실시간 음성 인식 WebSocket 등록.
@@ -30,10 +32,19 @@ public class VoiceStreamConfig implements WebSocketConfigurer {
     private final VoiceStreamProperties properties;
     private final CorsProperties corsProperties;
     private final JwtTokenProvider jwtTokenProvider;
+    private final VoiceCommandService voiceCommandService;
+    private final ObjectMapper objectMapper;
 
     @Override
     public void registerWebSocketHandlers(final WebSocketHandlerRegistry registry) {
-        registry.addHandler(new VoiceStreamRelayHandler(properties), STREAM_PATH)
+        registry.addHandler(
+                        new VoiceStreamRelayHandler(
+                                properties,
+                                voiceCommandService,
+                                objectMapper
+                        ),
+                        STREAM_PATH
+                )
                 .addInterceptors(new VoiceStreamAuthInterceptor(jwtTokenProvider))
                 .setAllowedOriginPatterns(corsProperties.allowedOrigins().toArray(String[]::new));
     }

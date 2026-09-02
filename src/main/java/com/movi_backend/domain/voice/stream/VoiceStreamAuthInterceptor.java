@@ -27,8 +27,10 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class VoiceStreamAuthInterceptor implements HandshakeInterceptor {
 
     public static final String AUTH_USER_ATTRIBUTE = "movi.authUser";
+    public static final String VOICE_SESSION_ATTRIBUTE = "movi.voiceSessionId";
 
     private static final String TOKEN_PARAMETER = "accessToken";
+    private static final String VOICE_SESSION_PARAMETER = "voiceSessionId";
 
     private final JwtTokenProvider jwtTokenProvider;
 
@@ -39,10 +41,10 @@ public class VoiceStreamAuthInterceptor implements HandshakeInterceptor {
             final WebSocketHandler handler,
             final Map<String, Object> attributes
     ) {
-        final String token = UriComponentsBuilder.fromUri(request.getURI())
+        final var query = UriComponentsBuilder.fromUri(request.getURI())
                 .build()
-                .getQueryParams()
-                .getFirst(TOKEN_PARAMETER);
+                .getQueryParams();
+        final String token = query.getFirst(TOKEN_PARAMETER);
         if (token == null || token.isBlank()) {
             return false;
         }
@@ -50,10 +52,29 @@ public class VoiceStreamAuthInterceptor implements HandshakeInterceptor {
         try {
             final AuthUser authUser = jwtTokenProvider.parseAccessToken(token);
             attributes.put(AUTH_USER_ATTRIBUTE, authUser);
+            attributes.put(
+                    VOICE_SESSION_ATTRIBUTE,
+                    parseVoiceSessionId(query.getFirst(VOICE_SESSION_PARAMETER))
+            );
             return true;
         } catch (final BusinessException exception) {
             log.debug("음성 스트림 핸드셰이크를 거부했습니다: {}", exception.getErrorCode().getCode());
             return false;
+        }
+    }
+
+    /**
+     * 음성 세션 번호는 선택이다. 없으면 인식 결과만 흘려보내고 명령으로 처리하지
+     * 않는다 -- 세션 없이 이체 판단을 시작할 수는 없다.
+     */
+    private Long parseVoiceSessionId(final String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(raw);
+        } catch (final NumberFormatException exception) {
+            return null;
         }
     }
 

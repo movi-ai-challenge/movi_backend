@@ -4,6 +4,17 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Objects;
 
+/**
+ * FDS 평가에 필요한 특징(feature) 요청.
+ *
+ * <p>{@code fromFintechUseNum}·{@code fromBankCode}·{@code toBankCode}·
+ * {@code toAccountNumEncrypted}는 실제 오픈뱅킹 이체({@code OpenBankingTransferPort})에 넘기는
+ * 값과 같은 것이다. {@link com.movi_backend.domain.fds.client.MockFdsAssessmentClient}는 쓰지
+ * 않고, 실제 AI 서버가 요구하는 원시 거래 스키마(계좌·은행)를 만들 때만 쓴다 — 그 값이 필요한
+ * 것은 HTTP 어댑터뿐이므로, 어댑터가 {@code Transfer}를 다시 조회하는 대신 호출부가 이미 들고
+ * 있는 값을 여기 실어 보낸다. {@code toAccountNumEncrypted}는 암호문 그대로 두고, 복호화는
+ * 실제로 보낼 때(HTTP 어댑터 안)에서만 한다.
+ */
 public record FdsAssessmentRequest(
         String requestId,
         Long transferId,
@@ -13,7 +24,11 @@ public record FdsAssessmentRequest(
         OffsetDateTime requestedAt,
         FdsRecipientFeature recipient,
         FdsProfileFeature profile,
-        FdsContextFeature context
+        FdsContextFeature context,
+        String fromFintechUseNum,
+        String fromBankCode,
+        String toBankCode,
+        String toAccountNumEncrypted
 ) {
 
     public FdsAssessmentRequest {
@@ -28,6 +43,10 @@ public record FdsAssessmentRequest(
         Objects.requireNonNull(recipient, "recipient는 필수입니다.");
         Objects.requireNonNull(profile, "profile은 필수입니다.");
         Objects.requireNonNull(context, "context는 필수입니다.");
+        requireNotBlank(fromFintechUseNum, "fromFintechUseNum");
+        requireNotBlank(fromBankCode, "fromBankCode");
+        requireNotBlank(toBankCode, "toBankCode");
+        requireNotBlank(toAccountNumEncrypted, "toAccountNumEncrypted");
     }
 
     public static FdsAssessmentRequest of(
@@ -39,7 +58,11 @@ public record FdsAssessmentRequest(
             final OffsetDateTime requestedAt,
             final FdsRecipientFeature recipient,
             final FdsProfileFeature profile,
-            final FdsContextFeature context
+            final FdsContextFeature context,
+            final String fromFintechUseNum,
+            final String fromBankCode,
+            final String toBankCode,
+            final String toAccountNumEncrypted
     ) {
         return new FdsAssessmentRequest(
                 requestId,
@@ -50,8 +73,18 @@ public record FdsAssessmentRequest(
                 requestedAt,
                 recipient,
                 profile,
-                context
+                context,
+                fromFintechUseNum,
+                fromBankCode,
+                toBankCode,
+                toAccountNumEncrypted
         );
+    }
+
+    private static void requireNotBlank(final String value, final String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + "는 필수입니다.");
+        }
     }
 
     private static void requirePositive(final BigDecimal value, final String fieldName) {

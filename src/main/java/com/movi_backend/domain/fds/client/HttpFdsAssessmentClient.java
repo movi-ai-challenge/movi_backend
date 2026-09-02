@@ -2,6 +2,7 @@ package com.movi_backend.domain.fds.client;
 
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentRequest;
 import com.movi_backend.domain.fds.client.dto.FdsAssessmentResponse;
+import com.movi_backend.domain.fds.client.dto.FdsHistoryEntry;
 import com.movi_backend.domain.fds.client.dto.FdsScores;
 import com.movi_backend.domain.fds.client.dto.FraudDetectionRequest;
 import com.movi_backend.domain.fds.client.dto.FraudDetectionResponse;
@@ -15,7 +16,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.SocketTimeoutException;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeoutException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
@@ -34,6 +37,7 @@ import org.springframework.web.client.RestClientResponseException;
  * 나머지 코드(검증기·저장·{@code TransferExecutionService})는 AI 서버가 실제로 어떤 필드를
  * 쓰는지 몰라도 된다.
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(prefix = "movi.fds", name = "client-type", havingValue = "http")
 public class HttpFdsAssessmentClient implements FdsAssessmentClient {
@@ -92,16 +96,79 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
     }
 
     private FraudDetectionRequest toFraudDetectionRequest(final FdsAssessmentRequest request) {
-        return FraudDetectionRequest.of(TransactionData.of(
+        final String medium = mediumOf(request);
+        return FraudDetectionRequest.of(
+                TransactionData.of(
+                        request.fromFintechUseNum(),
+                        sensitiveDataCrypto.decrypt(request.toAccountNumEncrypted()),
+                        request.fromBankCode(),
+                        request.toBankCode(),
+                        DEFAULT_TRANSACTION_TYPE,
+                        request.amount(),
+                        request.requestedAt(),
+                        medium
+                ),
+                toHistory(request, medium)
+        );
+    }
+
+    /**
+     * 과거 출금을 AI 스키마로 옮긴다.
+     *
+     * <p>{@code receiver_bank}는 출금계좌의 은행 코드로 채운다 — {@code transactions}에 상대
+     * 은행 코드가 없고, AI 가 이력의 은행 코드를 쓰지 않는 것을 확인했다
+     * ({@link FraudDetectionRequest} 참고).
+     *
+     * <p>{@code medium}은 현재 거래와 같은 값으로 보낸다. 거래별 유입 경로를 저장하지 않아
+     * 과거 경로를 알 수 없는데, 여기에 임의의 값을 넣으면 AI 의 {@code UNUSUAL_MEDIUM} 이
+     * 사실과 무관하게 발동한다. 특히 음성이 기본 경로인 이 서비스에서 이력을 전부 APP 으로
+     * 적으면 <b>정상적인 음성 송금이 매번 경로 이상으로 잡힌다</b> — 없는 정보로 위험 신호를
+     * 만들지 않기 위해 규칙이 발동하지 않는 쪽(같은 값)을 택했다.
+     */
+    private List<TransactionData> toHistory(
+            final FdsAssessmentRequest request,
+            final String medium
+    ) {
+        return request.history().stream()
+                .map(entry -> toHistoryTransaction(request, entry, medium))
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    /**
+     * 복호화에 실패한 이력은 버린다.
+     *
+     * <p>이력은 보조 정보이므로, 한 건이 깨졌다고 평가 자체를 실패시켜 이체를 막지 않는다.
+     * 오픈뱅킹에서 내려받아 저장한 거래처럼 우리 키로 암호화되지 않은 값이 섞일 수 있다.
+     */
+    private TransactionData toHistoryTransaction(
+            final FdsAssessmentRequest request,
+            final FdsHistoryEntry entry,
+            final String medium
+    ) {
+        final String receiverAccount = decryptOrNull(entry.counterpartyAccountEncrypted());
+        if (receiverAccount == null) {
+            return null;
+        }
+        return TransactionData.of(
                 request.fromFintechUseNum(),
-                sensitiveDataCrypto.decrypt(request.toAccountNumEncrypted()),
+                receiverAccount,
                 request.fromBankCode(),
-                request.toBankCode(),
+                request.fromBankCode(),
                 DEFAULT_TRANSACTION_TYPE,
-                request.amount(),
-                request.requestedAt(),
-                mediumOf(request)
-        ));
+                entry.amount(),
+                entry.occurredAt(),
+                medium
+        );
+    }
+
+    private String decryptOrNull(final String encrypted) {
+        try {
+            return sensitiveDataCrypto.decrypt(encrypted);
+        } catch (final RuntimeException exception) {
+            log.debug("FDS 이력 계좌번호를 복호화하지 못해 건너뜁니다.", exception);
+            return null;
+        }
     }
 
     /** 발화 신뢰도가 있으면 음성 경로, 없으면 화면 직접 입력 경로다. */

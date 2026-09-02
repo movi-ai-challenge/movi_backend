@@ -24,6 +24,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // 실시간 음성 인식. 브라우저와 WebSocket 으로 잇고, 받은 오디오 조각을
+    // AI 서버 WebSocket 으로 중계한다.
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
     // API 문서
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'

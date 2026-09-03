@@ -291,6 +291,38 @@ class TransferValidationServiceTest {
     }
 
     @Test
+    @DisplayName("뒤 네 자리가 같은 계좌가 이미 있으면 별칭에 번호를 붙인다 - 그대로 저장하면 이체가 서버 오류로 끝난다")
+    void 별칭이_겹치면_번호를_붙인다() {
+        // given
+        final TransferCommandRequest command = TransferCommandRequest.of(
+                50_000L, null, "3522315749143", "011", null,
+                TRUSTED_CONFIDENCE, TRUSTED_CONFIDENCE, TRUSTED_CONFIDENCE, null);
+        given(transferProperties.minimumAmount()).willReturn(1L);
+        given(transferProperties.perTransferLimit()).willReturn(1_000_000L);
+        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+                .willReturn(java.util.List.of());
+        given(userRepository.findById(USER_ID))
+                .willReturn(Optional.of(org.mockito.Mockito.mock(
+                        com.movi_backend.domain.auth.entity.User.class)));
+        given(sensitiveDataCrypto.encrypt("3522315749143")).willReturn("encrypted");
+        given(transferRecipientRepository.existsByUserIdAndNickname(USER_ID, "농협은행 9143"))
+                .willReturn(true);
+        given(transferRecipientRepository.existsByUserIdAndNickname(USER_ID, "농협은행 9143 (2)"))
+                .willReturn(false);
+        given(transferRecipientRepository.save(org.mockito.ArgumentMatchers.any()))
+                .willReturn(transferRecipient);
+
+        // when
+        transferValidationService.validate(USER_ID, command);
+
+        // then
+        final org.mockito.ArgumentCaptor<TransferRecipient> saved =
+                org.mockito.ArgumentCaptor.forClass(TransferRecipient.class);
+        org.mockito.BDDMockito.then(transferRecipientRepository).should().save(saved.capture());
+        assertThat(saved.getValue().getNickname()).isEqualTo("농협은행 9143 (2)");
+    }
+
+    @Test
     @DisplayName("계좌번호도 이름도 없으면 누구에게 보낼지 되묻는다")
     void 계좌번호도_이름도_없으면_되묻는다() {
         // given

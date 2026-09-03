@@ -84,7 +84,9 @@ class DirectTransferServiceTest {
                 userRepository,
                 deviceRegistrationService,
                 transferTargetResolver,
-                new TransferValidationService(null, properties),
+                new TransferValidationService(
+                        null, properties, userRepository, sensitiveDataCrypto,
+                        new BankDirectory()),
                 transferConfirmationStore,
                 transferExecutionService,
                 sensitiveDataCrypto

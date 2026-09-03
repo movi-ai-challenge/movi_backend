@@ -235,7 +235,7 @@ class VoiceCommandServiceTest {
         assertThat(response.amount()).isEqualTo(50_000L);
         assertThat(response.confirmationId()).isNotBlank();
         assertThat(response.toVoiceMessage())
-                .isEqualTo("생활비 통장에서 김영희 님에게 5만원을 보낼까요?");
+                .isEqualTo("생활비 통장에서 엄마 님에게 5만원을 보낼까요?");
         assertThat(session.getPendingSlots()).contains("\"recipientNickname\":\"엄마\"");
 
         final ArgumentCaptor<VoiceAnalysisRequest> analysisRequestCaptor =

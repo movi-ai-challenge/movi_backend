@@ -299,14 +299,14 @@ public record VoiceCommandResponse(
              */
             return "%s에서 %s 계좌 %s으로 %s을 보낼까요?".formatted(
                     accountName,
-                    this.recipient.holderName(),
+                    this.recipient.voiceName(),
                     this.spokenAccountDigits,
                     formattedAmount
             );
         }
         return "%s에서 %s 님에게 %s을 보낼까요?".formatted(
                 accountName,
-                this.recipient.holderName(),
+                this.recipient.voiceName(),
                 formattedAmount
         );
     }
@@ -439,18 +439,26 @@ public record VoiceCommandResponse(
     }
 
     /** 암호화된 계좌번호는 복호화·마스킹 계층이 준비되기 전까지 공개하지 않는다. */
-    public record Recipient(Long recipientId, String holderName, String bankCode) {
+    public record Recipient(Long recipientId, String holderName, String nickname, String bankCode) {
 
         public static Recipient from(final TransferRecipient recipient) {
             return new Recipient(
                     recipient.getId(),
                     recipient.getHolderName(),
+                    recipient.getNickname(),
                     recipient.getBankCode()
             );
         }
 
         public static Recipient named(final String holderName) {
-            return new Recipient(null, holderName, null);
+            return new Recipient(null, holderName, null, null);
+        }
+
+        private String voiceName() {
+            if (this.nickname != null && !this.nickname.isBlank()) {
+                return this.nickname;
+            }
+            return this.holderName;
         }
     }
 }

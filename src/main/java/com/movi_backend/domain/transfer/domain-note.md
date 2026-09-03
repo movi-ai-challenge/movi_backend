@@ -80,6 +80,13 @@ PENDING → RISK_REVIEW → COMPLETED
 
 ## 변경 이력
 
+- **2026-09-03** — 상대방 등록 추가. 이름만 불러 송금하려면 이름과 계좌가 미리 묶여 있어야 하는데 그 묶음을 만들 방법이 없었다.
+  - `POST /api/transfers/recipients` 신설, `TransferRecipientCommandService` 추가
+  - 받는 값은 이름과 계좌번호뿐. 은행코드·예금주는 입력받지 않고 `RegisteredAccountFinder`가 찾은 계좌에서 채운다 — 사람이 옮겨 적으면 틀리고, 틀린 은행으로 저장되면 이름을 불렀을 때 엉뚱한 곳으로 간다
+  - 계좌 실재 여부는 **등록 시점에** 확인한다. 송금 순간에 확인하면 이미 늦다. 사용자는 이름만 불렀는데 그때 "그런 계좌가 없다"고 하면 무엇이 잘못됐는지 알 수 없다
+  - 계좌 찾기는 `MockDepositAccountResolver`와 같은 접두어 규칙을 쓴다. `account_num_masked`가 마스킹된 값이라 완전 일치가 불가능하다. **후보가 둘 이상이면 거절한다** — 애매하게 저장하면 엉뚱한 사람에게 돈이 간다
+  - `ErrorCode` 4건 추가: `RECIPIENT_ACCOUNT_AMBIGUOUS`(4008) · `SELF_RECIPIENT_NOT_ALLOWED`(4009) · `RECIPIENT_ACCOUNT_NOT_FOUND`(4043) · `RECIPIENT_NICKNAME_DUPLICATED`(4091)
+
 - **2026-09-03** — 등록하지 않은 상대에게도 계좌번호를 말해 보낼 수 있게 했다(기획 변경). 그전에는 `validateDirectAccountNumber`가 계좌번호처럼 보이는 수취인을 거부했다 — "오타 한 번이 모르는 계좌로 가는 이체가 된다"는 이유였다. 그 위험은 그대로이므로 확인 단계에서 은행과 뒤 네 자리를 복창하고, 자릿수를 품은 수사("삼천오백")는 계좌번호로 읽지 않는다.
 
 - **2026-08-28** — 직접 입력 송금 검토·실행과 등록 수취인 목록 추가

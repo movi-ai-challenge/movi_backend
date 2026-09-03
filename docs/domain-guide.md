@@ -84,7 +84,18 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   - `transfers (user_id, idempotency_key)` UNIQUE — 음성은 오인식·중복 발화가 잦다. 사용자별 클라이언트 발급 키로 중복 이체를 차단한다
   - `COMPLETED` 이후에는 어떤 상태로도 전이하지 않는다
   - 모든 이체는 FDS 평가를 거친다. 평가 없이 `COMPLETED`가 될 수 없다
-- `transfer_recipients (user_id, nickname)` UNIQUE — "엄마"가 두 명일 수 없다. 음성 별칭이 곧 조회 키
+- `transfer_recipients (user_id, nickname)` UNIQUE — "엄마"가 두 명일 수 없다. 음성 별칭이 곧 조회 키.
+  일회성 송금 대상은 `nickname`이 NULL 이라 여러 행이 함께 있을 수 있다
+- `transfer_recipients (user_id, bank_code, account_num_hash)` UNIQUE — 같은 계좌는 한 행이다.
+  계좌번호는 은행 안에서만 유일하므로 은행코드가 함께 들어간다
+- `transfer_recipients.address_book` — 사용자가 이름을 지어 등록한 항목만 `true`. 목록·음성 이름
+  조회는 이 행만 본다. 계좌번호로 한 번 보낼 때 만드는 행은 거래 상대의 신원일 뿐이다
+- `transfer_recipients.verified_at` — 예금주조회로 계좌를 확인한 시각. **NULL 이면 이체하지 않는다.**
+  별칭 모양이나 `transfer_count`로 확인 여부를 판단하지 않는다
+- **별칭을 지어내지 않는다** — "국민은행 6789", 겹치면 "(2)" 를 붙이던 자동 생성은 없앴다.
+  사용자가 짓지 않은 이름은 부를 수도 지울 수도 없다
+- **이름은 정확히 일치할 때만 고른다** — 자모 편집거리로 가까운 이름을 고르지 않는다.
+  "국민은행 6789"와 "국민은행 6788"이 거리 1이라 한 자리 다른 계좌가 선택될 수 있었다
 - `transfer_recipients.transfer_count`는 FDS의 "처음 보내는 상대" 피처. 이체 성공 시 증가시킨다
 
 ### `voice` — 음성 세션·명령

@@ -31,7 +31,7 @@ class VoiceCommandResponseReadBackTest {
                 List.of(),
                 "confirm-1",
                 new FromAccount(1L, "생활비 통장", "국민은행"),
-                new Recipient(9L, "김주혁", "주혁", "011"),
+                new Recipient(9L, "김주혁", "주혁", "011", "농협은행", "5749"),
                 10_000L,
                 null, null, null, null, null, null, null,
                 List.of(),
@@ -50,11 +50,24 @@ class VoiceCommandResponseReadBackTest {
     }
 
     @Test
-    @DisplayName("등록된 이름으로 보낼 때는 이름을 읽는다 - 계좌번호를 굳이 읽지 않는다")
-    void 등록된_이름으로_보낼_때는_이름을_읽는다() {
+    @DisplayName("등록된 이름으로 보낼 때는 이름과 함께 확인된 예금주·은행·끝자리를 읽는다")
+    void 등록된_이름으로_보낼_때도_확인된_예금주를_읽는다() {
         final String message = confirmation(null).toVoiceMessage();
 
-        assertThat(message).isEqualTo("생활비 통장에서 주혁 님에게 1만원을 보낼까요?" + ANSWER_GUIDE);
-        assertThat(message).doesNotContain("계좌 ");
+        /*
+         * 이름만 읽으면 같은 이름으로 저장한 다른 계좌를 구분할 수 없다. 사용자가 부른
+         * 이름으로 시작하되, 확인된 예금주와 은행·끝자리를 붙여 무엇이 나가는지 짚어 준다.
+         */
+        assertThat(message).isEqualTo(
+                "생활비 통장에서 주혁, 농협은행 김주혁 님, 끝자리 5749번 계좌로 1만원을 보낼까요?"
+                        + ANSWER_GUIDE);
+    }
+
+    @Test
+    @DisplayName("계좌번호로 보낼 때도 확인된 예금주와 은행을 함께 읽는다")
+    void 계좌번호로_보낼_때도_확인된_예금주를_읽는다() {
+        final String message = confirmation("3 5 2 2 3 1 5 7 4 9").toVoiceMessage();
+
+        assertThat(message).contains("농협은행 김주혁 님");
     }
 }

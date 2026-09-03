@@ -5,25 +5,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
-import com.movi_backend.domain.account.application.RegisteredAccountFinder;
-import com.movi_backend.domain.account.entity.Account;
-import com.movi_backend.domain.account.type.AccountType;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.auth.type.UserType;
+import com.movi_backend.domain.transfer.application.model.VerifiedTransferTarget;
 import com.movi_backend.domain.transfer.dto.request.RecipientRegisterRequest;
 import com.movi_backend.domain.transfer.dto.response.RecipientResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
-import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
-import com.movi_backend.global.security.SensitiveDataCrypto;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -33,93 +29,103 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class TransferRecipientCommandServiceTest {
 
-    @Mock
-    private TransferRecipientRepository transferRecipientRepository;
-
-    @Mock
-    private RegisteredAccountFinder registeredAccountFinder;
+    private static final Long USER_ID = 1L;
 
     @Mock
     private UserRepository userRepository;
 
     @Mock
-    private SensitiveDataCrypto sensitiveDataCrypto;
+    private TransferTargetVerifier transferTargetVerifier;
+
+    @Mock
+    private TransferRecipientRegistrar transferRecipientRegistrar;
 
     @InjectMocks
     private TransferRecipientCommandService transferRecipientCommandService;
 
     @Test
-    @DisplayName("이름이 달라도 이미 등록된 계좌는 다시 등록할 수 없다")
-    void 이름이_달라도_같은_계좌는_다시_등록할_수_없다() {
-        // given — "엄마"로 등록해 둔 계좌를 "어머니"라는 새 이름으로 또 등록하려는 상황
-        given(sensitiveDataCrypto.hash("11122233344")).willReturn("account-hash");
-        given(transferRecipientRepository.existsByUserIdAndNickname(1L, "어머니"))
-                .willReturn(false);
-        given(transferRecipientRepository.existsByUserIdAndAccountNumHash(1L, "account-hash"))
-                .willReturn(true);
-
-        // when & then
-        assertThatThrownBy(() -> transferRecipientCommandService.register(
-                1L, new RecipientRegisterRequest("어머니", "111-2223-3344")
-        ))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(ErrorCode.RECIPIENT_ACCOUNT_DUPLICATED);
-        then(registeredAccountFinder).shouldHaveNoInteractions();
-        then(transferRecipientRepository).should(Mockito.never())
-                .save(ArgumentMatchers.any(TransferRecipient.class));
-    }
-
-    @Test
-    @DisplayName("처음 등록하는 계좌는 검색 해시를 함께 저장한다")
-    void 처음_등록하는_계좌는_검색_해시를_함께_저장한다() {
-        // given
-        final User owner = user(2L, "받는 사람");
-        final Account account = account(owner, "090", "11122233344");
-        final User registrant = user(1L, "등록하는 사람");
-        given(sensitiveDataCrypto.hash("11122233344")).willReturn("account-hash");
-        given(transferRecipientRepository.existsByUserIdAndNickname(1L, "엄마"))
-                .willReturn(false);
-        given(transferRecipientRepository.existsByUserIdAndAccountNumHash(1L, "account-hash"))
-                .willReturn(false);
-        given(registeredAccountFinder.findByAccountNumber("11122233344")).willReturn(account);
-        given(userRepository.findById(1L)).willReturn(Optional.of(registrant));
-        given(sensitiveDataCrypto.encrypt("11122233344")).willReturn("encrypted-account-num");
-        given(transferRecipientRepository.save(ArgumentMatchers.any(TransferRecipient.class)))
-                .willAnswer(invocation -> {
-                    final TransferRecipient saved = invocation.getArgument(0);
-                    ReflectionTestUtils.setField(saved, "id", 10L);
-                    return saved;
-                });
+    @DisplayName("예금주가 확인되면 확인된 이름으로 주소록에 등록한다")
+    void 확인된_계좌를_주소록에_등록한다() {
+        // given — 사용자는 이름과 은행·계좌번호만 보낸다. 예금주는 조회로 채운다
+        final VerifiedTransferTarget target = VerifiedTransferTarget.of(
+                "004", "004987654321", "hash-son", "김민수");
+        given(transferTargetVerifier.verifyForRegistration(USER_ID, "004", "004-9876-54321"))
+                .willReturn(target);
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(user()));
+        given(transferRecipientRegistrar.registerAddressBookEntry(
+                Mockito.any(User.class),
+                Mockito.eq("아들"),
+                Mockito.eq(target),
+                Mockito.any(LocalDateTime.class)))
+                .willReturn(recipient("아들", "김민수"));
 
         // when
         final RecipientResponse response = transferRecipientCommandService.register(
-                1L, new RecipientRegisterRequest("엄마", "111-2223-3344")
+                USER_ID,
+                new RecipientRegisterRequest("  아들  ", "004", "004-9876-54321")
         );
 
-        // then
-        assertThat(response.nickname()).isEqualTo("엄마");
-        final ArgumentCaptor<TransferRecipient> captor = ArgumentCaptor.forClass(TransferRecipient.class);
-        then(transferRecipientRepository).should().save(captor.capture());
-        assertThat(captor.getValue().getAccountNumHash()).isEqualTo("account-hash");
+        // then — 응답의 예금주는 사용자가 적은 값이 아니라 조회로 확인된 이름이다
+        assertThat(response.nickname()).isEqualTo("아들");
+        assertThat(response.holderName()).isEqualTo("김민수");
+        assertThat(response.maskedAccountNumber()).doesNotContain("004987654321");
     }
 
-    private User user(final Long userId, final String name) {
+    @Test
+    @DisplayName("확인되지 않은 계좌는 등록하지 않는다")
+    void 확인되지_않은_계좌는_등록하지_않는다() {
+        // given
+        given(transferTargetVerifier.verifyForRegistration(USER_ID, "004", "004000000000"))
+                .willThrow(new BusinessException(ErrorCode.RECIPIENT_ACCOUNT_UNVERIFIED));
+
+        // when & then
+        assertThatThrownBy(() -> transferRecipientCommandService.register(
+                USER_ID,
+                new RecipientRegisterRequest("아들", "004", "004000000000")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RECIPIENT_ACCOUNT_UNVERIFIED);
+
+        then(transferRecipientRegistrar).should(Mockito.never()).registerAddressBookEntry(
+                Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    @DisplayName("공백만 있는 이름으로는 등록할 수 없다")
+    void 공백_이름으로는_등록할_수_없다() {
+        // when & then
+        assertThatThrownBy(() -> transferRecipientCommandService.register(
+                USER_ID,
+                new RecipientRegisterRequest("   ", "004", "004987654321")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.BAD_REQUEST);
+    }
+
+    private User user() {
         final User user = User.builder()
-                .name(name)
-                .userType(UserType.GENERAL)
+                .name("김철수")
+                .phone("encrypted")
+                .phoneHash("hash")
+                .birthDate(LocalDate.of(1950, 3, 2))
+                .userType(UserType.SENIOR)
                 .build();
-        ReflectionTestUtils.setField(user, "id", userId);
+        ReflectionTestUtils.setField(user, "id", USER_ID);
         return user;
     }
 
-    private Account account(final User owner, final String bankCode, final String accountNumMasked) {
-        return Account.builder()
-                .user(owner)
-                .bankCode(bankCode)
-                .bankName("테스트은행")
-                .accountNumMasked(accountNumMasked)
-                .accountType(AccountType.DEPOSIT)
+    private TransferRecipient recipient(final String nickname, final String holderName) {
+        final TransferRecipient recipient = TransferRecipient.builder()
+                .user(user())
+                .nickname(nickname)
+                .bankCode("004")
+                .accountNum("encrypted")
+                .accountNumHash("hash-son")
+                .holderName(holderName)
+                .addressBook(true)
+                .verifiedAt(LocalDateTime.now())
                 .build();
+        ReflectionTestUtils.setField(recipient, "id", 300L);
+        return recipient;
     }
 }

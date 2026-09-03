@@ -24,6 +24,7 @@ public record TransferReviewResponse(
             final Account fromAccount,
             final String recipientHolderName,
             final String recipientNickname,
+            final String recipientBankName,
             final String maskedAccountNumber
     ) {
         return new TransferReviewResponse(
@@ -37,6 +38,7 @@ public record TransferReviewResponse(
                         confirmation.recipientId(),
                         recipientNickname,
                         recipientHolderName,
+                        recipientBankName,
                         maskedAccountNumber
                 ),
                 confirmation.amount(),
@@ -46,7 +48,7 @@ public record TransferReviewResponse(
 
     /** 확인 문장은 서버가 만든다. 화면 문구와 TTS가 다른 금액을 말하면 안 된다. */
     public String toVoiceMessage() {
-        return "%s에서 %s 님에게 %s을 보낼까요?".formatted(
+        return "%s에서 %s에게 %s을 보낼까요?".formatted(
                 this.fromAccount.toVoiceName(),
                 this.recipient.toVoiceName(),
                 KoreanMoneyFormatter.format(this.amount)
@@ -63,18 +65,28 @@ public record TransferReviewResponse(
         }
     }
 
+    /**
+     * 확인 문장에 쓸 수취인. {@code holderName}은 예금주조회로 확인된 이름이다.
+     *
+     * <p>{@code nickname}은 주소록에 등록한 경우에만 있다. 등록하지 않은 계좌로 한 번
+     * 보내는 경우에는 비어 있고, 확인된 예금주와 은행으로 상대를 가리킨다.
+     */
     public record Recipient(
             Long recipientId,
             String nickname,
             String holderName,
+            String bankName,
             String maskedAccountNumber
     ) {
 
         private String toVoiceName() {
-            if (this.nickname == null || this.nickname.isBlank()) {
-                return this.holderName;
+            if (this.bankName == null || this.bankName.isBlank()) {
+                return "%s 님".formatted(this.holderName);
             }
-            return this.nickname;
+            if (this.nickname == null || this.nickname.isBlank()) {
+                return "%s %s 님".formatted(this.bankName, this.holderName);
+            }
+            return "%s, %s %s 님".formatted(this.nickname, this.bankName, this.holderName);
         }
     }
 }

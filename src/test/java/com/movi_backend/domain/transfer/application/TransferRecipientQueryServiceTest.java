@@ -37,7 +37,7 @@ class TransferRecipientQueryServiceTest {
     @DisplayName("수취인 목록의 계좌번호는 뒤 네 자리만 남긴다")
     void 수취인_목록의_계좌번호는_뒤_네_자리만_남긴다() {
         // given
-        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+        given(transferRecipientRepository.findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(USER_ID))
                 .willReturn(List.of(recipient));
         given(recipient.getId()).willReturn(8L);
         given(recipient.getNickname()).willReturn("엄마");
@@ -60,7 +60,7 @@ class TransferRecipientQueryServiceTest {
     @DisplayName("계좌번호를 복호화하지 못해도 목록은 보여 주고 계좌번호만 가린다")
     void 계좌번호를_복호화하지_못해도_목록은_보여_주고_계좌번호만_가린다() {
         // given
-        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+        given(transferRecipientRepository.findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(USER_ID))
                 .willReturn(List.of(recipient));
         given(recipient.getAccountNum()).willReturn("broken");
         willThrow(new IllegalStateException("복호화 실패"))
@@ -77,7 +77,7 @@ class TransferRecipientQueryServiceTest {
     @DisplayName("저장된 수취인이 없으면 빈 목록과 안내 문구를 돌려준다")
     void 저장된_수취인이_없으면_빈_목록과_안내_문구를_돌려준다() {
         // given
-        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+        given(transferRecipientRepository.findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(USER_ID))
                 .willReturn(List.of());
 
         // when

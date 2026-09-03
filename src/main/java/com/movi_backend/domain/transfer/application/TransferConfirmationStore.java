@@ -47,6 +47,7 @@ public class TransferConfirmationStore {
             final LocalDateTime now
     ) {
         evictExpired(now);
+        evictPrevious(userId);
         final TransferConfirmation confirmation = TransferConfirmation.of(
                 UUID.randomUUID().toString(),
                 userId,
@@ -112,6 +113,17 @@ public class TransferConfirmationStore {
             return false;
         }
         return confirmation.acceptsIdempotencyKey(idempotencyKey);
+    }
+
+    /**
+     * 같은 사용자의 이전 확인을 버린다.
+     *
+     * <p>대상이나 금액을 바꿔 다시 검토하면 앞의 확인은 <b>더 이상 사용자가 확인한 내용이
+     * 아니다.</b> 남겨 두면 그 확인 ID 로 실행 요청이 들어왔을 때, 사용자가 방금 취소하거나
+     * 고친 내용이 그대로 나간다. 한 사용자에게 살아 있는 확인은 언제나 하나다.
+     */
+    private void evictPrevious(final Long userId) {
+        confirmations.entrySet().removeIf(entry -> entry.getValue().isOwnedBy(userId));
     }
 
     private void evictExpired(final LocalDateTime now) {

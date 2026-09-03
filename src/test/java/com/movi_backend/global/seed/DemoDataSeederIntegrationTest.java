@@ -204,7 +204,7 @@ class DemoDataSeederIntegrationTest {
                 seedProperties.deviceUuid()
         )).get().satisfies(device -> assertThat(device.isTrusted()).isTrue());
 
-        assertThat(recipientRepository.findByUserIdAndNickname(demoUser.getId(), "엄마"))
+        assertThat(recipientRepository.findByUserIdAndAddressBookTrueAndNickname(demoUser.getId(), "엄마"))
                 .get()
                 .satisfies(recipient -> assertThat(recipient.isFirstTime()).isFalse());
 
@@ -220,7 +220,7 @@ class DemoDataSeederIntegrationTest {
         instance = this;
 
         // then
-        assertThat(recipientRepository.findByUserIdAndNickname(findDemoUser().getId(), "김영희"))
+        assertThat(recipientRepository.findByUserIdAndAddressBookTrueAndNickname(findDemoUser().getId(), "김영희"))
                 .get()
                 .satisfies(recipient -> assertThat(recipient.isFirstTime()).isTrue());
     }
@@ -262,9 +262,9 @@ class DemoDataSeederIntegrationTest {
 
         // when
         final List<TransferRecipient> demoRecipients =
-                recipientRepository.findAllByUserIdOrderByNicknameAsc(findDemoUser().getId());
+                recipientRepository.findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(findDemoUser().getId());
         final List<TransferRecipient> otherRecipients =
-                recipientRepository.findAllByUserIdOrderByNicknameAsc(otherUser.getId());
+                recipientRepository.findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(otherUser.getId());
 
         // then
         assertThat(demoRecipients).extracting(TransferRecipient::getNickname)

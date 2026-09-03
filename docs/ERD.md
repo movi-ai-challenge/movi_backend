@@ -180,11 +180,13 @@ erDiagram
     transfer_recipients {
         bigint recipient_id PK
         bigint user_id FK
-        varchar nickname "음성 호출명"
+        varchar nickname "음성 호출명. NULL 이면 일회성 송금 대상"
         varchar bank_code
         varchar account_num
         varchar account_num_hash "중복 확인용 HMAC"
-        varchar holder_name
+        varchar holder_name "예금주조회로 확인된 이름"
+        boolean address_book "이름을 지어 등록한 주소록 항목인지"
+        datetime verified_at "계좌 확인 시각. NULL 이면 이체 대상 아님"
         int transfer_count
         datetime last_transferred_at
     }
@@ -386,7 +388,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 | `accounts` | `uk (user_id, account_alias)` / `idx (user_id, is_active)` | 사용자별 별칭 중복 방지 / 홈 계좌 목록 |
 | `transactions` | `idx (account_id, tran_datetime DESC)` | 거래 내역 기간 필터 |
 | `transfers` | `uk (user_id, idempotency_key)` / `idx (user_id, requested_at DESC)` | 사용자별 중복 방지 / 이체 이력 |
-| `transfer_recipients` | `uk (user_id, nickname)` / `uk (user_id, account_num_hash)` | 별칭 중복 방지 / 같은 계좌 중복 등록 방지 |
+| `transfer_recipients` | `uk (user_id, nickname)` / `uk (user_id, bank_code, account_num_hash)` | 별칭 중복 방지 / 같은 계좌 중복 등록 방지. 계좌번호는 은행 안에서만 유일해 은행코드가 함께 들어간다 |
 | `voice_commands` | `idx (user_id, created_at DESC)` / `idx (intent, status)` | 음성 로그 분석 |
 | `guardian_links` | `idx (protectee_user_id, status)` / `uk (invite_token)` | 활성 보호자 조회 / 초대 수락 |
 | `notifications` | `idx (status, next_retry_at)` / `idx (user_id, created_at DESC)` | 발송 재시도 / 알림 이력 |

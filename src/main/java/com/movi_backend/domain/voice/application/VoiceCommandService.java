@@ -46,6 +46,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -53,11 +54,28 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class VoiceCommandService {
 
     private static final long MAXIMUM_AUDIO_SIZE = 5L * 1024L * 1024L;
     private static final BigDecimal MINIMUM_CONFIDENCE = new BigDecimal("0.80");
+
+    /**
+     * 확인 대기 중 취소로 읽는 말. 승인보다 <b>먼저</b> 본다.
+     *
+     * <p>승인을 먼저 보면 "아니네요"처럼 부정 안에 든 "네"를 승인으로 읽어, 취소하려던
+     * 송금이 나간다. 잘못 읽어서 생기는 손해가 한쪽으로만 크므로 취소 쪽으로 기운다.
+     */
+    private static final List<String> DENIAL_WORDS = List.of(
+            "아니", "취소", "그만", "싫", "말아", "마세요", "하지마", "안돼", "안해", "됐어"
+    );
+
+    /** 확인 대기 중 승인으로 읽는 말. */
+    private static final List<String> APPROVAL_WORDS = List.of(
+            "네", "예", "응", "어", "맞아", "맞습니", "맞어", "보내", "해줘", "해주세요",
+            "확인", "좋아", "그래", "오케이", "옙", "넵"
+    );
 
     /**
      * 음성 거래내역 조회 1회에 가져올 건수.
@@ -177,10 +195,12 @@ public class VoiceCommandService {
         final String transcript = SensitiveTextMasker.mask(analysis.transcript());
         PendingTransferSlots slots = previousSlots;
         if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
-            if (isConfirmationAnswer(analysis.intent())) {
+            final VoiceIntent answer = resolveConfirmationAnswer(analysis);
+            if (answer != null) {
                 return processConfirmationResponse(
                         session,
                         analysis,
+                        answer,
                         transcript,
                         previousSlots,
                         confirmationId,
@@ -188,6 +208,17 @@ public class VoiceCommandService {
                         now
                 );
             }
+            /*
+             * 확인 답으로도, 알아들을 수 있는 말로도 읽히지 않았다. 무엇을 들었는지
+             * 남긴다 -- 이 자리는 실패해도 명령이 저장되지 않아, 로그가 없으면 사용자가
+             * 무슨 말을 했고 무엇으로 들렸는지 알 방법이 없다.
+             */
+            log.info(
+                    "확인 대기 중에 확인 답이 아닌 발화가 왔습니다: intent={}, sttConfidence={}, transcript={}",
+                    analysis.intent(),
+                    analysis.sttConfidence(),
+                    transcript
+            );
             /*
              * "보낼까요?"에 답이 아니라 새 명령이 왔다. 안내를 못 들었거나 마음을 바꾼
              * 것이다. 오류로 막으면 -- 화면을 보지 않는 사용자는 같은 말을 반복할 수밖에
@@ -429,24 +460,66 @@ public class VoiceCommandService {
         return response;
     }
 
-    /** "네"·"아니오" 처럼 확인 질문에 대한 답인지. 그 외는 새 명령으로 본다. */
-    private boolean isConfirmationAnswer(final VoiceIntent intent) {
-        return intent == VoiceIntent.CONFIRM || intent == VoiceIntent.CANCEL;
+    /**
+     * 확인 대기 중인 발화가 승인인지 취소인지 정한다.
+     *
+     * <p>AI 가 낸 intent 를 먼저 믿는다. 그것이 확인 답이 아니면 말 자체를 본다 --
+     * 확인 질문에 답하는 자리에서 "네 맞아요"를 새 명령으로 읽을 이유가 없고, STT 가
+     * 한 음절을 흘리거나 GPT 가 흔들려도 사용자는 같은 말을 반복할 뿐이다. 화면을 보지
+     * 않는 사용자에게는 그 반복이 유일한 수단이라 계속 막히면 빠져나올 길이 없다.
+     *
+     * <p><b>부정을 먼저 본다.</b> "아니요"가 "아니네요"로 잘못 적히면 그 안에 "네"가
+     * 들어 있다. 긍정을 먼저 보면 취소하려던 송금이 나간다.
+     *
+     * <p>이 판정은 확인 대기 상태에서만 쓴다. 다른 상태에서 같은 말이 오면 평소대로
+     * AI 의 intent 를 따른다.
+     *
+     * @return 승인도 취소도 아니면 {@code null}
+     */
+    private VoiceIntent resolveConfirmationAnswer(final VoiceAnalysisResponse analysis) {
+        if (analysis.intent() == VoiceIntent.CANCEL) {
+            return VoiceIntent.CANCEL;
+        }
+        if (analysis.intent() == VoiceIntent.CONFIRM) {
+            return VoiceIntent.CONFIRM;
+        }
+        final String transcript = analysis.transcript();
+        if (transcript == null || transcript.isBlank()) {
+            return null;
+        }
+        final String spoken = transcript.replace(" ", "");
+        if (containsAny(spoken, DENIAL_WORDS)) {
+            return VoiceIntent.CANCEL;
+        }
+        if (containsAny(spoken, APPROVAL_WORDS)) {
+            return VoiceIntent.CONFIRM;
+        }
+        return null;
+    }
+
+    private boolean containsAny(final String spoken, final List<String> words) {
+        for (final String word : words) {
+            if (spoken.contains(word)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private VoiceCommandResponse processConfirmationResponse(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
+            final VoiceIntent answer,
             final String transcript,
             final PendingTransferSlots pendingSlots,
             final String confirmationId,
             final String idempotencyKey,
             final LocalDateTime now
     ) {
-        if (analysis.intent() == VoiceIntent.CANCEL) {
+        if (answer == VoiceIntent.CANCEL) {
             return cancel(session, analysis, transcript, now);
         }
-        if (analysis.intent() == VoiceIntent.CONFIRM) {
+        if (answer == VoiceIntent.CONFIRM) {
             return confirm(
                     session,
                     analysis,

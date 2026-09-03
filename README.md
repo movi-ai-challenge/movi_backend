@@ -9,7 +9,7 @@
 
 Movi는 음성 인식 결과를 곧바로 금융 실행으로 연결하지 않습니다. 백엔드가 금액·수취인·계좌 소유권·한도·잔액을 다시 검증하고, 모든 송금에 FDS 평가와 멱등성 검사를 적용한 뒤에만 이체를 실행합니다.
 
-문서 기준: **2026-08-28 · `develop`**
+문서 기준: **2026-09-02 · `develop@f81ae6a`**
 
 ## 왜 이 프로젝트를 만들었나
 
@@ -26,21 +26,27 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 ## 핵심 사용자 흐름
 
 ```text
-로그인 (카카오 또는 PIN)
+로그인 (카카오 · 아이디/비밀번호 · PIN)
   → 보호자 등록 (전화번호)
   → 음성 세션 시작
-  → 음성 업로드
-  → AI Voice API에서 STT·Intent·Entity 분석
+  → 말하는 동안 실시간 인식 (WebSocket)  ─┐
+  → 호출어 "모비야" 이후를 명령으로 인식   │ 화면에 자막이 붙는다
+  → AI Voice API에서 STT·Intent·Entity 분석 ┘
   → 백엔드에서 신뢰도·권한·금액·수취인 재검증
   → 누락 정보 재질문 또는 최종 확인
-  → FDS 위험도 평가
+  → FDS 위험도 평가 (최근 30일 거래이력 동반)
   → LOW/MEDIUM 이체 실행 또는 HIGH 차단
   → MEDIUM/HIGH면 등록된 보호자 번호로 경고 문자 발송
   → 거래·평가·알림 상태 저장
-  → 텍스트 + voiceMessage 응답
+  → 텍스트 + voiceMessage + 위험 근거 응답
 ```
 
 보호자를 등록하지 않으면 위험이 감지돼도 보낼 대상이 없어 문자가 나가지 않습니다.
+
+음성 입력은 두 경로를 함께 제공합니다. **실시간 스트리밍**은 말하는 동안 인식 결과를
+돌려주고, **파일 업로드**는 녹음을 마친 뒤 한 번에 보냅니다. WebSocket 을 쓸 수 없는
+환경과 최종 확인 발화는 업로드 경로를 씁니다 -- 확인에는 `confirmationId` 와 멱등키가
+필요한데 그 교환은 REST 가 담당합니다.
 
 ## 이 프로젝트의 기술적 핵심
 
@@ -57,11 +63,12 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 ## 아키텍처
 
 ```text
-┌──────────────┐       multipart audio       ┌──────────────────┐
+┌──────────────┐   WebSocket (PCM 조각)      ┌──────────────────┐
 │   Frontend   │ ──────────────────────────▶ │  Spring Backend  │
-└──────────────┘                              │                  │
-       ▲                                      │ 인증·세션·검증   │
-       │ text + voiceMessage                  │ 금융 상태 소유    │
+│              │   multipart audio (확인)     │                  │
+└──────────────┘                              │ 인증·세션·검증   │
+       ▲                                      │ 금융 상태 소유    │
+       │ text + voiceMessage + 위험 근거       │                  │
        └──────────────────────────────────────│                  │
                                               └───────┬──────────┘
                                                       │
@@ -71,6 +78,7 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
              ┌──────────────┐                ┌──────────────┐        ┌────────────────┐
              │ AI Voice API │                │  AI FDS API  │        │ OpenBanking API│
              │ STT / NLU    │                │ 위험도 평가   │        │ 계좌·잔액·이체  │
+             │ WS + REST    │                │ 이력 기반     │        │                │
              └──────────────┘                └──────────────┘        └────────────────┘
                                                       │
                                                       ▼
@@ -82,12 +90,17 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 도메인 계층은 외부 연동 구현에 직접 의존하지 않습니다. Voice, FDS, 오픈뱅킹, SMS는 Port/Adapter 또는 Client 경계로 분리해 Mock과 실제 HTTP 구현을 설정으로 교체합니다.
 
+**브라우저는 AI 서버에 직접 붙지 않습니다.** 실시간 인식도 백엔드가 중계합니다 — AI 를
+내부망에만 두고 인증과 검증을 백엔드가 쥔다는 것이 이 구조의 전제이고, 직접 연결하면
+누구나 인증 없이 STT 를 호출할 수 있습니다. 백엔드와 AI 컨테이너는 같은 도커 네트워크
+(`movi-net`)에 있어야 컨테이너 이름으로 서로를 찾습니다.
+
 ## 기술 스택
 
 | 구분 | 기술 |
 |---|---|
 | Language | Java 21 |
-| Framework | Spring Boot 4.1.0, Spring Web MVC, Spring Security |
+| Framework | Spring Boot 4.1.0, Spring Web MVC, Spring Security, Spring WebSocket |
 | Persistence | Spring Data JPA, MySQL 8.0, H2 |
 | Build | Gradle 9.5.1 |
 | Test | JUnit 5, Mockito, Spring Boot Test |
@@ -109,57 +122,58 @@ Movi Backend는 이 문제를 다음 원칙으로 해결합니다.
 
 ## 프로젝트 전체 현황
 
-> 갱신일: 2026-08-28 · 마감: 2026-08-31
+> 갱신일: 2026-09-02
 >
-> 백엔드 `develop@e0667fc` · 프런트 `main@7c94998` · AI `main@2026-08-26`
+> 백엔드 `develop@f81ae6a` · 프런트 `main@4197143` · AI `main@f8ceb078`
 
-세 파트 모두 **각자의 기능은 구현이 끝났고, 서로 연결하는 일이 남았습니다.**
+**세 파트가 모두 배포돼 실제로 연결됐습니다.** 8월 말까지 남아 있던 "AI staging URL 없음"
+의존은 해소됐고, Voice·FDS 모두 Mock 이 아닌 실제 AI 서버를 호출합니다.
 
-| 파트 | 구현 | 연동 | 지금 막고 있는 것 |
+| 파트 | 배포 | 연동 | 검증 |
 |---|---|---|---|
-| 백엔드 | 완료 (293개 테스트 통과) | Mock 기준 완주 | AI staging URL 없음 |
-| 프런트 | 완료 (PR 8개 대기) | 백엔드 계약 반영 완료 | **PR 8개 미병합** |
-| AI | Voice·FDS 각각 동작 | 미연결 | 배포 주소·응답 계약 |
+| 백엔드 | ✅ `moviback.duckdns.org` | Voice·FDS 실 연동 | 385개 테스트 통과 |
+| 프런트 | ✅ Vercel | 실 API (Mock 아님) | 100개 테스트 통과 |
+| AI | ✅ 같은 호스트 `/ai/*` | Google STT·GPT 실 호출 | — |
 
-### 파트 간 의존 관계
+### 외부 연동 실제 상태
+
+설정 이름과 실제 동작을 함께 적습니다. **"연결됨"이 곧 "실제로 돈이 움직인다"는 뜻은
+아닙니다.**
+
+| 연동 | 설정 | 실제 동작 |
+|---|---|---|
+| AI Voice | `client-type: http` | ✅ Google STT V2 실 호출. 실시간 스트리밍 포함 |
+| AI FDS | `client-type: http` | ✅ 최근 30일 거래이력을 함께 보내 실제 판정 |
+| 오픈뱅킹 계좌 연결 | `mode: real` | ✅ 실제 은행 계좌가 연결됨 |
+| 오픈뱅킹 잔액조회 | `balance-mode: mock` | ⚠️ Mock — 실 잔액조회는 금융 사업자만 호출 가능 |
+| 오픈뱅킹 출금이체 | `transfer-mode: mock` | ⚠️ Mock — **실제 자금은 이동하지 않음.** 내부 원장만 갱신 |
+| SMS | `provider: solapi` | ✅ 실제 문자 발송 확인 |
+| 시연 시드 | `enabled: true` | ✅ 데모 사용자·계좌·수취인·보호자 생성됨 |
+
+출금이체가 Mock 인 것은 구현이 없어서가 아니라 **이용기관 자격으로 출금이체 API 를 호출할
+권한이 없기 때문**입니다. Adapter 는 구현돼 있고 설정 한 줄로 전환됩니다.
+
+### 종단 검증 기록
+
+운영 환경에서 실제로 확인한 흐름입니다.
 
 ```text
-AI staging URL ─────────┐
-                        ▼
-              백엔드 실 연동(#104) ──┐
-                                     ▼
-프런트 PR 8개 병합 ──────────────► staging E2E ──► 시연
-                        ▲
-배포 서버에 시드 적용 ───┘
+PIN 로그인 → 송금 검토 → 실행
+  → FDS 실 판정 MEDIUM (HIGH_AMOUNT_RATIO · EXTREME_AMOUNT_ZSCORE · NEW_RECIPIENT)
+  → 음성 안내 "김영희 님에게 99만원을 보냈어요. 평소보다 큰 금액이에요, ..."
+  → 보호자 알림 SENT (이체 1초 뒤)
+  → 거래내역 기록 · 잔액 차감
 ```
 
-**AI 응답이 가장 상위 의존성입니다.** 나머지는 모두 팀 내부에서 처리할 수 있습니다.
+### 남은 일
 
-### 남은 일과 담당
-
-| 우선순위 | 할 일 | 담당 | 상태 |
+| 우선순위 | 할 일 | 담당 | 비고 |
 |:---:|---|---|---|
-| P0 | 프런트 PR 8개 병합 | 프런트 | 전부 `MERGEABLE`, 즉시 가능 |
-| P0 | 배포 서버 yml에 `movi.seed.enabled: true` | 인프라 | 서버 접근 필요 |
-| P0 | AI Voice·FDS staging URL과 계약 확정 | AI | [movi_ai#1](https://github.com/movi-ai-challenge/movi_ai/issues/1) 미응답 |
-| P0 | `/api/openbanking/callback` 공개 경로 + 프런트 302 복귀 | 백엔드(계좌) | 미착수 — 프런트 연결 흐름이 막혀 있음 |
-| P1 | AI 계약 확정 후 백엔드 실 연동 전환 | 백엔드 | [#104](https://github.com/movi-ai-challenge/movi_backend/issues/104) |
-| P1 | 오픈뱅킹 Sandbox 실 이체 1건 종단 검증 | 백엔드(계좌) | Adapter는 구현 완료 |
-| P1 | staging E2E (인증 → 조회 → 송금 → 보호자 알림) | 전원 | 위 P0가 선행 |
-| P2 | 국내 SMS provider 연동 | 백엔드(알림) | 현재 Mock sender |
+| P0 | AI 내부 경로 외부 노출 차단 | 인프라 | `/ai/voice/internal/`·`/ai/fds/` 가 인증 없이 열려 있음 |
+| P1 | 오픈뱅킹 출금이체 권한 확보 | 백엔드(계좌) | 권한이 나오면 `transfer-mode: real` 한 줄 |
+| P1 | HIGH(차단) 경로 실환경 재현 | 전원 | 조건 확인됨 — 아래 시연 표 참고 |
 | P2 | 접근성 실측 (200% 확대·VoiceOver·TalkBack) | 프런트 | |
-
-### 지금 당장 할 수 있는 것
-
-AI 답변을 기다리지 않고 오늘 처리 가능한 항목입니다.
-
-1. **프런트 PR 8개 병합** — 가장 큰 미반영 작업입니다. `#21 → #24·#25·#26 → #27 → #28 → #23` 순서를 권장합니다(#22는 #28이 대체하므로 함께 병합하지 않습니다)
-2. **OpenBanking callback 공개 + 302** — 백엔드 한 파일 수정이면 프런트 계좌 연결 흐름이 열립니다
-3. **배포 서버 시드 적용** — 이게 없으면 staging E2E와 시연이 시작되지 않습니다
-
-### 대안 계획
-
-8/30까지 AI staging이 준비되지 않으면 **백엔드 Mock 어댑터로 시연**하되 화면과 음성에 Sandbox·시연임을 표시합니다. 오픈뱅킹 승인이 늦어도 같은 방식입니다. 자세한 기준은 [docs/execution-plan.md](docs/execution-plan.md) 6절을 따릅니다.
+| P2 | 은행 거래고유번호 영속화와 사후 대사 | 백엔드 | |
 
 ---
 
@@ -173,30 +187,35 @@ AI 답변을 기다리지 않고 오늘 처리 가능한 항목입니다.
 
 | 영역 | 상태 | 현재 구현 |
 |---|:---:|---|
-| 인증 | ✅ | 카카오 OAuth, PIN 로그인·등록, Access/Refresh JWT, 갱신·로그아웃, 운영 JWT 필터 |
-| 계좌 연결·관리 | 🧪 | 계좌 목록·기본 계좌·별칭 완료. **콜백이 아직 인증 필요 경로이고 JSON을 반환해 프런트로 복귀하지 못한다** |
+| 인증 | ✅ | 카카오 OAuth, **아이디/비밀번호 회원가입·로그인**, PIN 로그인·등록, Access/Refresh JWT, 갱신·로그아웃, 운영 JWT 필터 |
+| 계좌 연결·관리 | ✅ | 계좌 목록·기본 계좌·별칭·연결 해제. 콜백 공개 경로와 프런트 302 복귀 완료 |
 | 잔액조회 | ✅ | 기본/별칭 계좌 조회, 실시간 재조회, BalanceSnapshot 저장, Mock/실 API Adapter, 음성 조회(BALANCE) |
 | 음성 세션 | ✅ | 업로드 검증, 슬롯 저장·병합, 재질문, 확인·취소, 만료·재시도 제한 |
+| 실시간 음성 인식 | ✅ | WebSocket 중계, 핸드셰이크 인증, 호출어 감지, 재질문 문맥 전달, 중간 결과 스트리밍 |
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
-| FDS | ✅ | Mock/HTTP Client, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치 |
-| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 단건 상세, 음성 안내, 음성 조회(HISTORY) |
+| FDS | ✅ | 실 AI 연동, 최근 30일 거래이력 전송, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치, **위험 근거 한국어 안내** |
+| 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 단건 상세, 음성 안내, 음성 조회(HISTORY), **FDS 판정 표시** |
 | 보호자 등록 | ✅ | 로그인 후 이름·전화번호·관계 등록, 즉시 연결, 본인·중복 번호 차단 |
-| 보호자 위험 알림 | ✅ | 활성 보호자 조회, 알림 이력, 송금과 트랜잭션 분리, 최대 3회 재시도 |
+| 보호자 위험 알림 | ✅ | 활성 보호자 조회, 알림 이력, 송금과 트랜잭션 분리, 최대 3회 재시도, **발송 기록 조회 API** |
 | 민감정보 보호 | ✅ | 전화번호·토큰·수취 계좌번호 암호화, 로그·응답 마스킹 |
-| AI Voice staging | 🧪 | HTTP Client 구현 완료, 실제 모바일 음성과 staging 계약 검증 필요 |
-| AI FDS staging | 🧪 | HTTP Client 구현 완료, 실제 모델·정책 버전 및 오류 시나리오 검증 필요 |
-| 오픈뱅킹 Sandbox | 🧪 | OAuth·계좌·잔액·이체 Adapter 구현 완료, 실제 테스트베드 종단 검증 필요 |
-| 실제 SMS | 🧪 | 솔라피(Solapi) Adapter 구현 완료, 서버 IP에서 실발송·수신 확인. 배포 환경에 `provider: solapi` 적용 후 재확인 필요 |
-| 배포 | 🧪 | Docker·GitHub Actions·Nginx·헬스체크·롤백 구현, 운영 시크릿과 서버 기동 검증 진행 중 |
+| AI Voice 연동 | ✅ | 실 연동 완료. 업로드·스트리밍 두 경로 모두 Google STT 실 호출 확인 |
+| AI FDS 연동 | ✅ | 실 연동 완료. 이력 기반 MEDIUM 판정과 보호자 알림 발송까지 운영에서 확인 |
+| 오픈뱅킹 계좌 연결 | ✅ | 실 API 로 실제 은행 계좌 연결 |
+| 오픈뱅킹 잔액·이체 | ⏳ | Adapter 구현 완료. 이용기관 권한이 없어 Mock 유지 |
+| 실제 SMS | ✅ | 솔라피 실발송·수신 확인. 배포 환경 `provider: solapi` 적용 완료 |
+| 배포 | ✅ | Docker·GitHub Actions·Nginx·헬스체크·롤백 동작. WebSocket 업그레이드 설정 포함 |
 | 시연 시드 | ✅ | `movi.seed.enabled=true`로 데모 사용자·계좌·수취인·보호자 생성. LOW/MEDIUM/HIGH 세 시나리오 재현 가능 |
-| 전체 E2E | 🧪 | 12개 시나리오 Mock 기반 통과, 실제 외부 연동 포함 종단 검증 필요 |
+| 전체 E2E | ✅ | 운영 환경에서 로그인 → 송금 → FDS 실 판정 → 보호자 알림 → 거래내역까지 확인. HIGH(차단) 경로만 미재현 |
 
 ## 도메인별 구현
 
 ### 인증과 인가
 
-- 카카오 OAuth 로그인과 PIN 로그인
-- PIN BCrypt 해시 저장, 실패 횟수와 잠금 정책
+- 카카오 OAuth 로그인, 아이디/비밀번호 로그인, PIN 로그인
+- 아이디는 소문자로 정규화해 저장 — `Movi` 로 가입한 사람이 `movi` 로 로그인해도 같은 계정
+- 없는 아이디도 비밀번호 불일치와 같은 응답 — 응답이 갈리면 가입 여부가 밖으로 샘
+- 가입 응답에 토큰을 함께 실어 로그인을 두 번 요구하지 않음
+- PIN·비밀번호 BCrypt 해시 저장, 실패 횟수와 잠금 정책 (계정 단위 5회·5분)
 - Access/Refresh JWT 발급과 토큰 갱신
 - 로그아웃 시 `token_version` 증가로 기존 토큰 무효화
 - 운영 환경은 공개 경로 외 JWT 인증 필수
@@ -234,6 +253,17 @@ ACTIVE
 └─ EXPIRED
 ```
 
+### 실시간 음성 인식
+
+- `WS /ws/v1/voice/stream` — 브라우저와 AI 사이를 백엔드가 중계
+- 핸드셰이크 단계에서 토큰을 검증하고 거부. 연결을 열어 두고 나중에 닫으면 그 사이 오디오가 AI 로 흘러감
+- 브라우저 WebSocket 은 요청 헤더를 지정할 수 없어 접근 토큰을 쿼리로 받음. 리프레시 토큰은 거부
+- 허용 오리진은 `CorsProperties` 를 그대로 사용 — WebSocket 은 CORS 적용을 받지 않아 따로 막지 않으면 어디서든 붙음
+- 재질문 중이면 세션의 `pendingIntent`·남은 슬롯을 AI 로 전달. "김민수" 같은 짧은 답변에서 이체 의도를 잃지 않기 위함
+- 확정 발화의 분석 결과를 기존 `VoiceCommandService` 로 넘겨 업로드 경로와 같은 검증을 적용
+- 확인 발화와 실제 이체는 다루지 않음 — `confirmationId` 와 멱등키 교환은 REST 담당
+- 한쪽 연결이 끊기면 반대쪽도 닫음. 남겨 두면 AI 세션이 Google 스트리밍 시간을 계속 소모
+
 ### 송금과 거래
 
 - 최소 금액·1회 한도·일일 누적 한도를 설정으로 관리
@@ -261,6 +291,9 @@ PENDING → RISK_REVIEW → COMPLETED
 - 정책 버전·점수·사유 코드·입력 피처를 JSON 스냅샷으로 저장
 - 서버 타임존과 무관하게 FDS 요청 시간을 `Asia/Seoul`로 변환
 - 최근 30일 완료 이체에서 평균·최대·모표준편차·수취인 수·주요 시간대 집계
+- 평가 요청에 최근 30일·최대 100건의 실제 거래이력을 함께 전송. 이력이 없으면 과거 대비 비율을 보는 규칙이 발동하지 않아 어떤 거래든 LOW 로 나옴
+- 이력의 `medium` 은 현재 거래와 같은 값을 사용. 과거 유입 경로를 저장하지 않는데 임의로 채우면 정상 음성 송금이 매번 경로 이상으로 잡힘
+- 판정 근거(`triggered_rules`)를 사람이 알아들을 말로 바꿔 화면과 음성 안내에 포함. 위험도가 LOW 여도 "처음 보내는 계좌"라는 사실은 알려 줌
 
 | 위험도 | 결정 | 금융 처리 |
 |---|---|---|
@@ -327,19 +360,27 @@ AI와 금융 Sandbox 승인은 개발 일정과 독립적인 외부 변수입니
 |---|---|---|
 | `GET` | `/api/v1/auth/kakao/authorize` | 카카오 인증 URL 생성 |
 | `GET` | `/api/v1/auth/kakao/callback` | 카카오 OAuth callback |
+| `POST` | `/api/v1/auth/signup` | 아이디/비밀번호 회원가입 (가입 즉시 토큰 발급) |
+| `POST` | `/api/v1/auth/login` | 아이디/비밀번호 로그인 |
 | `POST` | `/api/v1/auth/pin/register` | PIN 최초 등록 |
 | `POST` | `/api/v1/auth/pin/login` | PIN 로그인 |
 | `POST` | `/api/v1/auth/token/refresh` | JWT 갱신 |
 | `POST` | `/api/v1/auth/logout` | 로그아웃·기존 토큰 무효화 |
 | `POST` | `/api/v1/guardian-links` | 보호자 등록 (이름·전화번호·관계) |
+| `GET` | `/api/v1/notifications` | 보호자 알림 발송 기록 (상태·재시도·발송 시각) |
 | `POST` | `/api/openbanking/connect` | 오픈뱅킹 연결 시작 |
 | `GET` | `/api/openbanking/callback` | 오픈뱅킹 callback |
 | `GET` | `/api/accounts` | 연결 계좌 목록 |
 | `PATCH` | `/api/accounts/{accountId}/primary` | 기본 계좌 변경 |
 | `PATCH` | `/api/accounts/{accountId}/alias` | 계좌 별칭 변경 |
+| `DELETE` | `/api/accounts/{accountId}` | 계좌 연결 해제 |
 | `GET` | `/api/accounts/balance` | 기본 또는 별칭 계좌 잔액조회 |
 | `POST` | `/api/voice/sessions` | 음성 세션 시작 |
 | `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금·거래내역·잔액 조회 |
+| `WS` | `/ws/v1/voice/stream` | 실시간 음성 인식 중계 (쿼리로 `accessToken`·`voiceSessionId`) |
+| `GET` | `/api/transfers/recipients` | 등록 수취인 목록 |
+| `POST` | `/api/transfers/review` | 직접 입력 송금 검토 (확인 ID 발급) |
+| `POST` | `/api/transfers` | 직접 입력 송금 실행 |
 | `GET` | `/api/transfers/status` | 멱등성 키로 송금 상태 복구 |
 | `GET` | `/api/transactions` | 거래내역 필터·페이징 조회 |
 | `GET` | `/api/transactions/{transactionId}` | 거래내역 단건 상세 조회 |
@@ -364,6 +405,13 @@ openssl rand -base64 32
 mysql -u root -p -e "CREATE DATABASE movi CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 mysql -u root -p movi < docs/schema.sql
 ```
+
+이미 만들어 둔 DB 라면 [docs/migrations](docs/migrations) 의 변경분만 날짜순으로 적용합니다.
+
+**운영은 `ddl-auto: validate` 입니다.** 스키마를 바꾸는 변경은 **애플리케이션 배포보다
+마이그레이션을 먼저** 적용해야 합니다. 순서가 뒤바뀌면 엔티티와 스키마가 어긋나 기동
+자체가 실패합니다. 엔티티를 고쳤다면 `docs/schema.sql`·`docs/ERD.md`·`docs/migrations`
+를 함께 갱신합니다.
 
 ### 3. 애플리케이션 실행
 
@@ -411,15 +459,30 @@ movi:
 | 계좌 | 생활비 통장(53만원, 기본) · 비상금 통장(120만원) |
 | 수취인 | 엄마·아들(거래 이력 있음) · 김영희(첫 거래) |
 
-세 위험도가 모두 재현됩니다.
+### 위험도 시연
 
-| 위험도 | 시연 방법 |
-|---|---|
-| LOW | 엄마에게 10만원 이하 — 이체 완료, 알림 없음 |
-| MEDIUM | 김영희에게 송금 또는 10만원 초과 — 이체 완료 + 보호자 알림 |
-| HIGH | **비상금 통장에서** 70만원 이상 — 차단 + 보호자 알림 |
+**FDS 가 실 연동으로 바뀌면서 판정이 고정값이 아니라 실제 거래이력에 따라 달라집니다.**
+아래는 운영 AI 서버에 같은 조건을 넣어 측정한 값입니다.
 
-HIGH는 반드시 비상금 통장에서 보내야 합니다. 기본 계좌는 53만원이라 FDS가 아니라 잔액 부족에서 먼저 막힙니다.
+| 위험도 | 조건 | 측정값 |
+|---|---|---|
+| LOW | 엄마에게 소액 — 이체 완료, 알림 없음 | 12.0 |
+| MEDIUM | 김영희(첫 거래)에게 평소보다 큰 금액 — 이체 완료 + 보호자 알림 | 59–65 |
+| HIGH | 위 + **심야(00~06시)** 또는 **같은 시간대 반복 이체** — 차단 + 보호자 긴급 알림 | 75.5 |
+
+임계값은 MEDIUM 40, HIGH 70이고 점수는 `0.4 × 모델 + 0.6 × 규칙`입니다.
+
+주의할 점이 둘 있습니다.
+
+- **이력 금액이 모두 같으면 위험도가 오르지 않습니다.** 표준편차가 0이라 z-score 를 계산할
+  수 없어 `EXTREME_AMOUNT_ZSCORE` 가 발동하지 않습니다. 시드에 거래이력을 추가할 때는
+  금액에 편차를 주어야 합니다.
+- **낮 시간대에는 HIGH 가 잘 나오지 않습니다.** `NIGHT_TRANSACTION` 15점이 빠지면 임계값
+  70에 닿기 어려워, 같은 조건이라도 MEDIUM 에 머무릅니다. 같은 시간대 반복 이체를 3~4건
+  쌓으면 `REPEATED_SAME_DAY`·`REPEATED_TIME_BUCKET` 이 붙어 HIGH 에 도달합니다.
+
+이체는 `transfer-mode: mock` 이라 **실제 자금이 이동하지 않습니다.** 내부 원장에서만 잔액이
+차감되므로 시연을 반복해도 안전합니다.
 
 ### 5. 개발 인증
 
@@ -471,7 +534,7 @@ src/main/java/com/movi_backend
 ├── domain
 │   ├── account       # 계좌·잔액조회·오픈뱅킹
 │   ├── auth          # OAuth·PIN·JWT·기기
-│   ├── voice         # 음성 세션·슬롯·AI Voice
+│   ├── voice         # 음성 세션·슬롯·AI Voice·실시간 스트리밍 중계
 │   ├── transfer      # 송금 검증·실행·거래내역
 │   ├── fds           # FDS 연동·평가·행동 프로필
 │   └── guardian      # 보호자 관계·위험 알림
@@ -487,15 +550,17 @@ src/main/java/com/movi_backend
 
 ### P0 · MVP 종단 검증
 
-- [ ] 운영 JWT·DB·암호화 설정으로 배포 헬스체크 통과
-- [ ] 실제 AI Voice staging에서 모바일 녹음 파일 검증
-- [ ] 실제 AI FDS staging에서 정상·timeout·잘못된 응답 시나리오 검증
-- [ ] 오픈뱅킹 Sandbox에서 연결 → 잔액조회 → 송금 종단 검증
+- [x] 운영 JWT·DB·암호화 설정으로 배포 헬스체크 통과
+- [x] 실제 AI Voice 연동 — 업로드·실시간 스트리밍 두 경로 모두 Google STT 실 호출 확인
+- [x] 실제 AI FDS 연동 — 이력 기반 MEDIUM 판정과 보호자 알림 발송을 운영에서 확인
 - [x] 로그인 → 보호자 등록 → 음성 → FDS → 송금 → 보호자 알림 전체 E2E 작성
-- [ ] 배포 환경에서 `provider: solapi` 적용 후 실제 경고 문자 수신 확인
+- [x] 배포 환경에서 `provider: solapi` 적용 후 실제 경고 문자 수신 확인
+- [ ] HIGH(차단) 경로 운영 재현 — 조건은 확인됨, 이력 축적 필요
+- [ ] 오픈뱅킹 출금이체 권한 확보 후 실 이체 종단 검증
 
 ### P1 · 운영 안정성
 
+- [ ] AI 내부 경로 외부 노출 차단 (`/ai/voice/internal/`·`/ai/fds/` 가 인증 없이 열려 있음)
 - [x] 국내 SMS Provider Adapter 연결 (솔라피)
 - [ ] 은행 거래고유번호 영속화와 사후 대사 흐름
 - [ ] FDS 409 충돌 후 기존 평가 조회 계약 확정

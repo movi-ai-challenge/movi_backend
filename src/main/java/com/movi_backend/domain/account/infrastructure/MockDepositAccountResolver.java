@@ -4,6 +4,7 @@ import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.account.repository.AccountRepository;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,20 @@ public class MockDepositAccountResolver {
     /** 이보다 짧게 노출된 계좌는 남의 것과 헷갈릴 수 있어 찾지 않는다. */
     private static final int MINIMUM_PREFIX_LENGTH = 6;
 
+    /**
+     * 같은 은행으로 볼 코드 묶음.
+     *
+     * <p>농협은 은행 코드가 둘이다 — {@code 011}(농협은행)과 {@code 012}(농협중앙회·단위농협).
+     * 사용자는 둘 다 "농협"이라고 부르고, 어느 쪽인지 말로 구분할 방법이 없다. 발화에서
+     * 받은 코드와 계좌에 저장된 코드가 이 묶음 안에서 갈리면 같은 은행으로 본다.
+     *
+     * <p>계좌번호 접두어까지 맞아야 하므로 이 완화로 남의 계좌가 걸릴 여지는 거의 없다.
+     * 후보가 둘 이상이면 어차피 포기한다.
+     */
+    private static final List<Set<String>> SAME_BANK_CODES = List.of(
+            Set.of("011", "012")
+    );
+
     private final AccountRepository accountRepository;
 
     @Transactional(readOnly = true)
@@ -46,7 +61,7 @@ public class MockDepositAccountResolver {
 
         final List<Account> matched = accountRepository.findAll().stream()
                 .filter(Account::isActive)
-                .filter(account -> toBankCode.equals(account.getBankCode()))
+                .filter(account -> isSameBank(toBankCode, account.getBankCode()))
                 .filter(account -> matchesAccountNumber(account, target))
                 .toList();
 
@@ -58,6 +73,18 @@ public class MockDepositAccountResolver {
             return Optional.empty();
         }
         return Optional.ofNullable(matched.get(0).getFintechUseNum());
+    }
+
+    private boolean isSameBank(final String spokenCode, final String accountCode) {
+        if (spokenCode.equals(accountCode)) {
+            return true;
+        }
+        for (final Set<String> family : SAME_BANK_CODES) {
+            if (family.contains(spokenCode) && family.contains(accountCode)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean matchesAccountNumber(final Account account, final String target) {

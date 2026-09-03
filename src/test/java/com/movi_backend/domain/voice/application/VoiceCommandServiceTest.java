@@ -392,6 +392,29 @@ class VoiceCommandServiceTest {
     }
 
     @Test
+    @DisplayName("확인 발화가 실시간 스트림으로 들어오면 무엇을 하면 되는지 알려 준다")
+    void 확인_발화가_실시간_스트림으로_들어오면_안내한다() throws Exception {
+        // given -- 스트림에는 confirmationId 와 멱등키를 실을 자리가 없어 둘 다 비어 온다.
+        final VoiceSession session = createAwaitingConfirmationSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        final VoiceCommandService service = createService();
+
+        // when & then
+        assertThatThrownBy(() -> service.processAnalyzed(
+                USER_ID,
+                SESSION_ID,
+                createConfirmationAnalysis(),
+                null,
+                null
+        ))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFIRMATION_KEY_MISSING);
+        then(transferExecutionService).should(never()).execute(any());
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+    }
+
+    @Test
     @DisplayName("확인 발화에 확인 ID가 없으면 이체를 실행하지 않는다")
     void 확인_발화에_확인_ID가_없으면_이체를_실행하지_않는다() throws Exception {
         // given

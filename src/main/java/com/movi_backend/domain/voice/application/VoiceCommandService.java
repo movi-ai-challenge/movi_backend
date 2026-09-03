@@ -483,6 +483,7 @@ public class VoiceCommandService {
             final String idempotencyKey,
             final LocalDateTime now
     ) {
+        validateConfirmationChannel(idempotencyKey);
         validateIdempotencyKey(idempotencyKey);
         validateConfirmationSlots(pendingSlots);
         validateConfirmationId(pendingSlots, confirmationId);
@@ -514,6 +515,23 @@ public class VoiceCommandService {
         final VoiceCommandResponse response = VoiceCommandResponse.executed(result, transcript);
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         return response;
+    }
+
+    /**
+     * 확인 발화가 확인을 실행할 수 있는 경로로 들어왔는지 본다.
+     *
+     * <p>확인에는 멱등키와 {@code confirmationId} 가 필요하고, 그 교환은 REST 가
+     * 담당한다. 실시간 스트림에는 두 값을 실을 자리가 없어, 확인 발화가 스트림으로
+     * 올라오면 멱등키가 비어 여기에 닿는다.
+     *
+     * <p>이때 "요청을 처리하지 못했어요" 로 끝내면 화면을 보지 않는 사용자는 무엇이
+     * 잘못됐는지 알 수 없어 같은 말을 반복하고, 그러다 세션이 만료된다. 무엇을 하면
+     * 되는지 말해 주는 코드로 바꾼다.
+     */
+    private void validateConfirmationChannel(final String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new BusinessException(ErrorCode.CONFIRMATION_KEY_MISSING);
+        }
     }
 
     private void validateIdempotencyKey(final String idempotencyKey) {

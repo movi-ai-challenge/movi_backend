@@ -4,13 +4,18 @@ import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Component
 public class AudioDurationValidator {
 
     private static final double MAXIMUM_DURATION_SECONDS = 15.0;
+
+    /** 실패 원인을 가릴 때 남길 컨테이너 헤더 길이. box 구조를 알아볼 만큼만 본다. */
+    private static final int HEX_HEAD_LENGTH = 64;
     private static final long EBML_ID = 0x1A45DFA3L;
     private static final long SEGMENT_ID = 0x18538067L;
     private static final long INFO_ID = 0x1549A966L;
@@ -21,24 +26,82 @@ public class AudioDurationValidator {
     private static final String MP4_FILE_TYPE_BOX = "ftyp";
     private static final String MP4_MOVIE_BOX = "moov";
     private static final String MP4_MOVIE_HEADER_BOX = "mvhd";
+    private static final String MP4_MOVIE_EXTENDS_BOX = "mvex";
+
+    /**
+     * 조각난(fragmented) MP4 라 재생 시간을 알 수 없다는 표시.
+     *
+     * <p>iPhone Safari 의 MediaRecorder 는 녹음을 조각난 MP4 로 만든다. 이 형식은 전체
+     * 길이를 {@code moov} 가 아니라 뒤따르는 조각들이 나눠 갖고 있어, {@code mvhd} 의
+     * 재생 시간이 0으로 남는다. 손상된 파일이 아니라 규격대로 만들어진 파일이다.
+     */
+    private static final double DURATION_UNKNOWN_FRAGMENTED = -1.0;
     private static final long MP4_EXTENDED_SIZE = 1L;
     private static final long MP4_TO_END_SIZE = 0L;
 
     public void validate(final MultipartFile audio, final String contentType) {
         final double durationSeconds;
+        byte[] bytes = null;
         try {
-            final byte[] bytes = audio.getBytes();
+            bytes = audio.getBytes();
             durationSeconds = readDurationSeconds(bytes, contentType);
         } catch (IOException | IllegalArgumentException exception) {
+            logUnreadableAudio(audio, contentType, bytes, exception);
             throw new BusinessException(ErrorCode.AUDIO_DURATION_INVALID);
         }
 
+        /*
+         * 조각난 MP4 는 길이를 재지 않고 통과시킨다. 여기서 막으면 iPhone 사용자는 음성
+         * 기능을 아예 쓸 수 없는데, 화면을 보지 않는 사용자에게 그건 앱을 못 쓴다는
+         * 뜻이다. 길이 제한은 STT 비용과 응답 지연을 막으려는 것이지 보안 통제가
+         * 아니고, 파일 크기 상한(5MB)과 프론트의 15초 자동 정지가 함께 걸려 있다.
+         */
+        if (durationSeconds == DURATION_UNKNOWN_FRAGMENTED) {
+            return;
+        }
         if (!Double.isFinite(durationSeconds) || durationSeconds <= 0) {
             throw new BusinessException(ErrorCode.AUDIO_DURATION_INVALID);
         }
         if (durationSeconds > MAXIMUM_DURATION_SECONDS) {
             throw new BusinessException(ErrorCode.AUDIO_DURATION_EXCEEDED);
         }
+    }
+
+    /**
+     * 왜 읽지 못했는지 남긴다.
+     *
+     * <p>이 검증이 실패하면 사용자에게는 "다시 녹음해 주세요"만 나가고 원인은 사라진다.
+     * 실제로 iPhone 에서 확인 발화가 막혔을 때 로그에 남은 것이 에러 코드뿐이라 어느
+     * 단계에서 걸렸는지 알 수 없었다.
+     *
+     * <p>앞부분 바이트는 컨테이너 헤더이지 음성 내용이 아니다. 어떤 도구가 만든 파일인지,
+     * 어떤 box 가 어떤 순서로 들어 있는지를 보려면 이것이 있어야 한다.
+     */
+    private void logUnreadableAudio(
+            final MultipartFile audio,
+            final String contentType,
+            final byte[] bytes,
+            final Exception exception
+    ) {
+        log.warn(
+                "음성 파일 재생 시간을 읽지 못했습니다: contentType={}, size={}, 원인={}, head={}",
+                contentType,
+                audio.getSize(),
+                exception.getMessage(),
+                toHexHead(bytes)
+        );
+    }
+
+    private String toHexHead(final byte[] bytes) {
+        if (bytes == null) {
+            return "(읽지 못함)";
+        }
+        final int length = Math.min(bytes.length, HEX_HEAD_LENGTH);
+        final StringBuilder hex = new StringBuilder(length * 3);
+        for (int index = 0; index < length; index++) {
+            hex.append(String.format("%02x ", bytes[index]));
+        }
+        return hex.toString().trim();
     }
 
     private double readDurationSeconds(final byte[] bytes, final String contentType) {
@@ -89,22 +152,46 @@ public class AudioDurationValidator {
      */
     private double readMp4MovieDurationSeconds(final byte[] bytes, final Mp4Box movieBox) {
         Double durationSeconds = null;
+        boolean movieHeaderFound = false;
+        boolean fragmented = false;
         int offset = movieBox.dataOffset();
         while (offset < movieBox.endOffset()) {
             final Mp4Box child = readMp4Box(bytes, offset, movieBox.endOffset());
             if (child.type().equals(MP4_MOVIE_HEADER_BOX)) {
-                if (durationSeconds != null) {
+                if (movieHeaderFound) {
                     throw new IllegalArgumentException("MP4 mvhd box가 중복됨");
                 }
-                durationSeconds = readMp4MovieHeaderDurationSeconds(bytes, child);
+                movieHeaderFound = true;
+                durationSeconds = readWrittenMovieDurationSeconds(bytes, child);
+            } else if (child.type().equals(MP4_MOVIE_EXTENDS_BOX)) {
+                fragmented = true;
             }
             offset = child.endOffset();
         }
 
-        if (durationSeconds == null) {
+        if (!movieHeaderFound) {
             throw new IllegalArgumentException("MP4 mvhd box 누락");
         }
-        return durationSeconds;
+        if (durationSeconds != null) {
+            return durationSeconds;
+        }
+        /*
+         * mvhd 에 길이가 없다. mvex 가 함께 있으면 조각난 MP4 라 정상이고, 없으면
+         * 실제로 읽을 수 없는 파일이라 거부한다.
+         */
+        if (fragmented) {
+            return DURATION_UNKNOWN_FRAGMENTED;
+        }
+        throw new IllegalArgumentException("MP4 재생 시간 값이 유효하지 않음");
+    }
+
+    /** {@code mvhd} 에 적힌 재생 시간. 적혀 있지 않으면 {@code null}. */
+    private Double readWrittenMovieDurationSeconds(final byte[] bytes, final Mp4Box movieHeaderBox) {
+        try {
+            return readMp4MovieHeaderDurationSeconds(bytes, movieHeaderBox);
+        } catch (final MissingMovieDurationException exception) {
+            return null;
+        }
     }
 
     private double readMp4MovieHeaderDurationSeconds(
@@ -153,10 +240,25 @@ public class AudioDurationValidator {
     }
 
     private double calculateMp4DurationSeconds(final long timeScale, final double duration) {
-        if (timeScale <= 0 || !Double.isFinite(duration) || duration <= 0) {
+        if (timeScale <= 0 || !Double.isFinite(duration)) {
             throw new IllegalArgumentException("MP4 재생 시간 값이 유효하지 않음");
         }
+        /*
+         * 0 은 "길이가 0인 파일"이 아니라 "여기에 길이를 적지 않았다"는 뜻이다. 조각난
+         * MP4 에서는 정상이므로 형식이 깨진 경우와 구분해서 올린다.
+         */
+        if (duration <= 0) {
+            throw new MissingMovieDurationException();
+        }
         return duration / timeScale;
+    }
+
+    /** {@code mvhd} 가 재생 시간을 적지 않은 경우. 조각난 MP4 에서는 정상이다. */
+    private static final class MissingMovieDurationException extends IllegalArgumentException {
+
+        private MissingMovieDurationException() {
+            super("MP4 mvhd에 재생 시간이 없음");
+        }
     }
 
     private Mp4Box readMp4Box(final byte[] bytes, final int offset, final int limit) {

@@ -101,7 +101,7 @@ curl -H "X-Dev-User-Id: 3" http://localhost:8080/api/accounts
   | 항목 | 값 | 상수 |
   |---|---:|---|
   | 일반 세션 유효시간 | 5분 | `SESSION_TIMEOUT_MINUTES` |
-  | 재질문·확인 대기 | 60초 | `PENDING_TIMEOUT_SECONDS` |
+  | 재질문·확인 대기 | 180초 | `PENDING_TIMEOUT_SECONDS` |
   | 같은 슬롯 재질문 | 3회 | `MAX_RETRY_COUNT` |
 
   만료 시 **슬롯을 전부 폐기한다. 일부만 살리지 않는다.** 3회를 넘기면 세션을 종료하고 `VOICE_4006`을 반환한다.

@@ -248,8 +248,15 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
      * 배치 경로와 똑같이 적용된다. 스트리밍만 다른 판단을 하면 한쪽에서만 막히는
      * 이체가 생긴다.
      *
-     * <p>확인 발화와 실제 이체는 여기서 다루지 않는다. 확인에는 confirmationId 와
-     * 멱등키가 필요하고, 그 교환은 기존 REST 흐름이 담당한다.
+     * <p>확인 발화만은 여기서 끝낼 수 없다. 확인에는 confirmationId 와 멱등키가
+     * 필요한데 스트림에는 그 값을 실을 자리가 없어, 아래 호출은 두 값을 {@code null}
+     * 로 넘긴다. 확인 대기 중인 세션에 "네" 가 올라오면 {@code VoiceCommandService}
+     * 가 {@code CONFIRMATION_KEY_MISSING} 으로 거절하고, 그 안내가 아래
+     * {@code commandError} 로 나간다 -- 이체가 조용히 실행되는 일은 없다.
+     *
+     * <p>정상 흐름에서는 이 경우가 생기지 않는다. 확인 대기 중에는 프론트가 마이크를
+     * 스트림이 아니라 REST 확인 녹음에 연결하기 때문이다. 여기 남은 처리는 옛 화면이나
+     * 다른 클라이언트가 들어왔을 때의 안전망이다.
      */
     private void handleAnalysis(final WebSocketSession downstream, final String payload) {
         final JsonNode node = readJson(payload);

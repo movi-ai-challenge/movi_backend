@@ -83,6 +83,31 @@ class MockDepositAccountResolverTest {
     }
 
     @Test
+    @DisplayName("농협은 011·012 를 같은 은행으로 본다 - 사용자는 둘 다 \"농협\"이라고 부른다")
+    void 농협_계열_코드는_같은_은행으로_본다() {
+        // given - 계좌는 012(농협중앙회), 발화에서 받은 코드는 011(농협은행)
+        given(accountRepository.findAll())
+                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
+
+        // when
+        final Optional<String> found =
+                resolver().resolveFintechUseNum("011", "3522315749001");
+
+        // then
+        assertThat(found).contains("fintech-주혁");
+    }
+
+    @Test
+    @DisplayName("계열이 다른 은행끼리는 여전히 찾지 않는다")
+    void 계열이_다른_은행은_찾지_않는다() {
+        given(accountRepository.findAll())
+                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
+
+        // 004(국민)은 농협 계열이 아니다.
+        assertThat(resolver().resolveFintechUseNum("004", "3522315749001")).isEmpty();
+    }
+
+    @Test
     @DisplayName("우리 사용자가 아닌 계좌로 보내면 빈 값을 준다")
     void 우리_사용자가_아니면_빈_값을_준다() {
         given(accountRepository.findAll())

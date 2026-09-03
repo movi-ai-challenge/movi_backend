@@ -101,4 +101,15 @@ public class TransferRecipient extends BaseCreatedEntity {
     public void changeNickname(final String nickname) {
         this.nickname = nickname;
     }
+
+    /**
+     * {@code account_num_hash}가 없던 시절에 저장된 행을 채운다.
+     *
+     * <p>일회성 마이그레이션({@code docs/migrations/20260903_add_recipient_account_num_hash.sql})
+     * 전용이다. 계좌는 등록 후 바뀌지 않으므로 평소에는 이 값을 고칠 일이 없다. 모든 환경의
+     * 백필이 끝나면 {@code RecipientAccountHashBackfill}과 함께 지운다.
+     */
+    public void backfillAccountNumHash(final String accountNumHash) {
+        this.accountNumHash = accountNumHash;
+    }
 }

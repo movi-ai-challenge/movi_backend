@@ -444,6 +444,43 @@ mysql -u root -p movi < docs/schema.sql
 자체가 실패합니다. 엔티티를 고쳤다면 `docs/schema.sql`·`docs/ERD.md`·`docs/migrations`
 를 함께 갱신합니다.
 
+#### 수취인 계좌 해시 (2026-09-03)
+
+[20260903_add_recipient_account_num_hash.sql](docs/migrations/20260903_add_recipient_account_num_hash.sql)
+은 한 번에 실행하는 스크립트가 아니라 **3단계**입니다. `account_num` 이 무작위 IV 암호문이고
+해시가 애플리케이션 키로 만드는 HMAC 이라, 가운데 백필을 SQL 로 할 수 없기 때문입니다.
+
+```bash
+# 1) 컬럼 추가 (NULL 허용) — 새 애플리케이션 배포 전에 적용한다
+mysql -u root -p movi -e "ALTER TABLE transfer_recipients \
+  ADD COLUMN account_num_hash VARCHAR(64) NULL \
+  COMMENT '계좌번호 중복 확인용 HMAC-SHA256' AFTER account_num;"
+```
+
+```yaml
+# 2) 백필 — 아래 설정을 켜고 애플리케이션을 한 번 기동한 뒤 다시 끈다
+movi:
+  migration:
+    recipient-account-hash:
+      enabled: true
+```
+
+기동 로그에 `[MIGRATION]` 두 줄이 찍힙니다. 채운 건수와, **같은 계좌를 여러 이름으로 등록해
+둔 행이 있는지**를 알려 줍니다. 중복이 남아 있으면 3단계 UNIQUE 추가가 실패하므로 먼저
+정리해야 합니다 — 어느 이름을 남길지는 사람이 정합니다(보통 `transfer_count` 가 큰 쪽).
+SQL 파일에 조회 쿼리가 들어 있습니다.
+
+```bash
+# 3) 중복 정리와 백필이 끝난 뒤 제약 적용
+mysql -u root -p movi -e "ALTER TABLE transfer_recipients \
+  MODIFY COLUMN account_num_hash VARCHAR(64) NOT NULL \
+  COMMENT '계좌번호 중복 확인용 HMAC-SHA256', \
+  ADD UNIQUE KEY uk_recipient_user_account (user_id, account_num_hash);"
+```
+
+`docs/schema.sql` 로 새로 만든 DB 는 이미 최종 형태라 이 절차가 필요 없습니다. 모든 환경의
+백필이 끝나면 `RecipientAccountHashBackfill` 과 관련 메서드는 지웁니다.
+
 ### 3. 애플리케이션 실행
 
 ```bash

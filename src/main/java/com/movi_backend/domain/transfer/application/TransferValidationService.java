@@ -185,14 +185,42 @@ public class TransferValidationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         return transferRecipientRepository.save(TransferRecipient.builder()
                 .user(user)
-                .nickname(generateNickname(userId, command.bankCode(), accountNumber))
+                .nickname(resolveNickname(userId, command, accountNumber))
                 .bankCode(command.bankCode())
                 .accountNum(sensitiveDataCrypto.encrypt(accountNumber))
                 .accountNumHash(sensitiveDataCrypto.hash(accountNumber))
+                /*
+                 * 예금주는 사용자가 부른 이름으로 채우지 않는다. 실명을 확인할 방법이 없어,
+                 * 사용자가 "김철수"라고 불렀다는 사실이 그 계좌 주인이 김철수라는 근거가
+                 * 되지 않는다. 아는 사실(은행과 뒤 네 자리)만 적는다.
+                 */
                 .holderName("%s %s".formatted(
                         bankDirectory.displayNameOf(command.bankCode()),
                         accountNumber.substring(Math.max(0, accountNumber.length() - 4))))
                 .build());
+    }
+
+    /**
+     * 이 상대를 다음에 무엇으로 부를지 정한다.
+     *
+     * <p><b>사용자가 이름을 말했으면 그 이름을 쓴다.</b> 목록은 화면을 보는 사용자에게는
+     * 편의지만, 화면을 볼 수 없는 사용자에게는 계좌번호 열몇 자리를 외우지 않고 송금할
+     * 유일한 수단이다. "국민은행 6789"로 저장하면 다음에 부를 수가 없고, 같은 은행으로
+     * 몇 건이 쌓이면 서로 구분도 되지 않는다. 게다가 수취인은 지우거나 이름을 바꿀 수단이
+     * 없어 그 상태가 그대로 남는다.
+     *
+     * <p>이름을 말하지 않았으면 지금까지처럼 은행과 뒤 네 자리로 만든다.
+     */
+    private String resolveNickname(
+            final Long userId,
+            final TransferCommandRequest command,
+            final String accountNumber
+    ) {
+        final String spokenName = command.recipient();
+        if (isBlank(spokenName) || !isTrusted(command.recipientConfidence())) {
+            return generateNickname(userId, command.bankCode(), accountNumber);
+        }
+        return uniqueNickname(userId, spokenName.trim());
     }
 
     /**
@@ -212,7 +240,20 @@ public class TransferValidationService {
     ) {
         final String tail = accountNumber.substring(
                 Math.max(0, accountNumber.length() - 4));
-        final String base = "%s %s".formatted(bankDirectory.displayNameOf(bankCode), tail);
+        return uniqueNickname(
+                userId,
+                "%s %s".formatted(bankDirectory.displayNameOf(bankCode), tail)
+        );
+    }
+
+    /**
+     * 겹치지 않는 별칭을 만든다.
+     *
+     * <p>{@code (user_id, nickname)} 이 유니크라 그대로 저장하면 이체가 서버 오류로 끝난다 —
+     * 사용자는 왜 실패했는지 알 수 없다. 같은 이름이 이미 있으면 뒤에 번호를 붙인다.
+     * 사람 이름이든 은행·뒤 네 자리든 겹치는 것은 실제로 생긴다.
+     */
+    private String uniqueNickname(final Long userId, final String base) {
         if (!transferRecipientRepository.existsByUserIdAndNickname(userId, base)) {
             return base;
         }

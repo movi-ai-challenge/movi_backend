@@ -12,6 +12,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
@@ -55,6 +59,54 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
      */
     private final Map<String, RelayCloseCoordinator> coordinatorByDownstream =
             new ConcurrentHashMap<>();
+
+    /**
+     * AI 가 끊긴 뒤 예약해 둔 브라우저 연결 종료.
+     *
+     * <p>브라우저가 먼저 닫으면 취소한다. 남겨 두면 이미 사라진 세션을 뒤늦게 닫으려 든다.
+     */
+    private final Map<String, ScheduledFuture<?>> pendingCloseByDownstream =
+            new ConcurrentHashMap<>();
+
+    private final ScheduledExecutorService closeScheduler =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                final Thread thread = new Thread(runnable, "voice-stream-closer");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    /**
+     * 브라우저 연결을 곧바로 닫지 않고 잠깐 붙잡아 둔다.
+     *
+     * <p>마지막 답을 보내자마자 닫으면, 왕복 지연이 큰 모바일 회선에서는 그 프레임이
+     * 도착하기 전에 연결이 끊길 수 있다. 서버 옆에서 시험하면 지연이 없어 절대 재현되지
+     * 않는다 -- 실제로 아이폰에서만 이체 확인 질문이 이 지점에서 사라졌다.
+     */
+    private void closeAfterGrace(final WebSocketSession downstream) {
+        if (!downstream.isOpen()) {
+            return;
+        }
+        final ScheduledFuture<?> scheduled = closeScheduler.schedule(
+                () -> {
+                    pendingCloseByDownstream.remove(downstream.getId());
+                    closeQuietly(downstream);
+                },
+                properties.closeGraceSeconds(),
+                TimeUnit.SECONDS
+        );
+        final ScheduledFuture<?> previous =
+                pendingCloseByDownstream.put(downstream.getId(), scheduled);
+        if (previous != null) {
+            previous.cancel(false);
+        }
+    }
+
+    private void cancelPendingClose(final String downstreamId) {
+        final ScheduledFuture<?> scheduled = pendingCloseByDownstream.remove(downstreamId);
+        if (scheduled != null) {
+            scheduled.cancel(false);
+        }
+    }
 
     @Override
     public void afterConnectionEstablished(final WebSocketSession downstream) throws Exception {
@@ -116,6 +168,7 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
     ) throws Exception {
         final WebSocketSession upstream = upstreamByDownstream.remove(downstream.getId());
         coordinatorByDownstream.remove(downstream.getId());
+        cancelPendingClose(downstream.getId());
         closeQuietly(upstream);
     }
 
@@ -300,7 +353,7 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                 handleAnalysis(downstream, message.getPayload());
             } finally {
                 if (coordinator.finishAnalysis()) {
-                    closeQuietly(downstream);
+                    closeAfterGrace(downstream);
                 }
             }
         }
@@ -314,7 +367,7 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                     coordinatorByDownstream.get(downstream.getId());
             // 아직 분석 중이면 닫는 일은 그쪽에 맡긴다. 결과를 보낸 뒤에 닫혀야 한다.
             if (coordinator == null || coordinator.upstreamClosed()) {
-                closeQuietly(downstream);
+                closeAfterGrace(downstream);
             }
         }
     }

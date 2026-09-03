@@ -1,5 +1,6 @@
 package com.movi_backend.domain.voice.stream;
 
+import com.movi_backend.domain.voice.application.VoiceCommandResultStore;
 import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.domain.voice.application.model.VoiceStreamContext;
 import com.movi_backend.domain.voice.client.dto.VoiceAnalysisResponse;
@@ -44,6 +45,7 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
 
     private final VoiceStreamProperties properties;
     private final VoiceCommandService voiceCommandService;
+    private final VoiceCommandResultStore resultStore;
     private final ObjectMapper objectMapper;
 
     /** 브라우저 세션 → AI 세션. 한쪽을 닫을 때 반대쪽을 찾아야 한다. */
@@ -279,6 +281,16 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
              * 유일한 안내다. 컨트롤러가 REST 응답에 싣는 것과 같은 값을 써야
              * 두 경로에서 다른 말이 들리지 않는다. 금액도 여기서 한국어로 바뀐다.
              */
+            /*
+             * 보내기 전에 남긴다. 전달이 실패해도 클라이언트가 다시 물어볼 수 있어야
+             * 한다 -- 마지막 프레임 하나에 이체 성사가 걸려 있으면 안 된다.
+             */
+            resultStore.store(
+                    authUser.userId(),
+                    voiceSessionId,
+                    response,
+                    response.toVoiceMessage()
+            );
             sendJson(downstream, Map.of(
                     "type", "command",
                     "data", response,

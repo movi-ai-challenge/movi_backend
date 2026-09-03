@@ -102,6 +102,7 @@ class VoiceSessionControllerTest {
                 null,
                 null,
                 List.of(),
+                null,
                 null
         );
         final org.springframework.mock.web.MockMultipartFile audio =

@@ -49,6 +49,26 @@ final class RecipientNicknameMatcher {
         return ambiguous ? Optional.empty() : Optional.ofNullable(closest);
     }
 
+    /**
+     * 편집 거리가 가까운 후보가 하나라도 있는지.
+     *
+     * <p>{@link #findUniqueClosest} 가 비어 돌아온 이유를 가른다 — 아예 없는 것과, 여럿이라
+     * 고르지 못한 것은 사용자에게 다른 상황이라 되물을 문장도 달라야 한다.
+     */
+    static boolean hasAnyCloseMatch(
+            final String spokenNickname,
+            final List<TransferRecipient> recipients
+    ) {
+        final String spoken = decompose(normalize(spokenNickname));
+        for (final TransferRecipient recipient : recipients) {
+            final String candidate = decompose(normalize(recipient.getNickname()));
+            if (levenshteinDistance(spoken, candidate) <= MAXIMUM_DISTANCE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static String normalize(final String value) {
         if (value == null) {
             return "";

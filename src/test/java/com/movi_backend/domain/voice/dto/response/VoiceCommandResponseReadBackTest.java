@@ -35,7 +35,8 @@ class VoiceCommandResponseReadBackTest {
                 10_000L,
                 null, null, null, null, null, null, null,
                 List.of(),
-                spokenAccountDigits
+                spokenAccountDigits,
+                null
         );
     }
 

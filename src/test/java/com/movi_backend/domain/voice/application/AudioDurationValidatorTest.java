@@ -127,6 +127,15 @@ class AudioDurationValidatorTest {
     }
 
     @Test
+    @DisplayName("브라우저가 녹음 중 만든 WebM 은 재생 시간이 없어도 허용한다")
+    void 크기를_열어_둔_WebM_은_허용한다() {
+        final MockMultipartFile audio = audio("voice.webm", "audio/webm", openSegmentWebm());
+
+        assertThatCode(() -> validator.validate(audio, "audio/webm"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     @DisplayName("재생 시간 메타데이터가 없는 손상 WebM 파일은 거부한다")
     void 재생_시간이_없는_WebM_파일은_거부한다() {
         final byte[] header = element(0x1A45DFA3L, element(0x4282L, ascii("webm")));
@@ -193,6 +202,29 @@ class AudioDurationValidatorTest {
         buffer.putInt(dataSize);
         buffer.put(new byte[dataSize]);
         return buffer.array();
+    }
+
+    /**
+     * 브라우저가 녹음 중 만드는 WebM.
+     *
+     * <p>{@code Segment} 를 크기 없이 열어 두고 {@code Duration} 을 적지 않는다. 실기기
+     * 로그에서 확인한 형태다(2026-09-03) -- Segment 크기가 {@code 01 ff ff ff ff ff ff ff},
+     * {@code Info} 에는 {@code TimecodeScale} 만 있었다.
+     */
+    private byte[] openSegmentWebm() {
+        final byte[] header = element(0x1A45DFA3L, element(0x4282L, ascii("webm")));
+        final byte[] timecodeScale = element(0x2AD7B1L, unsigned(1_000_000L, 3));
+        final byte[] info = element(0x1549A966L, timecodeScale);
+        return concat(header, openSizeElement(0x18538067L, info));
+    }
+
+    /** 크기를 unknown 으로 열어 둔 EBML 요소. */
+    private byte[] openSizeElement(final long id, final byte[] data) {
+        final byte[] unknownSize = {
+            (byte) 0x01, (byte) 0xff, (byte) 0xff, (byte) 0xff,
+            (byte) 0xff, (byte) 0xff, (byte) 0xff, (byte) 0xff,
+        };
+        return concat(id(id), unknownSize, data);
     }
 
     private byte[] webm(final double durationSeconds) {

@@ -16,6 +16,7 @@ import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,19 @@ public class TransferValidationService {
     private static final BigDecimal MAXIMUM_CONFIDENCE = BigDecimal.ONE;
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
     private static final String AMOUNT_QUESTION = "얼마를 보내시겠어요?";
+
+    /*
+     * 재질문 문구는 상황마다 하나로 고정한다. 같은 상황에서 매번 다른 말이 나오면 화면을
+     * 보지 않는 사용자가 무엇이 바뀐 것인지 몰라 혼란스럽다(CLAUDE.md 도메인 규칙 1).
+     */
+    private static final String BANK_QUESTION =
+            "어느 은행 계좌인가요? 은행 이름을 말씀해 주세요.";
+    private static final String ACCOUNT_NUMBER_QUESTION =
+            "계좌번호를 말씀해 주세요.";
+    private static final String UNKNOWN_RECIPIENT_QUESTION =
+            "%s 님은 저장돼 있지 않아요. 받는 분의 은행과 계좌번호를 말씀해 주세요.";
+    private static final String AMBIGUOUS_RECIPIENT_QUESTION =
+            "%s 님과 비슷한 이름이 여러 개 저장돼 있어요. 받는 분의 계좌번호를 말씀해 주세요.";
 
     /** 같은 별칭이 이만큼 쌓이면 사용자가 구분하지 못한다. 그 전에 멈춘다. */
     private static final int MAXIMUM_NICKNAME_SUFFIX = 20;
@@ -54,15 +68,60 @@ public class TransferValidationService {
 
         final List<TransferSlot> missingSlots = findMissingSlots(command);
         if (!missingSlots.isEmpty()) {
-            return createClarification(missingSlots);
+            return createClarification(command, missingSlots);
         }
 
         validateAmountRange(command.amount());
-        final TransferRecipient recipient = resolveRecipient(userId, command);
+
+        /*
+         * 이름으로 부른 상대를 못 찾는 것은 오류가 아니라 되물을 일이다. 예외로 끝내면
+         * "저장된 분이 없어요"에서 대화가 끊겨, 사용자는 계좌번호를 말하면 보낼 수 있다는
+         * 것을 알 수 없다.
+         */
+        if (!command.hasSpokenAccount()) {
+            final Optional<TransferRecipient> found = findRecipient(userId, command.recipient());
+            if (found.isEmpty()) {
+                return clarifyUnresolvedRecipient(userId, command.recipient());
+            }
+            return ValidatedTransferCommand.of(
+                    command.amount(),
+                    found.get(),
+                    normalizeOptional(command.sourceAccountAlias())
+            );
+        }
+
         return ValidatedTransferCommand.of(
                 command.amount(),
-                recipient,
+                findOrCreateByAccount(userId, command),
                 normalizeOptional(command.sourceAccountAlias())
+        );
+    }
+
+    /**
+     * 이름을 못 찾았을 때 무엇을 되물을지 정한다.
+     *
+     * <p>저장된 게 아예 없는 것과, 비슷한 이름이 여럿이라 고르지 못한 것은 사용자에게 다른
+     * 상황이다. 후자에 "저장된 분이 없어요"라고 하면 사실과 다르고, 사용자는 등록을 다시
+     * 하려 든다. 둘 다 계좌번호로 풀리므로 그것을 요청하되 문장을 구분한다.
+     */
+    private TransferClarification clarifyUnresolvedRecipient(
+            final Long userId,
+            final String spokenName
+    ) {
+        final String name = spokenName.trim();
+        final boolean hasSimilar = RecipientNicknameMatcher.hasAnyCloseMatch(
+                name,
+                transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)
+        );
+        if (hasSimilar) {
+            return TransferClarification.of(
+                    List.of(TransferSlot.RECIPIENT),
+                    AMBIGUOUS_RECIPIENT_QUESTION.formatted(name)
+            );
+        }
+        return TransferClarification.of(
+                List.of(TransferSlot.RECIPIENT),
+                UNKNOWN_RECIPIENT_QUESTION.formatted(name)
         );
     }
 
@@ -95,16 +154,6 @@ public class TransferValidationService {
             return true;
         }
         return !isBlank(command.recipient()) && isTrusted(command.recipientConfidence());
-    }
-
-    private TransferRecipient resolveRecipient(
-            final Long userId,
-            final TransferCommandRequest command
-    ) {
-        if (!command.hasSpokenAccount()) {
-            return findRecipient(userId, command.recipient());
-        }
-        return findOrCreateByAccount(userId, command);
     }
 
     /**
@@ -184,11 +233,37 @@ public class TransferValidationService {
         }
     }
 
-    private TransferClarification createClarification(final List<TransferSlot> missingSlots) {
-        if (missingSlots.contains(TransferSlot.RECIPIENT)) {
-            return TransferClarification.of(missingSlots, RECIPIENT_QUESTION);
+    /**
+     * 되물을 문장을 고른다.
+     *
+     * <p>수취인이 비었다고 늘 "누구에게 보내시겠어요?"를 되물으면 안 된다. 계좌번호는
+     * 말했는데 은행만 빠진 사용자에게 그 문장은 답이 없는 질문이다 — 이미 누구에게
+     * 보낼지는 말했기 때문이다. 무엇을 말해야 하는지 콕 집어 준다.
+     */
+    private TransferClarification createClarification(
+            final TransferCommandRequest command,
+            final List<TransferSlot> missingSlots
+    ) {
+        if (!missingSlots.contains(TransferSlot.RECIPIENT)) {
+            return TransferClarification.of(missingSlots, AMOUNT_QUESTION);
         }
-        return TransferClarification.of(missingSlots, AMOUNT_QUESTION);
+        if (hasAccountNumberOnly(command)) {
+            return TransferClarification.of(missingSlots, BANK_QUESTION);
+        }
+        if (hasBankOnly(command)) {
+            return TransferClarification.of(missingSlots, ACCOUNT_NUMBER_QUESTION);
+        }
+        return TransferClarification.of(missingSlots, RECIPIENT_QUESTION);
+    }
+
+    /** 계좌번호는 들었는데 은행을 못 들은 상태. */
+    private boolean hasAccountNumberOnly(final TransferCommandRequest command) {
+        return !isBlank(command.accountNumber()) && isBlank(command.bankCode());
+    }
+
+    /** 은행은 들었는데 계좌번호를 못 들은 상태. */
+    private boolean hasBankOnly(final TransferCommandRequest command) {
+        return isBlank(command.accountNumber()) && !isBlank(command.bankCode());
     }
 
     /**
@@ -206,14 +281,16 @@ public class TransferValidationService {
         }
     }
 
-    private TransferRecipient findRecipient(final Long userId, final String recipientNickname) {
+    private Optional<TransferRecipient> findRecipient(
+            final Long userId,
+            final String recipientNickname
+    ) {
         final String normalizedNickname = recipientNickname.trim();
         return transferRecipientRepository.findByUserIdAndNickname(userId, normalizedNickname)
                 .or(() -> RecipientNicknameMatcher.findUniqueClosest(
                         normalizedNickname,
                         transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)
-                ))
-                .orElseThrow(() -> new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND));
+                ));
     }
 
     private boolean isTrusted(final BigDecimal confidence) {

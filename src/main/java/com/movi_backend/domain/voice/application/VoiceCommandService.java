@@ -798,8 +798,13 @@ public class VoiceCommandService {
         return VoiceCommandResponse.clarifying(
                 session,
                 clarification.missingSlots(),
-                transcript
+                transcript,
+                clarification.voiceMessage()
         );
+    }
+
+    private boolean isBlank(final String value) {
+        return value == null || value.isBlank();
     }
 
     private PendingTransferSlots createClarifyingSlots(
@@ -817,10 +822,20 @@ public class VoiceCommandService {
         /*
          * 계좌번호는 되물음 대상이 아니면 그대로 지킨다. 금액만 다시 물었는데 계좌번호를
          * 잃으면 사용자가 열 자리 숫자를 처음부터 다시 말해야 한다.
+         *
+         * 수취인을 되물을 때도 <b>절반만 들은 계좌는 지키고</b>, 아무것도 못 들었을 때만
+         * 버린다. 은행만 듣고 지워 버리면 사용자가 계좌번호를 대답해도 은행이 없어 또
+         * 되묻게 되고, 한 번에 둘 다 말할 때까지 같은 질문이 반복된다.
+         *
+         * 반대로 둘 다 없는 채로 이름만 다시 묻는 상황에서는 남길 것이 없다. 이때 낡은
+         * 계좌번호를 들고 있으면 사용자가 이름으로 답해도 계좌 쪽이 우선해 엉뚱한 곳으로
+         * 나간다.
          */
         String accountNumber = request.accountNumber();
         String bankCode = request.bankCode();
-        if (missingSlots.contains(TransferSlot.RECIPIENT)) {
+        final boolean heardNothingAboutAccount =
+                isBlank(accountNumber) && isBlank(bankCode);
+        if (missingSlots.contains(TransferSlot.RECIPIENT) && heardNothingAboutAccount) {
             accountNumber = null;
             bankCode = null;
         }

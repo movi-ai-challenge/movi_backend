@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.movi_backend.domain.transfer.type.TransferSlot;
+import com.movi_backend.domain.voice.application.VoiceCommandResultStore;
 import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.domain.voice.application.VoiceSessionService;
 import com.movi_backend.domain.voice.dto.response.VoiceCommandResponse;
@@ -35,6 +36,9 @@ class VoiceSessionControllerTest {
     @Mock
     private VoiceCommandService voiceCommandService;
 
+    @Mock
+    private VoiceCommandResultStore voiceCommandResultStore;
+
     @Test
     @DisplayName("음성 세션 시작을 요청하면 세션 정보와 음성 안내를 반환한다")
     void 음성_세션_시작을_요청하면_세션_정보와_음성_안내를_반환한다() throws Exception {
@@ -53,7 +57,8 @@ class VoiceSessionControllerTest {
         final MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new VoiceSessionController(
                         voiceSessionService,
-                        voiceCommandService
+                        voiceCommandService,
+                        voiceCommandResultStore
                 ))
                 .setCustomArgumentResolvers(resolver)
                 .build();
@@ -119,7 +124,8 @@ class VoiceSessionControllerTest {
         final MockMvc mockMvc = MockMvcBuilders
                 .standaloneSetup(new VoiceSessionController(
                         voiceSessionService,
-                        voiceCommandService
+                        voiceCommandService,
+                        voiceCommandResultStore
                 ))
                 .setCustomArgumentResolvers(resolver)
                 .build();

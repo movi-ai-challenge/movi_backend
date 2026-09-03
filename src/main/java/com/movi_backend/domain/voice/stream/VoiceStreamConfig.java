@@ -1,5 +1,6 @@
 package com.movi_backend.domain.voice.stream;
 
+import com.movi_backend.domain.voice.application.VoiceCommandResultStore;
 import com.movi_backend.domain.voice.application.VoiceCommandService;
 import com.movi_backend.global.config.CorsProperties;
 import com.movi_backend.global.security.JwtTokenProvider;
@@ -33,6 +34,7 @@ public class VoiceStreamConfig implements WebSocketConfigurer {
     private final CorsProperties corsProperties;
     private final JwtTokenProvider jwtTokenProvider;
     private final VoiceCommandService voiceCommandService;
+    private final VoiceCommandResultStore resultStore;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -41,6 +43,7 @@ public class VoiceStreamConfig implements WebSocketConfigurer {
                         new VoiceStreamRelayHandler(
                                 properties,
                                 voiceCommandService,
+                                resultStore,
                                 objectMapper
                         ),
                         STREAM_PATH

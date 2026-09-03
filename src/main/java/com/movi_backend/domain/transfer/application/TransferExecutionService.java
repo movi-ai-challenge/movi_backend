@@ -23,6 +23,7 @@ import com.movi_backend.domain.transfer.application.model.ConfirmedTransferComma
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.application.port.TransferRiskAlertPort;
 import com.movi_backend.domain.transfer.config.TransferProperties;
+import com.movi_backend.domain.transfer.infrastructure.MockIncomingTransactionRecorder;
 import com.movi_backend.domain.transfer.entity.Transaction;
 import com.movi_backend.domain.transfer.entity.Transfer;
 import com.movi_backend.domain.transfer.repository.TransactionRepository;
@@ -49,6 +50,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -86,6 +88,12 @@ public class TransferExecutionService {
     private final TransferProperties transferProperties;
     private final ObjectMapper objectMapper;
     private final SensitiveDataCrypto sensitiveDataCrypto;
+
+    /**
+     * 받는 쪽 입금 내역을 남기는 대역. 실제 이체를 쓰면 등록되지 않는다 — 그때는 상대 은행이
+     * 기록하고 우리는 조회만 한다.
+     */
+    private final ObjectProvider<MockIncomingTransactionRecorder> incomingTransactionRecorder;
 
     @Transactional(readOnly = true)
     public Optional<TransferExecutionResult> findCompletedResult(
@@ -156,6 +164,7 @@ public class TransferExecutionService {
         transfer.complete(completedAt);
         command.recipient().recordTransfer(completedAt);
         saveTransaction(command, transfer, balanceSnapshot, executedTransfer);
+        recordIncomingTransaction(command, completedAt);
         if (response.decision().requiresGuardianAlert()) {
             sendRiskAlert(transfer, assessment);
         }
@@ -208,6 +217,30 @@ public class TransferExecutionService {
                 .source(TransactionSource.INTERNAL)
                 .build();
         transactionRepository.save(transaction);
+    }
+
+    /**
+     * 받는 사람이 우리 사용자면 그쪽 거래내역에도 남긴다.
+     *
+     * <p>잔액만 늘고 내역이 없으면 받은 사람은 무슨 돈인지 알 수 없다. 이체는 이미 끝났으므로
+     * 여기서 실패해도 되돌리지 않는다.
+     */
+    private void recordIncomingTransaction(
+            final ConfirmedTransferCommand command,
+            final LocalDateTime completedAt
+    ) {
+        final MockIncomingTransactionRecorder recorder =
+                incomingTransactionRecorder.getIfAvailable();
+        if (recorder == null) {
+            return;
+        }
+        recorder.record(
+                command.recipient().getBankCode(),
+                sensitiveDataCrypto.decrypt(command.recipient().getAccountNum()),
+                command.user().getName(),
+                command.amount(),
+                completedAt
+        );
     }
 
     private void saveTransfer(final Transfer transfer) {

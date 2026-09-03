@@ -80,6 +80,8 @@ PENDING → RISK_REVIEW → COMPLETED
 
 ## 변경 이력
 
+- **2026-09-03** — 등록하지 않은 상대에게도 계좌번호를 말해 보낼 수 있게 했다(기획 변경). 그전에는 `validateDirectAccountNumber`가 계좌번호처럼 보이는 수취인을 거부했다 — "오타 한 번이 모르는 계좌로 가는 이체가 된다"는 이유였다. 그 위험은 그대로이므로 확인 단계에서 은행과 뒤 네 자리를 복창하고, 자릿수를 품은 수사("삼천오백")는 계좌번호로 읽지 않는다.
+
 - **2026-08-28** — 직접 입력 송금 검토·실행과 등록 수취인 목록 추가
   - `GET /api/transfers/recipients`, `POST /api/transfers/review`, `POST /api/transfers` 신설
   - `TransferConfirmationStore`로 검토 스냅샷을 서버가 소유. 실행 요청은 확인 ID와 멱등성 키만 받는다

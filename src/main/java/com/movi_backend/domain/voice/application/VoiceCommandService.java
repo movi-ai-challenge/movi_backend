@@ -221,6 +221,7 @@ public class VoiceCommandService {
                 voiceCommand,
                 (ValidatedTransferCommand) validationResult,
                 transcript,
+                commandRequest.accountNumber(),
                 analysis.processingMs(),
                 now
         );
@@ -731,6 +732,7 @@ public class VoiceCommandService {
             final VoiceCommand voiceCommand,
             final ValidatedTransferCommand validatedCommand,
             final String transcript,
+            final String spokenAccountNumber,
             final int processingMs,
             final LocalDateTime now
     ) {
@@ -752,11 +754,25 @@ public class VoiceCommandService {
                 account,
                 recipient,
                 validatedCommand.amount(),
-                transcript
+                transcript,
+                readBackDigitsOf(spokenAccountNumber)
         );
         voiceCommand.completeWith(response.toVoiceMessage(), processingMs);
         voiceCommandRepository.save(voiceCommand);
         return response;
+    }
+
+    /**
+     * 확인 단계에서 읽어 줄 계좌번호.
+     *
+     * <p>등록해 둔 이름으로 보내는 경우에는 비운다 — 그때는 사용자가 부른 이름을 그대로
+     * 되읽어 주는 편이 알아듣기 쉽다.
+     */
+    private String readBackDigitsOf(final String spokenAccountNumber) {
+        if (spokenAccountNumber == null || spokenAccountNumber.isBlank()) {
+            return null;
+        }
+        return spokenAccountNumberParser.toSpokenDigits(spokenAccountNumber);
     }
 
     private Account findSourceAccount(final Long userId, final String accountAlias) {

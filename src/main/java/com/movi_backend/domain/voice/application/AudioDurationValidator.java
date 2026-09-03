@@ -29,13 +29,18 @@ public class AudioDurationValidator {
     private static final String MP4_MOVIE_EXTENDS_BOX = "mvex";
 
     /**
-     * 조각난(fragmented) MP4 라 재생 시간을 알 수 없다는 표시.
+     * 컨테이너에 재생 시간이 적혀 있지 않다는 표시.
      *
-     * <p>iPhone Safari 의 MediaRecorder 는 녹음을 조각난 MP4 로 만든다. 이 형식은 전체
-     * 길이를 {@code moov} 가 아니라 뒤따르는 조각들이 나눠 갖고 있어, {@code mvhd} 의
-     * 재생 시간이 0으로 남는다. 손상된 파일이 아니라 규격대로 만들어진 파일이다.
+     * <p>브라우저의 MediaRecorder 는 녹음을 <b>말하는 도중에</b> 만든다. 그 시점에는
+     * 전체 길이를 알 수 없어 헤더에 적지 못하고, 다 만든 뒤에도 되돌아가 채우지 않는
+     * 경우가 있다. 손상된 파일이 아니라 규격대로 만들어진 파일이다.
+     *
+     * <ul>
+     *   <li>WebM: {@code Segment} 크기가 unknown 으로 열려 있고 {@code Duration} 이 없다</li>
+     *   <li>MP4: {@code mvex} 가 있는 조각난 형식이라 {@code mvhd} 재생 시간이 0이다</li>
+     * </ul>
      */
-    private static final double DURATION_UNKNOWN_FRAGMENTED = -1.0;
+    private static final double DURATION_NOT_WRITTEN = -1.0;
     private static final long MP4_EXTENDED_SIZE = 1L;
     private static final long MP4_TO_END_SIZE = 0L;
 
@@ -51,12 +56,12 @@ public class AudioDurationValidator {
         }
 
         /*
-         * 조각난 MP4 는 길이를 재지 않고 통과시킨다. 여기서 막으면 iPhone 사용자는 음성
-         * 기능을 아예 쓸 수 없는데, 화면을 보지 않는 사용자에게 그건 앱을 못 쓴다는
-         * 뜻이다. 길이 제한은 STT 비용과 응답 지연을 막으려는 것이지 보안 통제가
+         * 길이가 적혀 있지 않은 녹음은 재지 않고 통과시킨다. 여기서 막으면 브라우저에서
+         * 녹음한 음성이 통째로 거부되는데, 화면을 보지 않는 사용자에게 그건 앱을 못
+         * 쓴다는 뜻이다. 길이 제한은 STT 비용과 응답 지연을 막으려는 것이지 보안 통제가
          * 아니고, 파일 크기 상한(5MB)과 프론트의 15초 자동 정지가 함께 걸려 있다.
          */
-        if (durationSeconds == DURATION_UNKNOWN_FRAGMENTED) {
+        if (durationSeconds == DURATION_NOT_WRITTEN) {
             return;
         }
         if (!Double.isFinite(durationSeconds) || durationSeconds <= 0) {
@@ -180,7 +185,7 @@ public class AudioDurationValidator {
          * 실제로 읽을 수 없는 파일이라 거부한다.
          */
         if (fragmented) {
-            return DURATION_UNKNOWN_FRAGMENTED;
+            return DURATION_NOT_WRITTEN;
         }
         throw new IllegalArgumentException("MP4 재생 시간 값이 유효하지 않음");
     }
@@ -406,14 +411,25 @@ public class AudioDurationValidator {
         while (offset < segment.endOffset()) {
             final EbmlElement element = readElement(bytes, offset, segment.endOffset());
             if (element.id() == INFO_ID) {
-                return readInfoDurationSeconds(bytes, element);
+                return readInfoDurationSeconds(bytes, element, segment.unknownSize());
             }
             offset = element.endOffset();
         }
         throw new IllegalArgumentException("WebM Info 누락");
     }
 
-    private double readInfoDurationSeconds(final byte[] bytes, final EbmlElement info) {
+    /**
+     * {@code Info} 에서 재생 시간을 읽는다.
+     *
+     * @param openSegment {@code Segment} 크기가 unknown 인지 여부. 녹음이 끝나기 전에
+     *                    쓰인 컨테이너라는 뜻이라, 이 경우 {@code Duration} 이 없는 것은
+     *                    정상이다
+     */
+    private double readInfoDurationSeconds(
+            final byte[] bytes,
+            final EbmlElement info,
+            final boolean openSegment
+    ) {
         long timecodeScale = DEFAULT_TIMECODE_SCALE_NANOS;
         Double duration = null;
         int offset = info.dataOffset();
@@ -431,7 +447,18 @@ public class AudioDurationValidator {
             offset = element.endOffset();
         }
 
-        if (timecodeScale <= 0 || duration == null) {
+        if (timecodeScale <= 0) {
+            throw new IllegalArgumentException("WebM TimecodeScale 값이 유효하지 않음");
+        }
+        /*
+         * Segment 를 크기 없이 열어 둔 채로 쓴 파일이다. 브라우저가 말하는 도중에 만드는
+         * 형태이고, 그때는 전체 길이를 알 수 없어 Duration 을 적지 못한다. 크기가 적힌
+         * Segment 인데 Duration 이 없으면 그때는 실제로 읽을 수 없는 파일이라 거부한다.
+         */
+        if (duration == null || duration <= 0) {
+            if (openSegment) {
+                return DURATION_NOT_WRITTEN;
+            }
             throw new IllegalArgumentException("WebM 재생 시간 정보 누락");
         }
         return duration * timecodeScale / 1_000_000_000.0;
@@ -446,7 +473,7 @@ public class AudioDurationValidator {
         if (dataSize < 0 || dataSize > available || dataSize > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("EBML 요소 크기가 유효하지 않음");
         }
-        return new EbmlElement(id.value(), dataOffset, (int) dataSize);
+        return new EbmlElement(id.value(), dataOffset, (int) dataSize, size.unknown());
     }
 
     private VariableInteger readVariableInteger(
@@ -524,7 +551,7 @@ public class AudioDurationValidator {
     private record VariableInteger(long value, int length, boolean unknown) {
     }
 
-    private record EbmlElement(long id, int dataOffset, int dataSize) {
+    private record EbmlElement(long id, int dataOffset, int dataSize, boolean unknownSize) {
 
         private int endOffset() {
             return dataOffset + dataSize;

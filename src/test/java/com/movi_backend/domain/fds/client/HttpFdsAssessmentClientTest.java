@@ -144,6 +144,59 @@ class HttpFdsAssessmentClientTest {
     }
 
     @Test
+    @DisplayName("AI 가 준 정책 버전을 그대로 기록한다")
+    void AI_가_준_정책_버전을_기록한다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andRespond(withSuccess("""
+                        {
+                          "anomaly_score": 0.344090,
+                          "threshold": 0.446117,
+                          "is_anomaly": false,
+                          "model": "isolation_forest",
+                          "rule_score": 20.0,
+                          "final_risk_score": 12.0,
+                          "risk_level": "LOW",
+                          "triggered_rules": [],
+                          "policy_version": "0.6.0"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        // when
+        final FdsAssessmentResponse response = client.assess(request);
+
+        // then
+        assertThat(response.policyVersion()).isEqualTo("0.6.0");
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("정책 버전을 안 주는 옛 AI 서버면 대체값을 남긴다 - 기록만 보고 실제 버전이라 오해하지 않게 한다")
+    void 정책_버전이_없으면_대체값을_남긴다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = requestWithEncryptedRecipient("110123456789");
+
+        // RESPONSE_JSON 에는 policy_version 이 없다.
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
+
+        // when
+        final FdsAssessmentResponse response = client.assess(request);
+
+        // then - 특정 버전을 사실처럼 적지 않는다.
+        assertThat(response.policyVersion()).isEqualTo("movi-fraud-detection-api-unknown");
+        server.verify();
+    }
+
+    @Test
     @DisplayName("현재 거래와 이력에 서로 다른 transaction_id 를 붙인다 - 겹치면 AI 가 요청 전체를 거절한다")
     void 거래_식별자가_겹치지_않게_보낸다() {
         // given

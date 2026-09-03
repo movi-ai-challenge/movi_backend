@@ -58,11 +58,13 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
     private static final String HISTORY_TRANSACTION_ID_PREFIX = "tx-";
 
     /**
-     * AI 서버는 model만 응답에 싣고 규칙 엔진·정책 버전은 아직 따로 내려주지 않는다.
-     * moviback.duckdns.org/ai/fds/openapi.json 의 info.version 이다.
-     * AI 팀이 응답에 자체 버전 필드를 추가하면 이 상수는 지운다.
+     * AI 가 정책 버전을 내려주지 않을 때만 쓴다.
+     *
+     * <p>AI 는 0.6.0 부터 응답에 {@code policy_version} 을 싣는다. 이 상수는 그 이전 버전
+     * 서버가 섞여 돌 때를 위한 것이며, 값이 실제 버전과 다를 수 있다는 뜻이기도 하다 —
+     * 기록에 이 문자열이 보이면 AI 가 버전을 안 준 요청이라는 신호다.
      */
-    private static final String FALLBACK_POLICY_VERSION = "movi-fraud-detection-api-0.4.0";
+    private static final String FALLBACK_POLICY_VERSION = "movi-fraud-detection-api-unknown";
 
     private static final BigDecimal SCORE_SCALE_DIVISOR = new BigDecimal("100");
     private static final int SCORE_DIVISION_SCALE = 6;
@@ -203,7 +205,7 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
         return FdsAssessmentResponse.of(
                 request.requestId(),
                 blankToNull(response.model(), "isolation_forest"),
-                FALLBACK_POLICY_VERSION,
+                blankToNull(response.policyVersion(), FALLBACK_POLICY_VERSION),
                 toScores(response),
                 riskLevel,
                 FdsDecision.from(riskLevel),

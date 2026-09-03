@@ -50,7 +50,10 @@ class VoiceTransferClarificationTest {
     private SensitiveDataCrypto sensitiveDataCrypto;
 
     @Mock
-    private BankDirectory bankDirectory;
+    private TransferTargetVerifier transferTargetVerifier;
+
+    @Mock
+    private TransferRecipientRegistrar transferRecipientRegistrar;
 
     @InjectMocks
     private TransferValidationService transferValidationService;
@@ -117,10 +120,9 @@ class VoiceTransferClarificationTest {
     @DisplayName("등록되지 않은 이름을 부르면 계좌번호를 말해 달라고 안내한다")
     void 등록되지_않은_이름이면_계좌번호를_요청한다() {
         allowAmountRange();
-        given(transferRecipientRepository.findByUserIdAndNickname(1L, "김철수"))
+        given(transferRecipientRepository
+                .findByUserIdAndAddressBookTrueAndNickname(1L, "김철수"))
                 .willReturn(Optional.empty());
-        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(1L))
-                .willReturn(List.of());
 
         final TransferValidationResult result = transferValidationService.validate(
                 1L,
@@ -137,13 +139,12 @@ class VoiceTransferClarificationTest {
     }
 
     @Test
-    @DisplayName("비슷한 이름이 여럿이면 저장이 안 됐다고 하지 않고 계좌번호로 가린다")
-    void 동명이인이면_계좌번호로_가린다() {
+    @DisplayName("비슷한 이름이 저장돼 있어도 그 사람으로 대신 보내지 않는다")
+    void 비슷한_이름으로_대신_보내지_않는다() {
         allowAmountRange();
-        given(transferRecipientRepository.findByUserIdAndNickname(1L, "김영희"))
+        given(transferRecipientRepository
+                .findByUserIdAndAddressBookTrueAndNickname(1L, "김영희"))
                 .willReturn(Optional.empty());
-        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(1L))
-                .willReturn(List.of(recipient("김영호"), recipient("김영하")));
 
         final TransferValidationResult result = transferValidationService.validate(
                 1L,
@@ -154,7 +155,7 @@ class VoiceTransferClarificationTest {
         );
 
         assertThat(result)
-                .as("등록은 돼 있는데 누구인지 못 고른 상황이다. '없어요'는 사실과 다르다")
+                .as("한 글자 차이로 다른 사람에게 보내는 것보다 다시 묻는 편이 안전하다")
                 .isInstanceOf(TransferClarification.class);
         assertThat(((TransferClarification) result).voiceMessage()).contains("계좌번호");
     }

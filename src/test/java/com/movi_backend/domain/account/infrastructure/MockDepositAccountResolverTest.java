@@ -3,14 +3,14 @@ package com.movi_backend.domain.account.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
+import com.movi_backend.domain.account.application.InternalAccountLocator;
 import com.movi_backend.domain.account.entity.Account;
-import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.account.type.AccountType;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -18,101 +18,54 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class MockDepositAccountResolverTest {
 
     @Mock
-    private AccountRepository accountRepository;
+    private InternalAccountLocator internalAccountLocator;
 
-    private MockDepositAccountResolver resolver() {
-        return new MockDepositAccountResolver(accountRepository);
+    @InjectMocks
+    private MockDepositAccountResolver resolver;
+
+    @Test
+    @DisplayName("은행코드와 전체 계좌번호가 정확히 맞으면 받는 계좌를 찾는다")
+    void 정확히_맞는_계좌를_찾는다() {
+        // given
+        given(internalAccountLocator.locate("011", "35211112299"))
+                .willReturn(Optional.of(account("fintech-순자")));
+
+        // when
+        final Optional<String> found = resolver.resolveFintechUseNum("011", "352-1111-2299");
+
+        // then — 하이픈이 섞여 있어도 숫자만 남겨 조회한다
+        assertThat(found).contains("fintech-순자");
     }
 
-    private Account account(
-            final String fintechUseNum,
-            final String bankCode,
-            final String maskedAccountNumber
-    ) {
+    @Test
+    @DisplayName("앞자리만 같고 뒷자리가 다른 계좌에는 입금하지 않는다")
+    void 앞자리만_같은_계좌에는_입금하지_않는다() {
+        // given — 예전에는 앞 여섯 자리만 맞으면 남의 계좌에 입금됐다
+        given(internalAccountLocator.locate("011", "35211110000"))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThat(resolver.resolveFintechUseNum("011", "35211110000")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("우리 사용자가 아닌 계좌로 보내면 입금을 건너뛴다")
+    void 우리_사용자가_아니면_건너뛴다() {
+        // given
+        given(internalAccountLocator.locate("088", "110123456789"))
+                .willReturn(Optional.empty());
+
+        // when & then
+        assertThat(resolver.resolveFintechUseNum("088", "110123456789")).isEmpty();
+    }
+
+    private Account account(final String fintechUseNum) {
         return Account.builder()
                 .fintechUseNum(fintechUseNum)
-                .bankCode(bankCode)
-                .bankName("테스트은행")
-                .accountNumMasked(maskedAccountNumber)
+                .bankCode("011")
+                .bankName("농협은행")
+                .accountNumMasked("352-****-**99")
                 .accountType(AccountType.DEPOSIT)
                 .build();
-    }
-
-    @Test
-    @DisplayName("은행코드와 노출된 앞자리가 맞으면 받는 계좌를 찾는다")
-    void 받는_계좌를_찾는다() {
-        // given - accounts 에는 마스킹된 값만 있고 이체 명령은 실제 번호를 들고 온다.
-        given(accountRepository.findAll())
-                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
-
-        // when
-        final Optional<String> found =
-                resolver().resolveFintechUseNum("012", "3522315749001");
-
-        // then
-        assertThat(found).contains("fintech-주혁");
-    }
-
-    @Test
-    @DisplayName("은행이 다르면 찾지 않는다")
-    void 은행이_다르면_찾지_않는다() {
-        given(accountRepository.findAll())
-                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
-
-        assertThat(resolver().resolveFintechUseNum("004", "3522315749001")).isEmpty();
-    }
-
-    @Test
-    @DisplayName("후보가 둘이면 입금하지 않는다 - 엉뚱한 사람에게 돈이 들어가면 안 된다")
-    void 후보가_둘이면_입금하지_않는다() {
-        given(accountRepository.findAll()).willReturn(List.of(
-                account("fintech-1", "012", "3522315749***"),
-                account("fintech-2", "012", "3522315749***")
-        ));
-
-        assertThat(resolver().resolveFintechUseNum("012", "3522315749001")).isEmpty();
-    }
-
-    @Test
-    @DisplayName("노출된 앞자리가 너무 짧으면 찾지 않는다")
-    void 앞자리가_짧으면_찾지_않는다() {
-        given(accountRepository.findAll())
-                .willReturn(List.of(account("fintech-주혁", "012", "352**********")));
-
-        assertThat(resolver().resolveFintechUseNum("012", "3522315749001")).isEmpty();
-    }
-
-    @Test
-    @DisplayName("농협은 011·012 를 같은 은행으로 본다 - 사용자는 둘 다 \"농협\"이라고 부른다")
-    void 농협_계열_코드는_같은_은행으로_본다() {
-        // given - 계좌는 012(농협중앙회), 발화에서 받은 코드는 011(농협은행)
-        given(accountRepository.findAll())
-                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
-
-        // when
-        final Optional<String> found =
-                resolver().resolveFintechUseNum("011", "3522315749001");
-
-        // then
-        assertThat(found).contains("fintech-주혁");
-    }
-
-    @Test
-    @DisplayName("계열이 다른 은행끼리는 여전히 찾지 않는다")
-    void 계열이_다른_은행은_찾지_않는다() {
-        given(accountRepository.findAll())
-                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
-
-        // 004(국민)은 농협 계열이 아니다.
-        assertThat(resolver().resolveFintechUseNum("004", "3522315749001")).isEmpty();
-    }
-
-    @Test
-    @DisplayName("우리 사용자가 아닌 계좌로 보내면 빈 값을 준다")
-    void 우리_사용자가_아니면_빈_값을_준다() {
-        given(accountRepository.findAll())
-                .willReturn(List.of(account("fintech-주혁", "012", "3522315749***")));
-
-        assertThat(resolver().resolveFintechUseNum("088", "1109876543210")).isEmpty();
     }
 }

@@ -130,6 +130,44 @@ class TransferConfirmationStoreTest {
         assertThat(bound).isNull();
     }
 
+    @Test
+    @DisplayName("금액을 고쳐 다시 검토하면 이전 확인으로는 실행할 수 없다")
+    void 금액을_고치면_이전_확인은_무효가_된다() {
+        // given — 5만원으로 검토한 뒤 3만원으로 고쳐 다시 검토했다
+        final TransferConfirmation first = issue();
+        final TransferConfirmation second = store.issue(
+                USER_ID, ACCOUNT_ID, RECIPIENT_ID, 30_000L, NOW);
+
+        // when
+        final TransferConfirmation bound = bind(first, UUID.randomUUID().toString());
+
+        // then — 사용자가 고치기 전 금액이 나가면 안 된다
+        assertThat(bound).isNull();
+        assertThat(bind(second, UUID.randomUUID().toString())).isNotNull();
+    }
+
+    @Test
+    @DisplayName("받는 사람을 바꿔 다시 검토하면 이전 확인으로는 실행할 수 없다")
+    void 대상을_바꾸면_이전_확인은_무효가_된다() {
+        // given
+        final TransferConfirmation first = issue();
+        store.issue(USER_ID, ACCOUNT_ID, 99L, 50_000L, NOW);
+
+        // when & then
+        assertThat(bind(first, UUID.randomUUID().toString())).isNull();
+    }
+
+    @Test
+    @DisplayName("다른 사용자가 검토해도 내 확인은 그대로 살아 있다")
+    void 다른_사용자의_검토는_내_확인을_건드리지_않는다() {
+        // given
+        final TransferConfirmation mine = issue();
+        store.issue(OTHER_USER_ID, ACCOUNT_ID, RECIPIENT_ID, 70_000L, NOW);
+
+        // when & then
+        assertThat(bind(mine, UUID.randomUUID().toString())).isNotNull();
+    }
+
     private TransferConfirmation issue() {
         return store.issue(USER_ID, ACCOUNT_ID, RECIPIENT_ID, 50_000L, NOW);
     }

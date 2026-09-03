@@ -14,8 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 등록 수취인 조회.
  *
- * <p>음성을 쓸 수 없는 상황에서 키보드로 송금하려면 "누구에게"를 고를 수단이 필요하다.
- * 이 목록이 그 선택지 전부이고, 여기 없는 사람에게는 보낼 수 없다.
+ * <p>음성을 쓸 수 없는 상황에서 키보드로 송금하려면 누구에게 보낼지 고를 수단이 필요하다.
+ * 이 목록이 그 선택지다.
+ *
+ * <p><b>사용자가 이름을 지은 항목만 보여 준다.</b> 계좌번호로 한 번 보낼 때 만들어지는
+ * 거래 상대 신원 행({@code address_book = false})은 목록에 넣지 않는다. 사용자가 짓지 않은
+ * 이름이라 읽어 줄 말이 없고, 보낸 적도 없는 상대가 목록에 쌓이면 고를 수가 없다.
  */
 @Service
 @RequiredArgsConstructor
@@ -27,7 +31,8 @@ public class TransferRecipientQueryService {
     @Transactional(readOnly = true)
     public RecipientListResponse findAll(final Long userId) {
         final List<TransferRecipient> recipients =
-                transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId);
+                transferRecipientRepository
+                        .findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(userId);
         return RecipientListResponse.from(
                 recipients.stream()
                         .map(recipient -> RecipientResponse.of(recipient, maskAccountNum(recipient)))

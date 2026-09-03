@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.transfer.application.DirectTransferService;
 import com.movi_backend.domain.transfer.application.TransferQueryService;
+import com.movi_backend.domain.transfer.application.TransferRecipientCommandService;
 import com.movi_backend.domain.transfer.application.TransferRecipientQueryService;
 import com.movi_backend.domain.transfer.dto.response.TransferResultResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferStatusResponse;
@@ -37,6 +38,9 @@ class TransferControllerTest {
 
     @Mock
     private TransferRecipientQueryService transferRecipientQueryService;
+
+    @Mock
+    private TransferRecipientCommandService transferRecipientCommandService;
 
     @Mock
     private DirectTransferService directTransferService;
@@ -125,6 +129,7 @@ class TransferControllerTest {
                 .standaloneSetup(new TransferController(
                         transferQueryService,
                         transferRecipientQueryService,
+                        transferRecipientCommandService,
                         directTransferService
                 ))
                 .setCustomArgumentResolvers(new CurrentUserArgumentResolver(

@@ -1,8 +1,10 @@
 package com.movi_backend.domain.transfer.controller.docs;
 
+import com.movi_backend.domain.transfer.dto.request.RecipientRegisterRequest;
 import com.movi_backend.domain.transfer.dto.request.TransferExecuteRequest;
 import com.movi_backend.domain.transfer.dto.request.TransferReviewRequest;
 import com.movi_backend.domain.transfer.dto.response.RecipientListResponse;
+import com.movi_backend.domain.transfer.dto.response.RecipientResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferResultResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferReviewResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferStatusResponse;
@@ -45,6 +47,31 @@ public interface TransferApiDocs {
     })
     com.movi_backend.global.response.ApiResponse<RecipientListResponse> getRecipients(
             @Parameter(hidden = true) AuthUser authUser
+    );
+
+    @Operation(
+            summary = "상대방 등록",
+            description = """
+                    음성으로 이름만 불러 송금하려면 이름과 계좌가 미리 묶여 있어야 합니다.
+                    이 API 가 그 묶음을 만듭니다.
+
+                    받는 값은 **이름과 계좌번호뿐**입니다. 은행코드와 예금주는 사용자가 적는
+                    값이 아니라, 우리 서비스에 연결된 계좌에서 찾아 채웁니다. 사람이 옮겨
+                    적으면 틀리고, 틀린 은행으로 저장되면 음성 송금이 엉뚱한 곳으로 갑니다.
+
+                    연결된 계좌에서 찾지 못한 계좌번호는 등록할 수 없습니다.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "등록 성공"),
+            @ApiResponse(responseCode = "400",
+                    description = "계좌번호가 여러 계좌와 맞거나(TRANSFER_4008), 본인 계좌(TRANSFER_4009)"),
+            @ApiResponse(responseCode = "404", description = "연결된 계좌에 없는 계좌번호 (TRANSFER_4043)"),
+            @ApiResponse(responseCode = "409", description = "이미 쓰고 있는 이름 (TRANSFER_4091)")
+    })
+    com.movi_backend.global.response.ApiResponse<RecipientResponse> registerRecipient(
+            @Parameter(hidden = true) AuthUser authUser,
+            RecipientRegisterRequest request
     );
 
     @Operation(

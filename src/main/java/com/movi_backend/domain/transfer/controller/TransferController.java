@@ -2,11 +2,14 @@ package com.movi_backend.domain.transfer.controller;
 
 import com.movi_backend.domain.transfer.application.DirectTransferService;
 import com.movi_backend.domain.transfer.application.TransferQueryService;
+import com.movi_backend.domain.transfer.application.TransferRecipientCommandService;
 import com.movi_backend.domain.transfer.application.TransferRecipientQueryService;
 import com.movi_backend.domain.transfer.controller.docs.TransferApiDocs;
+import com.movi_backend.domain.transfer.dto.request.RecipientRegisterRequest;
 import com.movi_backend.domain.transfer.dto.request.TransferExecuteRequest;
 import com.movi_backend.domain.transfer.dto.request.TransferReviewRequest;
 import com.movi_backend.domain.transfer.dto.response.RecipientListResponse;
+import com.movi_backend.domain.transfer.dto.response.RecipientResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferResultResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferReviewResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferStatusResponse;
@@ -29,6 +32,7 @@ public class TransferController implements TransferApiDocs {
 
     private final TransferQueryService transferQueryService;
     private final TransferRecipientQueryService transferRecipientQueryService;
+    private final TransferRecipientCommandService transferRecipientCommandService;
     private final DirectTransferService directTransferService;
 
     /** 등록 수취인 목록. 직접 입력 송금에서 "누구에게"를 고르는 선택지다 */
@@ -40,6 +44,22 @@ public class TransferController implements TransferApiDocs {
                 authUser.userId()
         );
         return ApiResponse.success(recipients, recipients.toVoiceMessage());
+    }
+
+    /** 상대방 등록. 이름으로 부르려면 먼저 이름과 계좌가 묶여 있어야 한다 */
+    @PostMapping("/recipients")
+    public ApiResponse<RecipientResponse> registerRecipient(
+            @CurrentUser final AuthUser authUser,
+            @Valid @RequestBody final RecipientRegisterRequest request
+    ) {
+        final RecipientResponse recipient = transferRecipientCommandService.register(
+                authUser.userId(),
+                request
+        );
+        return ApiResponse.success(
+                recipient,
+                "%s 님을 저장했어요. 이제 이름만 부르셔도 보낼 수 있어요.".formatted(recipient.nickname())
+        );
     }
 
     /** 직접 입력 송금 검토. 확인 ID만 발급하고 이체하지 않는다 */

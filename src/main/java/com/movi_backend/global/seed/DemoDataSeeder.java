@@ -296,6 +296,7 @@ public class DemoDataSeeder implements ApplicationRunner {
                 .nickname(nickname)
                 .bankCode(bankCode)
                 .accountNum(encrypt(accountNum))
+                .accountNumHash(hash(accountNum))
                 .holderName(holderName)
                 .build();
         for (int count = 0; count < transferCount; count++) {

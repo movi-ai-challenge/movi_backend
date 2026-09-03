@@ -12,4 +12,6 @@ public interface TransferRecipientRepository extends JpaRepository<TransferRecip
     Optional<TransferRecipient> findByUserIdAndNickname(Long userId, String nickname);
 
     boolean existsByUserIdAndNickname(Long userId, String nickname);
+
+    boolean existsByUserIdAndAccountNumHash(Long userId, String accountNumHash);
 }

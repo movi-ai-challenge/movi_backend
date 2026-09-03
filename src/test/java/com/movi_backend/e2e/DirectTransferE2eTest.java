@@ -519,6 +519,7 @@ class DirectTransferE2eTest {
                 .nickname(nickname)
                 .bankCode("088")
                 .accountNum(sensitiveDataCrypto.encrypt(accountNum))
+                .accountNumHash(sensitiveDataCrypto.hash(accountNum))
                 .holderName(holderName)
                 .build());
     }

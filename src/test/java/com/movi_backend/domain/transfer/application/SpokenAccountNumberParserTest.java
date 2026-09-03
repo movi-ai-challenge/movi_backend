@@ -49,6 +49,26 @@ class SpokenAccountNumberParserTest {
     }
 
     @Test
+    @DisplayName("금액을 한국어로 말해도 계좌번호를 읽는다 - \"만원\"의 만이 계좌번호를 죽이면 안 된다")
+    void 금액을_한국어로_말해도_계좌번호를_읽는다() {
+        // 실제 STT 결과 그대로다.
+        assertThat(parser.parse("농협 352-2315749로 만 원 보내 줘")).contains("3522315749");
+        assertThat(parser.parse("삼오이이삼일오칠사구로 오만원 보내줘")).contains("3522315749");
+    }
+
+    @Test
+    @DisplayName("하이픈이 섞인 계좌번호를 한 덩어리로 읽는다")
+    void 하이픈이_섞여도_한_덩어리로_읽는다() {
+        assertThat(parser.parse("352-2315-749로 보내줘")).contains("3522315749");
+    }
+
+    @Test
+    @DisplayName("계좌번호 후보가 둘이면 단정하지 않는다")
+    void 후보가_둘이면_단정하지_않는다() {
+        assertThat(parser.parse("3522315749 말고 1109876543 로 보내줘")).isEmpty();
+    }
+
+    @Test
     @DisplayName("빈 발화는 빈 값을 준다")
     void 빈_발화는_빈_값을_준다() {
         assertThat(parser.parse(null)).isEmpty();

@@ -32,16 +32,17 @@ ALTER TABLE transfer_recipients
 -- ---------------------------------------------------------------------------
 -- 2단계. 기존 행 백필 — 애플리케이션이 수행한다 (SQL 아님)
 -- ---------------------------------------------------------------------------
--- 아래 설정을 켜고 애플리케이션을 한 번 기동하면 RecipientAccountHashBackfill 이
+-- 백필 플래그를 켜고 애플리케이션을 한 번 기동하면 RecipientAccountHashBackfill 이
 -- 해시가 빈 행을 찾아 채우고, 이미 중복된 계좌가 있으면 로그로 알려 준다.
 --
---   movi:
---     migration:
---       recipient-account-hash:
---         enabled: true
+--   ./gradlew bootRun --args='--spring.profiles.active=local \
+--       --movi.migration.recipient-account-hash.enabled=true'
 --
--- 백필이 끝나면 설정을 다시 끈다. 남은 행이 없으면 아무 일도 하지 않으므로 두 번
--- 돌려도 안전하다.
+-- 실행 인자로 넘기는 편이 낫다. application-local.yml 은 gitignore 대상이라 사람마다
+-- 손으로 고쳐야 하고, 백필이 끝난 뒤 되돌리는 것도 잊기 쉽다. 인자로 주면 그 기동에만
+-- 적용되고 다음 기동은 자동으로 꺼진 상태다.
+--
+-- 남은 행이 없으면 아무 일도 하지 않으므로 두 번 돌려도 안전하다.
 --
 -- 확인:
 --   SELECT COUNT(*) FROM transfer_recipients WHERE account_num_hash IS NULL;

@@ -183,6 +183,7 @@ erDiagram
         varchar nickname "음성 호출명"
         varchar bank_code
         varchar account_num
+        varchar account_num_hash "중복 확인용 HMAC"
         varchar holder_name
         int transfer_count
         datetime last_transferred_at
@@ -361,7 +362,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 보호자도 앱 사용자입니다. 다만 SMS 초대 직후에는 아직 가입 전이므로 `guardian_user_id`는 nullable이고, `guardian_phone`으로 먼저 식별합니다. 수락 시점에 바인딩.
 
 **3. `transfer_recipients` 별도 분리**
-"엄마한테 5만원 보내줘" 같은 음성 명령을 해석하려면 별칭↔계좌 매핑이 필수입니다. 동시에 `transfer_count`는 FDS의 "처음 보내는 상대" 피처로 직접 쓰입니다.
+"엄마한테 5만원 보내줘" 같은 음성 명령을 해석하려면 별칭↔계좌 매핑이 필수입니다. 동시에 `transfer_count`는 FDS의 "처음 보내는 상대" 피처로 직접 쓰입니다. 같은 계좌를 다른 이름으로 중복 등록하면 이 피처가 이름별로 쪼개지므로, `account_num_hash`로 사용자당 계좌 유일성을 강제합니다(`uk_recipient_user_account`).
 
 **4. `idempotency_key` on `transfers`**
 음성 인식은 오인식·중복 발화가 잦습니다. 클라이언트가 발급한 키로 사용자별 중복 이체를 차단해야 합니다.
@@ -373,7 +374,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 보호자 승인이 빠지면서 알림이 이상거래 통보의 유일한 수단이 됐습니다. "어떤 이체 때문에 나간 알림인지" 추적할 수 없으면 사후 대응이 불가능하므로 이체를 직접 참조합니다.
 
 **7. 개인정보 컬럼 암호화**
-`users.phone`, `accounts.account_num_masked`, `transfers.to_account_num`, `guardian_links.guardian_phone`은 AES 양방향 암호화 대상. 토큰류(`access_token`, `refresh_token`)도 동일. 무작위 IV를 사용하는 암호문은 직접 중복 비교할 수 없으므로 `users.phone_hash`에는 별도 키로 만든 HMAC-SHA256 검색 해시를 저장합니다.
+`users.phone`, `accounts.account_num_masked`, `transfers.to_account_num`, `guardian_links.guardian_phone`, `transfer_recipients.account_num`은 AES 양방향 암호화 대상. 토큰류(`access_token`, `refresh_token`)도 동일. 무작위 IV를 사용하는 암호문은 직접 중복 비교할 수 없으므로 `users.phone_hash`·`transfer_recipients.account_num_hash`에는 별도 키로 만든 HMAC-SHA256 검색 해시를 저장합니다.
 
 ---
 
@@ -385,6 +386,7 @@ FDS는 모델 버전·피처·지연시간이 계속 바뀌는 영역이라 이�
 | `accounts` | `uk (user_id, account_alias)` / `idx (user_id, is_active)` | 사용자별 별칭 중복 방지 / 홈 계좌 목록 |
 | `transactions` | `idx (account_id, tran_datetime DESC)` | 거래 내역 기간 필터 |
 | `transfers` | `uk (user_id, idempotency_key)` / `idx (user_id, requested_at DESC)` | 사용자별 중복 방지 / 이체 이력 |
+| `transfer_recipients` | `uk (user_id, nickname)` / `uk (user_id, account_num_hash)` | 별칭 중복 방지 / 같은 계좌 중복 등록 방지 |
 | `voice_commands` | `idx (user_id, created_at DESC)` / `idx (intent, status)` | 음성 로그 분석 |
 | `guardian_links` | `idx (protectee_user_id, status)` / `uk (invite_token)` | 활성 보호자 조회 / 초대 수락 |
 | `notifications` | `idx (status, next_retry_at)` / `idx (user_id, created_at DESC)` | 발송 재시도 / 알림 이력 |

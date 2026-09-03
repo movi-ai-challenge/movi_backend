@@ -195,6 +195,7 @@ PIN 로그인 → 송금 검토 → 실행
 | 잔액조회 | ✅ | 기본/별칭 계좌 조회, 실시간 재조회, BalanceSnapshot 저장, Mock/실 API Adapter, 음성 조회(BALANCE) |
 | 음성 세션 | ✅ | 업로드 검증, 슬롯 저장·병합, 재질문, 확인·취소, 만료·재시도 제한 |
 | 실시간 음성 인식 | ✅ | WebSocket 중계, 핸드셰이크 인증, 호출어 감지, 재질문 문맥 전달, 중간 결과 스트리밍 |
+| 상대방 등록 | ✅ | 이름·계좌번호만 입력, 은행·예금주 자동 확인, 본인 계좌 차단, **별칭·계좌 중복 등록 차단** |
 | 송금 | ✅ | 한도·잔액 검증, 상태 머신, 멱등성, 동시성 제어, 거래내역 저장 |
 | FDS | ✅ | 실 AI 연동, 최근 30일 거래이력 전송, 응답 검증, LOW/MEDIUM/HIGH 분기, 평가 스냅샷, 30일 프로필 배치, **위험 근거 한국어 안내** |
 | 거래내역 | ✅ | 기간·입출금 유형·계좌 필터, 페이징 조회, 단건 상세, 음성 안내, 음성 조회(HISTORY), **FDS 판정 표시** |
@@ -266,6 +267,32 @@ ACTIVE
 - 확정 발화의 분석 결과를 기존 `VoiceCommandService` 로 넘겨 업로드 경로와 같은 검증을 적용
 - 확인 발화와 실제 이체는 다루지 않음 — `confirmationId` 와 멱등키 교환은 REST 담당
 - 한쪽 연결이 끊기면 반대쪽도 닫음. 남겨 두면 AI 세션이 Google 스트리밍 시간을 계속 소모
+
+### 상대방 등록
+
+"엄마한테 5만원 보내줘"를 해석하려면 이름과 계좌가 미리 묶여 있어야 합니다. 등록되지 않은 사람은 계좌번호를 전부 말해야 하는데, 화면을 보지 않는 사용자에게는 사실상 불가능합니다.
+
+- 받는 값은 **이름(별칭)과 계좌번호뿐**. 은행코드·예금주는 입력받지 않고 `RegisteredAccountFinder`가 찾은 계좌에서 채움 — 사람이 옮겨 적으면 틀리고, 틀린 은행으로 저장되면 이름을 불렀을 때 엉뚱한 곳으로 감
+- 계좌 실재 여부는 **등록 시점에** 확인. 송금 순간에 확인하면 이미 늦음 (이름만 부른 사용자는 무엇이 잘못됐는지 알 수 없음)
+- `accounts.account_num_masked`가 마스킹된 값이라 완전 일치로 찾을 수 없어, 가려지기 전 앞자리(6자리 이상)를 접두어로 매칭. **후보가 둘 이상이면 거절** — 애매하게 저장하면 엉뚱한 사람에게 돈이 감
+- **사용자당 별칭 유일**(`uk_recipient_user_nick`) — 음성에서 "엄마"가 두 명이면 누구를 가리키는지 정할 수 없음
+- **사용자당 계좌 유일**(`uk_recipient_user_account`) — 같은 계좌를 "엄마"·"어머니"로 나눠 등록하면 `transfer_count`가 이름별로 쪼개져 FDS의 "처음 보내는 상대" 판정이 흐려짐
+- 계좌번호는 AES 암호화 저장. 무작위 IV라 암호문 비교로는 중복을 가릴 수 없어 `account_num_hash`(HMAC-SHA256 검색 해시)를 따로 둠 — `users.phone_hash`와 같은 패턴
+- 계좌번호는 숫자만 남겨 정규화 후 해시. `999-8887-77666`과 `999888777666`을 같은 계좌로 판정
+- 응답에는 뒤 네 자리만 마스킹해 노출
+
+검증은 값이 싼 것부터 순서대로, 저장 전에 모두 끝냅니다.
+
+```text
+별칭 중복        → TRANSFER_4091  이미 등록된 이름입니다
+계좌 중복        → TRANSFER_4092  이미 다른 이름으로 등록된 계좌입니다
+계좌 조회 실패   → TRANSFER_4043  등록된 계좌에서 찾을 수 없음
+계좌 후보 2개↑   → TRANSFER_4008  계좌번호가 여러 계좌와 일치
+본인 계좌        → TRANSFER_4009  본인 계좌는 상대방으로 등록 불가
+                 → 저장
+```
+
+음성으로 계좌번호를 직접 불러 보내는 경로는 등록 절차를 거치지 않지만, `TransferValidationService`가 내부적으로 같은 계좌의 기존 수취인을 찾고 **없을 때만** 만듭니다. 저장하지 않으면 FDS의 재이체 횟수·첫 거래 피처가 매번 비어, 늘 보내던 계좌인데도 신규로 평가됩니다.
 
 ### 송금과 거래
 
@@ -382,6 +409,7 @@ AI와 금융 Sandbox 승인은 개발 일정과 독립적인 외부 변수입니
 | `POST` | `/api/voice/sessions/{voiceSessionId}/commands` | 음성 분석·재질문·확인·취소·송금·거래내역·잔액 조회 |
 | `WS` | `/ws/v1/voice/stream` | 실시간 음성 인식 중계 (쿼리로 `accessToken`·`voiceSessionId`) |
 | `GET` | `/api/transfers/recipients` | 등록 수취인 목록 |
+| `POST` | `/api/transfers/recipients` | 상대방 등록 (이름·계좌번호) |
 | `POST` | `/api/transfers/review` | 직접 입력 송금 검토 (확인 ID 발급) |
 | `POST` | `/api/transfers` | 직접 입력 송금 실행 |
 | `GET` | `/api/transfers/status` | 멱등성 키로 송금 상태 복구 |
@@ -415,6 +443,51 @@ mysql -u root -p movi < docs/schema.sql
 마이그레이션을 먼저** 적용해야 합니다. 순서가 뒤바뀌면 엔티티와 스키마가 어긋나 기동
 자체가 실패합니다. 엔티티를 고쳤다면 `docs/schema.sql`·`docs/ERD.md`·`docs/migrations`
 를 함께 갱신합니다.
+
+#### 수취인 계좌 해시 (2026-09-03)
+
+> **이 변경을 pull 하면 마이그레이션을 적용하기 전까지 로컬 애플리케이션이 기동하지 않습니다.**
+> `Schema validation: missing column [account_num_hash] in table [transfer_recipients]` 로 실패합니다.
+> pull 직후 앱이 뜨지 않는다면 아래 절차를 아직 밟지 않은 것입니다.
+
+[20260903_add_recipient_account_num_hash.sql](docs/migrations/20260903_add_recipient_account_num_hash.sql)
+은 한 번에 실행하는 스크립트가 아니라 **3단계**입니다. `account_num` 이 무작위 IV 암호문이고
+해시가 애플리케이션 키로 만드는 HMAC 이라, 가운데 백필을 SQL 로 할 수 없기 때문입니다.
+
+로컬 DB 에 수취인 데이터가 없다면(`SELECT COUNT(*) FROM transfer_recipients;` 가 0),
+2단계를 건너뛰고 1·3단계만 이어서 실행해도 됩니다.
+
+```bash
+# 1) 컬럼 추가 (NULL 허용) — 새 애플리케이션 배포 전에 적용한다
+mysql -u root -p movi -e "ALTER TABLE transfer_recipients \
+  ADD COLUMN account_num_hash VARCHAR(64) NULL \
+  COMMENT '계좌번호 중복 확인용 HMAC-SHA256' AFTER account_num;"
+```
+
+```bash
+# 2) 백필 — 이 기동에서만 켜진다. application-local.yml 은 고치지 않아도 된다
+./gradlew bootRun --args='--spring.profiles.active=local \
+    --movi.migration.recipient-account-hash.enabled=true'
+```
+
+기동 로그에 `[MIGRATION]` 두 줄이 찍힙니다. 채운 건수와, **같은 계좌를 여러 이름으로 등록해
+둔 행이 있는지**를 알려 줍니다. 중복이 남아 있으면 3단계 UNIQUE 추가가 실패하므로 먼저
+정리해야 합니다 — 어느 이름을 남길지는 사람이 정합니다(보통 `transfer_count` 가 큰 쪽).
+SQL 파일에 조회 쿼리가 들어 있습니다.
+
+백필이 끝나면 평소대로(인자 없이) 기동하면 됩니다. 남은 행이 없으면 아무 일도 하지 않으므로
+두 번 돌려도 안전합니다.
+
+```bash
+# 3) 중복 정리와 백필이 끝난 뒤 제약 적용
+mysql -u root -p movi -e "ALTER TABLE transfer_recipients \
+  MODIFY COLUMN account_num_hash VARCHAR(64) NOT NULL \
+  COMMENT '계좌번호 중복 확인용 HMAC-SHA256', \
+  ADD UNIQUE KEY uk_recipient_user_account (user_id, account_num_hash);"
+```
+
+`docs/schema.sql` 로 새로 만든 DB 는 이미 최종 형태라 이 절차가 필요 없습니다. 모든 환경의
+백필이 끝나면 `RecipientAccountHashBackfill` 과 관련 메서드는 지웁니다.
 
 ### 3. 애플리케이션 실행
 

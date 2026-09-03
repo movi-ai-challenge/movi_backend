@@ -80,6 +80,11 @@ PENDING → RISK_REVIEW → COMPLETED
 
 ## 변경 이력
 
+- **2026-09-03** — 상대방 등록에서 계좌 중복도 막는다 (#122). 별칭만 유일하게 걸어 뒀더니 같은 계좌를 "엄마"·"어머니"로 각각 등록할 수 있었다. `transfer_count`가 이름별로 쪼개져 FDS의 "처음 보내는 상대" 판단이 흐려지는 문제였다.
+  - `transfer_recipients.account_num_hash` 추가. `account_num`은 무작위 IV로 암호화돼 직접 비교할 수 없어 `users.phone_hash`와 같은 HMAC-SHA256 검색 해시 패턴을 그대로 가져왔다
+  - 등록 시 `(user_id, account_num_hash)` 존재 여부를 별칭 검사 바로 다음에 확인. DB에도 `uk_recipient_user_account`로 걸어 둔다
+  - `ErrorCode.RECIPIENT_ACCOUNT_DUPLICATED`(TRANSFER_4092) 추가
+
 - **2026-09-03** — 상대방 등록 추가. 이름만 불러 송금하려면 이름과 계좌가 미리 묶여 있어야 하는데 그 묶음을 만들 방법이 없었다.
   - `POST /api/transfers/recipients` 신설, `TransferRecipientCommandService` 추가
   - 받는 값은 이름과 계좌번호뿐. 은행코드·예금주는 입력받지 않고 `RegisteredAccountFinder`가 찾은 계좌에서 채운다 — 사람이 옮겨 적으면 틀리고, 틀린 은행으로 저장되면 이름을 불렀을 때 엉뚱한 곳으로 간다

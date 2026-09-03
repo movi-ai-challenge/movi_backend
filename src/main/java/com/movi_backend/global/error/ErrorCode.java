@@ -132,6 +132,9 @@ public enum ErrorCode {
     RECIPIENT_NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "TRANSFER_4091",
             "이미 등록된 이름입니다.",
             "그 이름은 이미 등록돼 있어요. 다른 이름으로 저장해 주세요."),
+    RECIPIENT_ACCOUNT_DUPLICATED(HttpStatus.CONFLICT, "TRANSFER_4092",
+            "이미 다른 이름으로 등록된 계좌입니다.",
+            "그 계좌는 이미 다른 이름으로 등록돼 있어요."),
 
     // 음성 인식·재질문
     AMOUNT_MISSING(HttpStatus.BAD_REQUEST, "VOICE_4001", "이체 금액이 누락되었습니다.",

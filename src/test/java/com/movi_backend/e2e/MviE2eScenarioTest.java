@@ -255,6 +255,7 @@ class MviE2eScenarioTest {
                 .nickname("엄마")
                 .bankCode("088")
                 .accountNum(sensitiveDataCrypto.encrypt("110123456789"))
+                .accountNumHash(sensitiveDataCrypto.hash("110123456789"))
                 .holderName("이영자")
                 .build());
     }

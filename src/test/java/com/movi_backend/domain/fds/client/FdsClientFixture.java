@@ -62,10 +62,16 @@ final class FdsClientFixture {
         );
     }
 
-    /** 과거 출금 {@code count}건. 금액·일시는 서로 다르게 둬 이력이 그대로 실리는지 본다. */
+    /**
+     * 과거 출금 {@code count}건.
+     *
+     * <p>금액·일시는 서로 다르게 둬 이력이 그대로 실리는지 본다. 식별자도 서로 달라야 한다 —
+     * AI 는 한 요청 안에서 거래 식별자가 겹치면 400 으로 거절한다.
+     */
     static List<FdsHistoryEntry> historyOf(final int count, final String counterpartyEncrypted) {
         return IntStream.rangeClosed(1, count)
                 .mapToObj(index -> FdsHistoryEntry.of(
+                        (long) index,
                         new BigDecimal(String.valueOf(10000 * index)),
                         OffsetDateTime.of(2026, 8, index, 13, 0, 0, 0, ZoneOffset.ofHours(9)),
                         counterpartyEncrypted

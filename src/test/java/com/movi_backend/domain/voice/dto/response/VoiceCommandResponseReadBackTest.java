@@ -27,7 +27,7 @@ class VoiceCommandResponseReadBackTest {
                 List.of(),
                 "confirm-1",
                 new FromAccount(1L, "생활비 통장", "국민은행"),
-                new Recipient(9L, "농협은행 5749", "011"),
+                new Recipient(9L, "김주혁", "주혁", "011"),
                 10_000L,
                 null, null, null, null, null, null, null,
                 List.of(),
@@ -49,7 +49,7 @@ class VoiceCommandResponseReadBackTest {
     void 등록된_이름으로_보낼_때는_이름을_읽는다() {
         final String message = confirmation(null).toVoiceMessage();
 
-        assertThat(message).contains("농협은행 5749 님에게");
+        assertThat(message).isEqualTo("생활비 통장에서 주혁 님에게 1만원을 보낼까요?");
         assertThat(message).doesNotContain("계좌 ");
     }
 }

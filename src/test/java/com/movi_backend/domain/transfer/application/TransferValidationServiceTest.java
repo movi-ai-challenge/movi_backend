@@ -17,6 +17,7 @@ import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -215,6 +216,52 @@ class TransferValidationServiceTest {
                 .willReturn(Optional.empty());
 
         // when & then
+        assertThatThrownBy(() -> transferValidationService.validate(USER_ID, command))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.RECIPIENT_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("STT가 주혁을 주역으로 들으면 유일한 등록 별칭 주혁으로 보정한다")
+    void 비슷하게_인식된_이름을_유일한_등록_별칭으로_보정한다() {
+        final TransferCommandRequest command = TransferCommandRequest.of(
+                30_000L, "주역", null,
+                TRUSTED_CONFIDENCE, TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE, TRUSTED_CONFIDENCE
+        );
+        given(transferProperties.minimumAmount()).willReturn(1L);
+        given(transferProperties.perTransferLimit()).willReturn(1_000_000L);
+        given(transferRecipientRepository.findByUserIdAndNickname(USER_ID, "주역"))
+                .willReturn(Optional.empty());
+        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+                .willReturn(List.of(transferRecipient));
+        given(transferRecipient.getNickname()).willReturn("주혁");
+
+        final TransferValidationResult result = transferValidationService.validate(USER_ID, command);
+
+        assertThat(result).isInstanceOfSatisfying(ValidatedTransferCommand.class, validated ->
+                assertThat(validated.recipient()).isSameAs(transferRecipient));
+    }
+
+    @Test
+    @DisplayName("비슷한 등록 별칭이 둘이면 오송금을 막기 위해 임의로 고르지 않는다")
+    void 비슷한_등록_별칭이_둘이면_보정하지_않는다() {
+        final TransferRecipient otherRecipient = org.mockito.Mockito.mock(TransferRecipient.class);
+        final TransferCommandRequest command = TransferCommandRequest.of(
+                30_000L, "주역", null,
+                TRUSTED_CONFIDENCE, TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE, TRUSTED_CONFIDENCE
+        );
+        given(transferProperties.minimumAmount()).willReturn(1L);
+        given(transferProperties.perTransferLimit()).willReturn(1_000_000L);
+        given(transferRecipientRepository.findByUserIdAndNickname(USER_ID, "주역"))
+                .willReturn(Optional.empty());
+        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+                .willReturn(List.of(transferRecipient, otherRecipient));
+        given(transferRecipient.getNickname()).willReturn("주혁");
+        given(otherRecipient.getNickname()).willReturn("주억");
+
         assertThatThrownBy(() -> transferValidationService.validate(USER_ID, command))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")

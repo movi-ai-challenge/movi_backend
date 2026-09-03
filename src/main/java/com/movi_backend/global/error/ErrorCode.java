@@ -120,6 +120,18 @@ public enum ErrorCode {
             "그 거래를 찾지 못했어요. 다시 말씀해 주세요."),
     DUPLICATE_TRANSFER(HttpStatus.CONFLICT, "TRANSFER_4090", "이미 처리 중인 이체 요청입니다.",
             "방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요."),
+    RECIPIENT_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "TRANSFER_4043",
+            "등록된 계좌에서 찾을 수 없는 계좌번호입니다.",
+            "그 계좌번호를 찾지 못했어요. 계좌번호를 다시 확인해 주세요."),
+    RECIPIENT_ACCOUNT_AMBIGUOUS(HttpStatus.BAD_REQUEST, "TRANSFER_4008",
+            "계좌번호가 여러 계좌와 일치합니다.",
+            "계좌번호가 여러 곳과 맞아요. 앞자리까지 모두 알려 주세요."),
+    SELF_RECIPIENT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "TRANSFER_4009",
+            "본인 계좌는 상대방으로 등록할 수 없습니다.",
+            "본인 계좌예요. 다른 분의 계좌번호를 알려 주세요."),
+    RECIPIENT_NICKNAME_DUPLICATED(HttpStatus.CONFLICT, "TRANSFER_4091",
+            "이미 등록된 이름입니다.",
+            "그 이름은 이미 등록돼 있어요. 다른 이름으로 저장해 주세요."),
 
     // 음성 인식·재질문
     AMOUNT_MISSING(HttpStatus.BAD_REQUEST, "VOICE_4001", "이체 금액이 누락되었습니다.",

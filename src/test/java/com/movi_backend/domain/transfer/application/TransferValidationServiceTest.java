@@ -214,12 +214,18 @@ class TransferValidationServiceTest {
         given(transferProperties.perTransferLimit()).willReturn(1_000_000L);
         given(transferRecipientRepository.findByUserIdAndNickname(USER_ID, "모르는 사람"))
                 .willReturn(Optional.empty());
+        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+                .willReturn(List.of());
 
-        // when & then
-        assertThatThrownBy(() -> transferValidationService.validate(USER_ID, command))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.RECIPIENT_NOT_FOUND);
+        // when
+        final TransferValidationResult result = transferValidationService.validate(USER_ID, command);
+
+        // then — 예외로 끊으면 "저장된 분이 없어요"에서 대화가 끝난다. 계좌번호를 말하면
+        //        보낼 수 있다는 것을 알려 줘야 사용자가 다음 말을 할 수 있다.
+        assertThat(result).isInstanceOf(TransferClarification.class);
+        assertThat(((TransferClarification) result).voiceMessage())
+                .contains("모르는 사람")
+                .contains("계좌번호");
     }
 
     @Test
@@ -262,10 +268,14 @@ class TransferValidationServiceTest {
         given(transferRecipient.getNickname()).willReturn("주혁");
         given(otherRecipient.getNickname()).willReturn("주억");
 
-        assertThatThrownBy(() -> transferValidationService.validate(USER_ID, command))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.RECIPIENT_NOT_FOUND);
+        final TransferValidationResult result = transferValidationService.validate(USER_ID, command);
+
+        // 임의로 고르지 않는 것은 그대로다. 다만 등록은 돼 있으므로 "저장된 분이 없어요"가
+        // 아니라, 계좌번호로 누구인지 가려 달라고 되묻는다.
+        assertThat(result).isInstanceOf(TransferClarification.class);
+        assertThat(((TransferClarification) result).voiceMessage())
+                .contains("여러 개")
+                .contains("계좌번호");
     }
 
     @Test

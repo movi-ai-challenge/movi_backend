@@ -45,7 +45,19 @@ public record VoiceCommandResponse(
          * 아니라 <b>전체</b>를 읽어 준다. TTS 가 "삼십오억..."으로 읽지 않도록 이미
          * 한 자리씩 끊어 둔 값이 온다.
          */
-        String spokenAccountDigits
+        String spokenAccountDigits,
+
+        /**
+         * 되물을 문장. 무엇이 빠졌는지에 따라 달라진다.
+         *
+         * <p>슬롯({@code missingSlots})만으로는 문장을 정할 수 없다. 은행을 못 들은 것과
+         * 계좌번호를 못 들은 것은 둘 다 {@code RECIPIENT} 이지만 사용자가 다음에 말해야 할
+         * 것이 다르다. 화면을 보지 않는 사용자에게 재질문 문구는 유일한 안내라, 검증이
+         * 판단한 문장을 그대로 들려준다.
+         *
+         * <p>{@code null} 이면 슬롯에서 기본 문장을 고른다.
+         */
+        String clarifyingQuestion
 ) {
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
@@ -79,6 +91,16 @@ public record VoiceCommandResponse(
             final List<TransferSlot> missingSlots,
             final String transcript
     ) {
+        return clarifying(session, missingSlots, transcript, null);
+    }
+
+    /** 무엇이 빠졌는지에 맞춘 문장을 함께 실어 보낸다. */
+    public static VoiceCommandResponse clarifying(
+            final VoiceSession session,
+            final List<TransferSlot> missingSlots,
+            final String transcript,
+            final String clarifyingQuestion
+    ) {
         return new VoiceCommandResponse(
                 session.getId(),
                 session.getStatus(),
@@ -97,7 +119,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 List.of(),
-                null
+                null,
+                clarifyingQuestion
         );
     }
 
@@ -145,7 +168,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 List.of(),
-                spokenAccountDigits
+                spokenAccountDigits,
+                null
         );
     }
 
@@ -171,6 +195,7 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 List.of(),
+                null,
                 null
         );
     }
@@ -199,6 +224,7 @@ public record VoiceCommandResponse(
                 history,
                 null,
                 List.of(),
+                null,
                 null
         );
     }
@@ -229,6 +255,7 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 result.riskReasons(),
+                null,
                 null
         );
     }
@@ -257,6 +284,7 @@ public record VoiceCommandResponse(
                 null,
                 balance,
                 List.of(),
+                null,
                 null
         );
     }
@@ -298,6 +326,14 @@ public record VoiceCommandResponse(
             return ErrorCode.TRANSFER_EXECUTION_FAILED.getVoiceMessage();
         }
         if (this.state == VoiceSessionStatus.CLARIFYING) {
+            /*
+             * 검증이 정한 문장이 있으면 그것을 쓴다. 슬롯만 보면 "은행을 못 들었다"와
+             * "계좌번호를 못 들었다"가 같은 RECIPIENT 로 뭉뚱그려져, 사용자가 다음에 무엇을
+             * 말해야 하는지 알 수 없다.
+             */
+            if (this.clarifyingQuestion != null && !this.clarifyingQuestion.isBlank()) {
+                return this.clarifyingQuestion;
+            }
             if (this.missingSlots.contains(TransferSlot.RECIPIENT)) {
                 return RECIPIENT_QUESTION;
             }

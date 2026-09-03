@@ -35,8 +35,8 @@ import org.hibernate.type.SqlTypes;
  * <p>만료 정책 (docs/integration-spec.md 6.2절)
  * <ul>
  *   <li>일반 세션: 마지막 활동 후 5분</li>
- *   <li>누락 슬롯 재질문: 마지막 재질문 후 60초</li>
- *   <li>확인 대기: 확인 문장 생성 후 60초</li>
+ *   <li>누락 슬롯 재질문: 마지막 재질문 후 180초</li>
+ *   <li>확인 대기: 확인 문장 생성 후 180초</li>
  *   <li>같은 슬롯 재질문: 최대 3회</li>
  * </ul>
  *
@@ -52,8 +52,18 @@ public class VoiceSession {
     /** 마지막 활동 후 세션 유효시간(분) */
     public static final int SESSION_TIMEOUT_MINUTES = 5;
 
-    /** 재질문·확인 대기 유효시간(초) */
-    public static final int PENDING_TIMEOUT_SECONDS = 60;
+    /**
+     * 재질문·확인 대기 유효시간(초).
+     *
+     * <p>60초였다. 화면을 보지 않는 사용자에게는 그 안에 끝나지 않는다 -- 확인 문장
+     * 낭독 5초, 마이크를 더듬어 찾는 데 10초, 녹음이 저절로 멈추기를 기다리는 데
+     * 최대 15초, 업로드와 STT·GPT 분석에 15~20초다. 한 번만 되물어도 넘긴다.
+     *
+     * <p>슬롯이 오래 살아 있는 것은 그 자체로 위험하지만, 확인 대기는 사용자가 이미
+     * 확인 문장을 들은 상태이고 이체 실행에는 confirmationId 대조가 따로 걸린다.
+     * 만료로 매번 처음부터 다시 말하게 하는 쪽이 실제로는 더 나쁘다.
+     */
+    public static final int PENDING_TIMEOUT_SECONDS = 180;
 
     /** 같은 슬롯 재질문 허용 횟수 */
     public static final int MAX_RETRY_COUNT = 3;
@@ -132,7 +142,7 @@ public class VoiceSession {
     }
 
     /**
-     * 필수 슬롯이 비어 재질문한다. 채워진 슬롯을 보관하고 유효시간을 60초로 잡는다.
+     * 필수 슬롯이 비어 재질문한다. 채워진 슬롯을 보관하고 유효시간을 180초로 잡는다.
      * 같은 슬롯을 다시 물어보는 것이므로 재질문 횟수를 올린다.
      */
     public void clarify(

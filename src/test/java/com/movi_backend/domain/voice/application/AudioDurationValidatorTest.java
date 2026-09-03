@@ -79,6 +79,23 @@ class AudioDurationValidatorTest {
     }
 
     @Test
+    @DisplayName("iPhone 이 만드는 조각난 MP4 는 재생 시간이 0이어도 허용한다")
+    void 조각난_MP4_는_허용한다() {
+        final MockMultipartFile audio = audio("voice.mp4", "audio/mp4", fragmentedMp4());
+
+        assertThatCode(() -> validator.validate(audio, "audio/mp4"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("조각나지 않았는데 재생 시간이 0인 MP4 파일은 거부한다")
+    void 재생_시간이_0인_일반_MP4_는_거부한다() {
+        final MockMultipartFile audio = audio("voice.mp4", "audio/mp4", mp4(0.0, 0));
+
+        assertError(audio, "audio/mp4", ErrorCode.AUDIO_DURATION_INVALID);
+    }
+
+    @Test
     @DisplayName("재생 시간 메타데이터가 없는 손상 MP4 파일은 거부한다")
     void 재생_시간이_없는_MP4_파일은_거부한다() {
         final byte[] fileType = mp4Box("ftyp", concat(ascii("M4A "), new byte[4]));
@@ -189,6 +206,21 @@ class AudioDurationValidatorTest {
         final byte[] info = element(0x1549A966L, concat(timecodeScale, duration));
         final byte[] segment = element(0x18538067L, info);
         return concat(header, segment);
+    }
+
+    /**
+     * iPhone Safari 가 만드는 조각난 MP4 를 흉내낸다.
+     *
+     * <p>{@code mvex} 가 있고 {@code mvhd} 재생 시간이 0인 형태다.
+     */
+    private byte[] fragmentedMp4() {
+        final byte[] fileType = mp4Box(
+                "ftyp",
+                concat(ascii("M4A "), new byte[4], ascii("M4A "), ascii("isom"))
+        );
+        final byte[] movieHeader = mp4Box("mvhd", mp4MovieHeader(0, 1_000, 0L));
+        final byte[] movieExtends = mp4Box("mvex", new byte[0]);
+        return concat(fileType, mp4Box("moov", concat(movieHeader, movieExtends)));
     }
 
     private byte[] mp4(final double durationSeconds, final int version) {

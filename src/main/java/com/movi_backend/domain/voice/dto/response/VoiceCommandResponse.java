@@ -50,6 +50,20 @@ public record VoiceCommandResponse(
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
     private static final String AMOUNT_QUESTION = "얼마를 보내시겠어요?";
+
+    /**
+     * 확인 질문 끝에 붙이는 답변 안내.
+     *
+     * <p>"네" 한 음절은 STT 가 잡지 못한다. 운영 기록을 보면 확인이 성공한 발화는 전부
+     * "네 맞아요"·"네 보내 주세요" 처럼 두 어절 이상이었고, "네" 만 말한 시도는 한 번도
+     * 통과하지 못했다(EMPTY_TRANSCRIPT 로 떨어졌다). 0.3초짜리 오디오로는 인식할 것이
+     * 없기 때문이다.
+     *
+     * <p>화면을 보지 않는 사용자는 들은 대로 답한다. 그러니 들려주는 문장이 인식되는
+     * 말이어야 한다 -- 무엇을 말해야 하는지 알려 주는 것이 인식률을 올리는 가장 확실한
+     * 방법이다.
+     */
+    private static final String ANSWER_GUIDE = "맞으면 \"네 맞아요\", 아니면 \"아니요 취소할게요\"라고 말씀해 주세요.";
     private static final String CANCELED_MESSAGE = "송금을 취소했어요.";
 
     public VoiceCommandResponse {
@@ -297,17 +311,19 @@ public record VoiceCommandResponse(
              * 번호로 나가므로, 뒤 네 자리만 읽으면 가운데를 잘못 들은 것을 잡지 못한다.
              * 화면을 볼 수 없는 사용자에게는 이 복창이 유일한 확인 수단이다.
              */
-            return "%s에서 %s 계좌 %s으로 %s을 보낼까요?".formatted(
+            return "%s에서 %s 계좌 %s으로 %s을 보낼까요? %s".formatted(
                     accountName,
                     this.recipient.voiceName(),
                     this.spokenAccountDigits,
-                    formattedAmount
+                    formattedAmount,
+                    ANSWER_GUIDE
             );
         }
-        return "%s에서 %s 님에게 %s을 보낼까요?".formatted(
+        return "%s에서 %s 님에게 %s을 보낼까요? %s".formatted(
                 accountName,
                 this.recipient.voiceName(),
-                formattedAmount
+                formattedAmount,
+                ANSWER_GUIDE
         );
     }
 

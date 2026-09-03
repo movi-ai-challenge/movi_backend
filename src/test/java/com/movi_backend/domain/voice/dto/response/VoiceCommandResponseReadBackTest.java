@@ -18,6 +18,10 @@ import org.junit.jupiter.api.Test;
  */
 class VoiceCommandResponseReadBackTest {
 
+    /** 확인 질문 끝에 붙는 답변 안내. 본문과 같은 값을 쓴다. */
+    private static final String ANSWER_GUIDE =
+            " 맞으면 \"네 맞아요\", 아니면 \"아니요 취소할게요\"라고 말씀해 주세요.";
+
     private VoiceCommandResponse confirmation(final String spokenAccountDigits) {
         return new VoiceCommandResponse(
                 7L,
@@ -49,7 +53,7 @@ class VoiceCommandResponseReadBackTest {
     void 등록된_이름으로_보낼_때는_이름을_읽는다() {
         final String message = confirmation(null).toVoiceMessage();
 
-        assertThat(message).isEqualTo("생활비 통장에서 주혁 님에게 1만원을 보낼까요?");
+        assertThat(message).isEqualTo("생활비 통장에서 주혁 님에게 1만원을 보낼까요?" + ANSWER_GUIDE);
         assertThat(message).doesNotContain("계좌 ");
     }
 }

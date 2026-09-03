@@ -16,6 +16,11 @@ import java.util.List;
  * <p>{@code riskLevel}은 openapi 문서에는 nullable로 돼 있지만 실제로는 항상 채워져 온다
  * (2026-09-02 실제 호출로 확인, LOW/MEDIUM/HIGH). 그래도 비어 있거나 모르는 값이 오면
  * 어댑터가 평가 실패로 처리하고 이체를 진행하지 않는다.
+ *
+ * <p>{@code policyVersion}은 이 판정을 낸 AI 서비스 버전이다. 예전에는 AI 가 내려주지 않아
+ * 어댑터가 코드에 박아 둔 문자열을 대신 기록했는데, AI 가 버전을 올려도 우리는 모르므로
+ * {@code fds_assessments} 에 남는 값이 실제와 어긋났다. 지금은 AI 가 실어 보내며, 옛 버전
+ * 서버와 섞여 돌 수 있으므로 비어 있으면 어댑터가 기존 상수로 떨어진다.
  */
 public record FraudDetectionResponse(
         @JsonProperty("transaction_id") String transactionId,
@@ -26,6 +31,7 @@ public record FraudDetectionResponse(
         @JsonProperty("rule_score") BigDecimal ruleScore,
         @JsonProperty("final_risk_score") BigDecimal finalRiskScore,
         @JsonProperty("risk_level") String riskLevel,
-        @JsonProperty("triggered_rules") List<String> triggeredRules
+        @JsonProperty("triggered_rules") List<String> triggeredRules,
+        @JsonProperty("policy_version") String policyVersion
 ) {
 }

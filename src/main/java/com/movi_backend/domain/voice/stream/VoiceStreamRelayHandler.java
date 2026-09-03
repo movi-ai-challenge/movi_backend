@@ -45,6 +45,17 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
     /** 브라우저 세션 → AI 세션. 한쪽을 닫을 때 반대쪽을 찾아야 한다. */
     private final Map<String, WebSocketSession> upstreamByDownstream = new ConcurrentHashMap<>();
 
+    /**
+     * 브라우저 세션 → 분석 처리 진행 상태.
+     *
+     * <p>AI 는 분석 결과를 보낸 직후 인식 스트림이 끝나 곧바로 연결을 닫는다. 그런데 그
+     * 결과를 실제 금융 흐름에 태우는 데는 DB·FDS·오픈뱅킹을 거쳐 수 초가 걸린다. AI 가
+     * 닫았다고 브라우저까지 바로 닫으면, 답을 다 만들어 놓고 닫힌 소켓에 버리게 된다.
+     * 사용자에게는 "잠시 문제가 생겼어요"만 남고 확인 질문은 영영 도착하지 않는다.
+     */
+    private final Map<String, RelayCloseCoordinator> coordinatorByDownstream =
+            new ConcurrentHashMap<>();
+
     @Override
     public void afterConnectionEstablished(final WebSocketSession downstream) throws Exception {
         final AuthUser authUser = (AuthUser) downstream.getAttributes()
@@ -66,6 +77,7 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                 .execute(new UpstreamHandler(downstream), upstreamUrl)
                 .get();
         upstreamByDownstream.put(downstream.getId(), upstream);
+        coordinatorByDownstream.put(downstream.getId(), new RelayCloseCoordinator());
         log.info("음성 스트림 중계를 시작합니다: userId={}", authUser.userId());
     }
 
@@ -103,6 +115,7 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
             final CloseStatus status
     ) throws Exception {
         final WebSocketSession upstream = upstreamByDownstream.remove(downstream.getId());
+        coordinatorByDownstream.remove(downstream.getId());
         closeQuietly(upstream);
     }
 
@@ -244,6 +257,8 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
 
     private void sendJson(final WebSocketSession session, final Object body) {
         if (!session.isOpen()) {
+            // 조용히 버리면 "답은 만들었는데 화면에는 오류" 를 추적할 단서가 없다.
+            log.warn("브라우저 연결이 이미 닫혀 결과를 전달하지 못했습니다.");
             return;
         }
         try {
@@ -268,7 +283,26 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                 return;
             }
             downstream.sendMessage(message);
-            handleAnalysis(downstream, message.getPayload());
+
+            final RelayCloseCoordinator coordinator =
+                    coordinatorByDownstream.get(downstream.getId());
+            if (coordinator == null) {
+                handleAnalysis(downstream, message.getPayload());
+                return;
+            }
+
+            /*
+             * 분석 처리 동안 AI 가 먼저 끊어도 브라우저를 닫지 않는다. 닫으면 결과를
+             * 보낼 곳이 사라져, 성공한 이체 확인 질문이 사용자에게 도착하지 못한다.
+             */
+            coordinator.beginAnalysis();
+            try {
+                handleAnalysis(downstream, message.getPayload());
+            } finally {
+                if (coordinator.finishAnalysis()) {
+                    closeQuietly(downstream);
+                }
+            }
         }
 
         @Override
@@ -276,7 +310,12 @@ public class VoiceStreamRelayHandler extends AbstractWebSocketHandler {
                 final WebSocketSession upstream,
                 final CloseStatus status
         ) throws Exception {
-            closeQuietly(downstream);
+            final RelayCloseCoordinator coordinator =
+                    coordinatorByDownstream.get(downstream.getId());
+            // 아직 분석 중이면 닫는 일은 그쪽에 맡긴다. 결과를 보낸 뒤에 닫혀야 한다.
+            if (coordinator == null || coordinator.upstreamClosed()) {
+                closeQuietly(downstream);
+            }
         }
     }
 }

@@ -144,6 +144,36 @@ class HttpFdsAssessmentClientTest {
     }
 
     @Test
+    @DisplayName("현재 거래와 이력에 서로 다른 transaction_id 를 붙인다 - 겹치면 AI 가 요청 전체를 거절한다")
+    void 거래_식별자가_겹치지_않게_보낸다() {
+        // given
+        final RestClient.Builder builder = RestClient.builder().baseUrl("http://localhost:8000");
+        final MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        final HttpFdsAssessmentClient client = new HttpFdsAssessmentClient(builder.build(), CRYPTO);
+        final FdsAssessmentRequest request = FdsClientFixture.requestWithHistory(
+                CRYPTO.encrypt("110123456789"),
+                FdsClientFixture.historyOf(2, CRYPTO.encrypt("110999888777"))
+        );
+
+        server.expect(once(), requestTo("http://localhost:8000/api/v1/fraud/detect"))
+                // 현재 거래는 transfers, 이력은 transactions 에서 온다. 숫자만 보내면 서로 다른
+                // 테이블의 같은 값이 겹칠 수 있어 접두어로 가른다.
+                .andExpect(content().string(
+                        Matchers.containsString("\"transaction_id\":\"transfer-101\"")))
+                .andExpect(content().string(
+                        Matchers.containsString("\"transaction_id\":\"tx-1\"")))
+                .andExpect(content().string(
+                        Matchers.containsString("\"transaction_id\":\"tx-2\"")))
+                .andRespond(withSuccess(RESPONSE_JSON, MediaType.APPLICATION_JSON));
+
+        // when
+        client.assess(request);
+
+        // then
+        server.verify();
+    }
+
+    @Test
     @DisplayName("이력의 medium 은 현재 거래와 같게 보낸다 - 없는 정보로 UNUSUAL_MEDIUM 을 만들지 않는다")
     void 이력의_medium_은_현재_거래와_같게_보낸다() {
         // given

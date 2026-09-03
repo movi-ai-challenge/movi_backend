@@ -332,6 +332,7 @@ public class TransferExecutionService {
             return Optional.empty();
         }
         return Optional.of(FdsHistoryEntry.of(
+                transaction.getId(),
                 BigDecimal.valueOf(transaction.getAmount()),
                 transaction.getTranDatetime()
                         .atZone(BUSINESS_ZONE)

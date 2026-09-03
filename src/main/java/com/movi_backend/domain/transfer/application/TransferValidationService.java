@@ -208,6 +208,10 @@ public class TransferValidationService {
     private TransferRecipient findRecipient(final Long userId, final String recipientNickname) {
         final String normalizedNickname = recipientNickname.trim();
         return transferRecipientRepository.findByUserIdAndNickname(userId, normalizedNickname)
+                .or(() -> RecipientNicknameMatcher.findUniqueClosest(
+                        normalizedNickname,
+                        transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)
+                ))
                 .orElseThrow(() -> new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND));
     }
 

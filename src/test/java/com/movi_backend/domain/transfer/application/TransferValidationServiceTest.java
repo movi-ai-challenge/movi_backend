@@ -10,7 +10,9 @@ import com.movi_backend.domain.transfer.application.model.ValidatedTransferComma
 import com.movi_backend.domain.transfer.config.TransferProperties;
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
@@ -37,6 +39,15 @@ class TransferValidationServiceTest {
 
     @Mock
     private TransferRecipient transferRecipient;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private SensitiveDataCrypto sensitiveDataCrypto;
+
+    @org.mockito.Spy
+    private BankDirectory bankDirectory = new BankDirectory();
 
     @InjectMocks
     private TransferValidationService transferValidationService;
@@ -211,23 +222,97 @@ class TransferValidationServiceTest {
     }
 
     @Test
-    @DisplayName("수취인 대신 계좌번호를 말하면 직접 계좌번호 송금을 거부한다")
-    void 수취인_대신_계좌번호를_말하면_직접_계좌번호_송금을_거부한다() {
-        // given
+    @DisplayName("계좌번호를 말하면 등록하지 않은 상대에게도 보낼 수 있다")
+    void 계좌번호를_말하면_등록하지_않은_상대에게도_보낼_수_있다() {
+        // given - 이름은 없고 계좌번호만 있다.
         final TransferCommandRequest command = TransferCommandRequest.of(
                 50_000L,
-                "110-123-123456",
+                null,
+                "3522315749",
+                "011",
                 null,
                 TRUSTED_CONFIDENCE,
                 TRUSTED_CONFIDENCE,
                 TRUSTED_CONFIDENCE,
-                TRUSTED_CONFIDENCE
+                null
+        );
+        given(transferProperties.minimumAmount()).willReturn(1L);
+        given(transferProperties.perTransferLimit()).willReturn(1_000_000L);
+        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+                .willReturn(java.util.List.of());
+        given(userRepository.findById(USER_ID))
+                .willReturn(Optional.of(org.mockito.Mockito.mock(
+                        com.movi_backend.domain.auth.entity.User.class)));
+        given(sensitiveDataCrypto.encrypt("3522315749")).willReturn("encrypted");
+        given(transferRecipientRepository.save(org.mockito.ArgumentMatchers.any()))
+                .willReturn(transferRecipient);
+
+        // when
+        final TransferValidationResult result =
+                transferValidationService.validate(USER_ID, command);
+
+        // then - 이름이 없어도 재질문하지 않는다.
+        assertThat(result).isInstanceOf(ValidatedTransferCommand.class);
+        assertThat(((ValidatedTransferCommand) result).recipient()).isSameAs(transferRecipient);
+    }
+
+    @Test
+    @DisplayName("같은 계좌로 다시 보내면 이미 만들어 둔 수취인을 쓴다 - 재이체로 평가되게 한다")
+    void 같은_계좌로_다시_보내면_기존_수취인을_쓴다() {
+        // given
+        final TransferCommandRequest command = TransferCommandRequest.of(
+                50_000L,
+                null,
+                "3522315749",
+                "011",
+                null,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE,
+                null
+        );
+        given(transferProperties.minimumAmount()).willReturn(1L);
+        given(transferProperties.perTransferLimit()).willReturn(1_000_000L);
+        given(transferRecipient.getBankCode()).willReturn("011");
+        given(transferRecipient.getAccountNum()).willReturn("encrypted");
+        given(sensitiveDataCrypto.decrypt("encrypted")).willReturn("3522315749");
+        given(transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(USER_ID))
+                .willReturn(java.util.List.of(transferRecipient));
+
+        // when
+        final TransferValidationResult result =
+                transferValidationService.validate(USER_ID, command);
+
+        // then - 새로 만들지 않는다.
+        assertThat(((ValidatedTransferCommand) result).recipient()).isSameAs(transferRecipient);
+        org.mockito.BDDMockito.then(transferRecipientRepository)
+                .should(org.mockito.Mockito.never())
+                .save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("계좌번호도 이름도 없으면 누구에게 보낼지 되묻는다")
+    void 계좌번호도_이름도_없으면_되묻는다() {
+        // given
+        final TransferCommandRequest command = TransferCommandRequest.of(
+                50_000L,
+                null,
+                null,
+                null,
+                null,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE,
+                TRUSTED_CONFIDENCE,
+                null
         );
 
-        // when & then
-        assertThatThrownBy(() -> transferValidationService.validate(USER_ID, command))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.RECIPIENT_NOT_FOUND);
+        // when
+        final TransferValidationResult result =
+                transferValidationService.validate(USER_ID, command);
+
+        // then
+        assertThat(result).isInstanceOf(TransferClarification.class);
+        assertThat(((TransferClarification) result).missingSlots())
+                .contains(TransferSlot.RECIPIENT);
     }
 }

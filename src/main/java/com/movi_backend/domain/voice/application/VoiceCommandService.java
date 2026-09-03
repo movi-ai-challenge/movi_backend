@@ -6,6 +6,8 @@ import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.transfer.application.TransactionQueryService;
 import com.movi_backend.domain.transfer.application.TransferTargetResolver;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
+import com.movi_backend.domain.transfer.application.BankDirectory;
+import com.movi_backend.domain.transfer.application.SpokenAccountNumberParser;
 import com.movi_backend.domain.transfer.application.TransferExecutionService;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
 import com.movi_backend.domain.transfer.application.model.TransferClarification;
@@ -82,6 +84,8 @@ public class VoiceCommandService {
     private final TransactionQueryService transactionQueryService;
     private final BalanceInquiryService balanceInquiryService;
     private final TransferTargetResolver transferTargetResolver;
+    private final SpokenAccountNumberParser spokenAccountNumberParser;
+    private final BankDirectory bankDirectory;
     private final ObjectMapper objectMapper;
     private final AudioDurationValidator audioDurationValidator;
 
@@ -548,6 +552,8 @@ public class VoiceCommandService {
             return TransferCommandRequest.of(
                     entities.amount(),
                     entities.recipient(),
+                    spokenAccountNumberOf(analysis),
+                    spokenBankCodeOf(analysis),
                     entities.sourceAccountAlias(),
                     analysis.sttConfidence(),
                     analysis.intentConfidence(),
@@ -576,6 +582,8 @@ public class VoiceCommandService {
         return TransferCommandRequest.of(
                 amount,
                 recipient,
+                chooseValue(spokenAccountNumberOf(analysis), previousSlots.accountNumber()),
+                chooseValue(spokenBankCodeOf(analysis), previousSlots.bankCode()),
                 sourceAccountAlias,
                 analysis.sttConfidence(),
                 analysis.intentConfidence(),
@@ -586,6 +594,21 @@ public class VoiceCommandService {
                         previousSlots.recipientNickname()
                 )
         );
+    }
+
+    /**
+     * 발화에서 계좌번호를 뽑는다.
+     *
+     * <p>AI 계약에는 계좌번호 엔티티가 없어 transcript 에서 직접 읽는다. 자릿수를 지어내지
+     * 않도록 파서가 엄격히 거른다 - 못 읽으면 비운 채로 두고 백엔드가 되묻는다.
+     */
+    private String spokenAccountNumberOf(final VoiceAnalysisResponse analysis) {
+        return spokenAccountNumberParser.parse(analysis.transcript()).orElse(null);
+    }
+
+    private String spokenBankCodeOf(final VoiceAnalysisResponse analysis) {
+        final String bankName = analysis.entities().bankName();
+        return bankDirectory.findCode(bankName).orElse(null);
     }
 
     private <T> T chooseValue(final T currentValue, final T previousValue) {
@@ -683,9 +706,21 @@ public class VoiceCommandService {
         if (missingSlots.contains(TransferSlot.RECIPIENT)) {
             recipient = null;
         }
+        /*
+         * 계좌번호는 되물음 대상이 아니면 그대로 지킨다. 금액만 다시 물었는데 계좌번호를
+         * 잃으면 사용자가 열 자리 숫자를 처음부터 다시 말해야 한다.
+         */
+        String accountNumber = request.accountNumber();
+        String bankCode = request.bankCode();
+        if (missingSlots.contains(TransferSlot.RECIPIENT)) {
+            accountNumber = null;
+            bankCode = null;
+        }
         return PendingTransferSlots.clarifying(
                 amount,
                 recipient,
+                accountNumber,
+                bankCode,
                 request.sourceAccountAlias()
         );
     }

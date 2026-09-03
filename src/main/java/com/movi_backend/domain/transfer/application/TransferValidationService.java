@@ -10,7 +10,9 @@ import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
-import com.movi_backend.global.util.SensitiveTextMasker;
+import com.movi_backend.domain.auth.entity.User;
+import com.movi_backend.domain.auth.repository.UserRepository;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,14 +31,23 @@ public class TransferValidationService {
 
     private final TransferRecipientRepository transferRecipientRepository;
     private final TransferProperties transferProperties;
+    private final UserRepository userRepository;
+    private final SensitiveDataCrypto sensitiveDataCrypto;
+    private final BankDirectory bankDirectory;
 
-    @Transactional(readOnly = true)
+    /**
+     * 계좌번호로 받은 수취인을 이 자리에서 저장하므로 읽기 전용이 아니다.
+     *
+     * <p>이체 실행은 {@code TransferRecipient} 엔티티를 요구하고 FDS 의 수취인 피처(재이체
+     * 횟수·첫 거래 여부)도 거기 달려 있다. 저장하지 않고 임시 객체로 넘기면 그 피처가 매번
+     * 비어 사용자가 늘 보내던 계좌인데도 신규로 평가된다.
+     */
+    @Transactional
     public TransferValidationResult validate(
             final Long userId,
             final TransferCommandRequest command
     ) {
         validateOverallConfidence(command);
-        validateDirectAccountNumber(command);
 
         final List<TransferSlot> missingSlots = findMissingSlots(command);
         if (!missingSlots.isEmpty()) {
@@ -44,21 +55,12 @@ public class TransferValidationService {
         }
 
         validateAmountRange(command.amount());
-        final TransferRecipient recipient = findRecipient(userId, command.recipient());
+        final TransferRecipient recipient = resolveRecipient(userId, command);
         return ValidatedTransferCommand.of(
                 command.amount(),
                 recipient,
                 normalizeOptional(command.sourceAccountAlias())
         );
-    }
-
-    private void validateDirectAccountNumber(final TransferCommandRequest command) {
-        if (SensitiveTextMasker.containsSensitiveNumber(command.recipient())) {
-            throw new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND);
-        }
-        if (SensitiveTextMasker.containsSensitiveNumber(command.sourceAccountAlias())) {
-            throw new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND);
-        }
     }
 
     private void validateOverallConfidence(final TransferCommandRequest command) {
@@ -69,13 +71,93 @@ public class TransferValidationService {
 
     private List<TransferSlot> findMissingSlots(final TransferCommandRequest command) {
         final List<TransferSlot> missingSlots = new ArrayList<>();
-        if (isBlank(command.recipient()) || !isTrusted(command.recipientConfidence())) {
+        if (!hasRecipient(command)) {
             missingSlots.add(TransferSlot.RECIPIENT);
         }
         if (command.amount() == null || !isTrusted(command.amountConfidence())) {
             missingSlots.add(TransferSlot.AMOUNT);
         }
         return missingSlots;
+    }
+
+    /**
+     * 수취인을 정할 수 있는지.
+     *
+     * <p>계좌번호를 말해 줬으면 이름이 없어도 보낼 수 있다. 계좌번호는 STT 가 그대로 받아
+     * 적은 숫자라 이름처럼 신뢰도를 따로 매기지 않고, 대신 확인 단계에서 자릿수를 하나씩
+     * 읽어 사용자에게 되묻는다.
+     */
+    private boolean hasRecipient(final TransferCommandRequest command) {
+        if (command.hasSpokenAccount()) {
+            return true;
+        }
+        return !isBlank(command.recipient()) && isTrusted(command.recipientConfidence());
+    }
+
+    private TransferRecipient resolveRecipient(
+            final Long userId,
+            final TransferCommandRequest command
+    ) {
+        if (!command.hasSpokenAccount()) {
+            return findRecipient(userId, command.recipient());
+        }
+        return findOrCreateByAccount(userId, command);
+    }
+
+    /**
+     * 계좌번호로 수취인을 찾고, 없으면 만들어 둔다.
+     *
+     * <p>사용자는 등록 절차를 겪지 않는다 — 계좌번호를 말하면 그걸로 끝이다. 다만 내부적으로는
+     * 남겨야 이체 실행과 FDS 가 같은 수취인으로 인식하고, 다음에 같은 계좌로 보낼 때 재이체로
+     * 평가된다.
+     *
+     * <p>암호문끼리는 비교할 수 없다. AES 가 무작위 IV 를 써서 같은 계좌번호도 암호문이 매번
+     * 다르다. 한 사람의 수취인은 많아야 수십 명이므로 복호화해 비교한다.
+     */
+    private TransferRecipient findOrCreateByAccount(
+            final Long userId,
+            final TransferCommandRequest command
+    ) {
+        final String accountNumber = command.accountNumber();
+        for (final TransferRecipient existing
+                : transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)) {
+            if (!command.bankCode().equals(existing.getBankCode())) {
+                continue;
+            }
+            if (accountNumber.equals(decryptOrNull(existing.getAccountNum()))) {
+                return existing;
+            }
+        }
+
+        final User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        return transferRecipientRepository.save(TransferRecipient.builder()
+                .user(user)
+                .nickname(generateNickname(command.bankCode(), accountNumber))
+                .bankCode(command.bankCode())
+                .accountNum(sensitiveDataCrypto.encrypt(accountNumber))
+                .holderName(generateNickname(command.bankCode(), accountNumber))
+                .build());
+    }
+
+    /**
+     * 이름을 모르는 수취인의 별칭.
+     *
+     * <p>예금주명을 받을 방법이 없다. 목록에서 사용자가 알아볼 수 있어야 하므로 은행과 뒤
+     * 네 자리로 만든다 — TTS 로 읽어도 구분된다.
+     */
+    private String generateNickname(final String bankCode, final String accountNumber) {
+        final String tail = accountNumber.substring(
+                Math.max(0, accountNumber.length() - 4));
+        return "%s %s".formatted(bankDirectory.displayNameOf(bankCode), tail);
+    }
+
+    private String decryptOrNull(final String encrypted) {
+        try {
+            return sensitiveDataCrypto.decrypt(encrypted);
+        } catch (final RuntimeException exception) {
+            return null;
+        }
     }
 
     private TransferClarification createClarification(final List<TransferSlot> missingSlots) {

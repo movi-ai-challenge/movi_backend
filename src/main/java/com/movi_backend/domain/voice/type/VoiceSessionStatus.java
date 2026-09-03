@@ -52,8 +52,16 @@ public enum VoiceSessionStatus {
     private static final Set<VoiceSessionStatus> FROM_CLARIFYING =
             Set.of(ACTIVE, CLARIFYING, AWAITING_CONFIRMATION, COMPLETED, CANCELED, EXPIRED);
 
+    /**
+     * 확인을 기다리는 중에도 {@code ACTIVE}로 되돌아갈 수 있다. <b>의도 전환</b>이다.
+     *
+     * <p>"보낼까요?"에 "네"가 아니라 새 명령이 오는 경우가 있다 -- 화면을 보지 않는
+     * 사용자는 안내를 못 들었으면 같은 말을 다시 할 수밖에 없다. 이때 오류로 막으면
+     * 반복할수록 계속 막힌다. 앞선 확인은 포기된 것으로 보고 슬롯을 폐기한 뒤 새 명령으로
+     * 받는다. 돈이 나가지는 않는다 -- 새 명령은 다시 확인 질문으로 이어질 뿐이다.
+     */
     private static final Set<VoiceSessionStatus> FROM_AWAITING_CONFIRMATION =
-            Set.of(PROCESSING, CLARIFYING, CANCELED, EXPIRED);
+            Set.of(ACTIVE, PROCESSING, CLARIFYING, CANCELED, EXPIRED);
 
     private static final Set<VoiceSessionStatus> FROM_PROCESSING =
             Set.of(COMPLETED, CANCELED, EXPIRED);

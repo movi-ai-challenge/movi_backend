@@ -1,5 +1,7 @@
 package com.movi_backend.domain.transfer.application;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
@@ -14,6 +16,10 @@ import org.springframework.stereotype.Component;
  * <p><b>자릿수를 지어내지 않는다.</b> "삼천오백"처럼 자릿수를 품은 수사는 계좌번호로
  * 읽지 않는다. 계좌번호는 자리마다 하나씩 읽는 것이 정상이고, 수사를 계좌번호로 풀면
  * 사용자가 말하지 않은 숫자가 생긴다 — 그대로 두면 모르는 계좌로 돈이 간다.
+ *
+ * <p>이 판단은 <b>숫자 덩어리마다</b> 한다. 문장 전체에 수사가 하나라도 있으면 읽지 않는
+ * 방식은 쓸 수 없다 — "만원"의 "만" 때문에 금액을 한국어로 말하는 거의 모든 발화에서
+ * 계좌번호를 잃는다.
  */
 @Component
 public class SpokenAccountNumberParser {
@@ -47,37 +53,68 @@ public class SpokenAccountNumberParser {
         if (transcript == null || transcript.isBlank()) {
             return Optional.empty();
         }
-        if (containsPlaceValue(transcript)) {
-            return Optional.empty();
-        }
 
-        final StringBuilder digits = new StringBuilder();
+        final List<String> candidates = new ArrayList<>();
+        final StringBuilder run = new StringBuilder();
+        boolean poisoned = false;
+
         for (final char character : transcript.toCharArray()) {
-            if (Character.isDigit(character)) {
-                digits.append(character);
+            if (isPlaceValue(character)) {
+                // 수사 안에 섞인 숫자다. 이 덩어리는 계좌번호로 읽지 않는다.
+                poisoned = true;
                 continue;
             }
-            final Character mapped = DIGIT_BY_SYLLABLE.get(character);
-            if (mapped != null) {
-                digits.append(mapped);
+            final Character digit = digitOf(character);
+            if (digit != null) {
+                run.append(digit);
+                continue;
             }
+            if (isSeparator(character)) {
+                // 하이픈·공백은 계좌번호 안에 흔히 섞인다. 덩어리를 끊지 않는다.
+                continue;
+            }
+            closeRun(run, poisoned, candidates);
+            poisoned = false;
         }
+        closeRun(run, poisoned, candidates);
 
-        final String accountNumber = digits.toString();
-        if (accountNumber.length() < MINIMUM_LENGTH
-                || accountNumber.length() > MAXIMUM_LENGTH) {
+        if (candidates.size() != 1) {
+            // 후보가 없거나 둘 이상이면 어느 것이 계좌번호인지 단정할 수 없다.
             return Optional.empty();
         }
-        return Optional.of(accountNumber);
+        return Optional.of(candidates.get(0));
     }
 
-    private boolean containsPlaceValue(final String transcript) {
-        for (final char character : PLACE_VALUE_SYLLABLES.toCharArray()) {
-            if (transcript.indexOf(character) >= 0) {
-                return true;
-            }
+    private void closeRun(
+            final StringBuilder run,
+            final boolean poisoned,
+            final List<String> candidates
+    ) {
+        final String digits = run.toString();
+        run.setLength(0);
+        if (poisoned) {
+            return;
         }
-        return false;
+        if (digits.length() < MINIMUM_LENGTH || digits.length() > MAXIMUM_LENGTH) {
+            return;
+        }
+        candidates.add(digits);
+    }
+
+    private Character digitOf(final char character) {
+        if (Character.isDigit(character)) {
+            return character;
+        }
+        return DIGIT_BY_SYLLABLE.get(character);
+    }
+
+    private boolean isSeparator(final char character) {
+        return character == '-' || character == ' ' || character == '.'
+                || character == '(' || character == ')';
+    }
+
+    private boolean isPlaceValue(final char character) {
+        return PLACE_VALUE_SYLLABLES.indexOf(character) >= 0;
     }
 
     /**

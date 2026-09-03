@@ -708,7 +708,12 @@ class TransferExecutionServiceTest {
                 transferRiskAlertPort,
                 transferProperties,
                 new ObjectMapper(),
-                sensitiveDataCrypto
+                sensitiveDataCrypto,
+                // 이 테스트는 받는 쪽 내역을 보지 않는다. 대역이 없어도 이체는 끝나야 한다.
+                new org.springframework.beans.factory.support.StaticListableBeanFactory()
+                        .getBeanProvider(
+                                com.movi_backend.domain.transfer.infrastructure
+                                        .MockIncomingTransactionRecorder.class)
         );
     }
 }

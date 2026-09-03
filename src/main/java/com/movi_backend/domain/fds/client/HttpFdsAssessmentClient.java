@@ -48,6 +48,16 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
     private static final String MEDIUM_APP = "APP";
 
     /**
+     * AI 로 보내는 거래 식별자 접두어.
+     *
+     * <p>현재 거래는 {@code transfers}, 이력은 {@code transactions} 에서 온다. 서로 다른
+     * 테이블이라 숫자가 우연히 같을 수 있는데, AI 는 한 요청 안에서 식별자가 겹치면 요청
+     * 전체를 400 으로 거절한다. 어느 쪽에서 온 값인지 접두어로 갈라 둔다.
+     */
+    private static final String CURRENT_TRANSACTION_ID_PREFIX = "transfer-";
+    private static final String HISTORY_TRANSACTION_ID_PREFIX = "tx-";
+
+    /**
      * AI 서버는 model만 응답에 싣고 규칙 엔진·정책 버전은 아직 따로 내려주지 않는다.
      * moviback.duckdns.org/ai/fds/openapi.json 의 info.version 이다.
      * AI 팀이 응답에 자체 버전 필드를 추가하면 이 상수는 지운다.
@@ -99,6 +109,7 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
         final String medium = mediumOf(request);
         return FraudDetectionRequest.of(
                 TransactionData.of(
+                        CURRENT_TRANSACTION_ID_PREFIX + request.transferId(),
                         request.fromFintechUseNum(),
                         sensitiveDataCrypto.decrypt(request.toAccountNumEncrypted()),
                         request.fromBankCode(),
@@ -151,6 +162,7 @@ public class HttpFdsAssessmentClient implements FdsAssessmentClient {
             return null;
         }
         return TransactionData.of(
+                HISTORY_TRANSACTION_ID_PREFIX + entry.transactionId(),
                 request.fromFintechUseNum(),
                 receiverAccount,
                 request.fromBankCode(),

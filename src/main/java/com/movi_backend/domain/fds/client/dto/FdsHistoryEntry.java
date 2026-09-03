@@ -18,14 +18,19 @@ import java.util.Objects;
  * {@link FdsAssessmentRequest#toAccountNumEncrypted()}와 같은 규칙이다. 현재 수취인이 이력에
  * 있으면 AI 가 {@code NEW_RECIPIENT}를 빼므로, 두 값의 복호화 방식이 어긋나면 재이체인데도
  * 매번 신규 수취인으로 잡힌다.
+ *
+ * <p>{@code transactionId}는 AI 가 현재 거래와 이력을 구분하는 데 쓴다
+ * ({@link TransactionData} 참고).
  */
 public record FdsHistoryEntry(
+        Long transactionId,
         BigDecimal amount,
         OffsetDateTime occurredAt,
         String counterpartyAccountEncrypted
 ) {
 
     public FdsHistoryEntry {
+        Objects.requireNonNull(transactionId, "transactionId는 필수입니다.");
         Objects.requireNonNull(amount, "amount는 필수입니다.");
         Objects.requireNonNull(occurredAt, "occurredAt은 필수입니다.");
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -37,10 +42,12 @@ public record FdsHistoryEntry(
     }
 
     public static FdsHistoryEntry of(
+            final Long transactionId,
             final BigDecimal amount,
             final OffsetDateTime occurredAt,
             final String counterpartyAccountEncrypted
     ) {
-        return new FdsHistoryEntry(amount, occurredAt, counterpartyAccountEncrypted);
+        return new FdsHistoryEntry(
+                transactionId, amount, occurredAt, counterpartyAccountEncrypted);
     }
 }

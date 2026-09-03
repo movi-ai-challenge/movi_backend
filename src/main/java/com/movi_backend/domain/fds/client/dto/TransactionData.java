@@ -12,8 +12,15 @@ import java.time.OffsetDateTime;
  * 뒤섞지 않는다 — 어댑터 경계에서만 변환한다.
  *
  * <p>https://moviback.duckdns.org/ai/fds/openapi.json 을 그대로 옮긴 것이다.
+ *
+ * <p>{@code transactionId}는 AI 가 여러 거래 중 어느 것이 "지금 평가할 거래"인지 찾는 데 쓴다.
+ * <b>current_transaction 과 history 를 통틀어 겹치면 안 된다.</b> AI 가 중복을 발견하면 요청
+ * 전체를 400 으로 거절한다 - 이력을 함께 보내기 시작하면서 실제로 걸렸다. 두 값이 서로 다른
+ * 테이블({@code transfers}·{@code transactions})에서 오므로 숫자만 보내면 우연히 겹칠 수
+ * 있어, 어느 쪽에서 온 값인지 접두어로 구분한다.
  */
 public record TransactionData(
+        @JsonProperty("transaction_id") String transactionId,
         @JsonProperty("sender_account") String senderAccount,
         @JsonProperty("receiver_account") String receiverAccount,
         @JsonProperty("sender_bank") String senderBank,
@@ -25,6 +32,7 @@ public record TransactionData(
 ) {
 
     public static TransactionData of(
+            final String transactionId,
             final String senderAccount,
             final String receiverAccount,
             final String senderBank,
@@ -35,6 +43,7 @@ public record TransactionData(
             final String medium
     ) {
         return new TransactionData(
+                transactionId,
                 senderAccount,
                 receiverAccount,
                 senderBank,

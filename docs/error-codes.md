@@ -141,6 +141,7 @@
 | TRANSFER_4043 | `RECIPIENT_ACCOUNT_NOT_FOUND` | 404 | 등록된 계좌에서 찾을 수 없는 계좌번호입니다. | 그 계좌번호를 찾지 못했어요. 계좌번호를 다시 확인해 주세요. |
 | TRANSFER_4090 | `DUPLICATE_TRANSFER` | 409 | 이미 처리 중인 이체 요청입니다. | 방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요. |
 | TRANSFER_4091 | `RECIPIENT_NICKNAME_DUPLICATED` | 409 | 이미 등록된 이름입니다. | 그 이름은 이미 등록돼 있어요. 다른 이름으로 저장해 주세요. |
+| TRANSFER_4092 | `RECIPIENT_ACCOUNT_DUPLICATED` | 409 | 이미 다른 이름으로 등록된 계좌입니다. | 그 계좌는 이미 다른 이름으로 등록돼 있어요. |
 
 ### VOICE — 음성 인식·재질문
 

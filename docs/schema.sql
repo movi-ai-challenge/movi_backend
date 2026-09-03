@@ -215,12 +215,14 @@ CREATE TABLE transfer_recipients (
     nickname            VARCHAR(50)  NOT NULL COMMENT '음성 호출명 (예: 엄마)',
     bank_code           VARCHAR(10)  NOT NULL,
     account_num         VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
+    account_num_hash    VARCHAR(64)  NOT NULL COMMENT '계좌번호 중복 확인용 HMAC-SHA256',
     holder_name         VARCHAR(50)  NOT NULL,
     transfer_count      INT          NOT NULL DEFAULT 0,
     last_transferred_at DATETIME     NULL,
     created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (recipient_id),
     UNIQUE KEY uk_recipient_user_nick (user_id, nickname),
+    UNIQUE KEY uk_recipient_user_account (user_id, account_num_hash),
     CONSTRAINT fk_recipient_user FOREIGN KEY (user_id) REFERENCES users (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

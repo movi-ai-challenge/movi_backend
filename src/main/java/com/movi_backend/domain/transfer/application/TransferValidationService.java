@@ -139,6 +139,7 @@ public class TransferValidationService {
                 .nickname(generateNickname(userId, command.bankCode(), accountNumber))
                 .bankCode(command.bankCode())
                 .accountNum(sensitiveDataCrypto.encrypt(accountNumber))
+                .accountNumHash(sensitiveDataCrypto.hash(accountNumber))
                 .holderName("%s %s".formatted(
                         bankDirectory.displayNameOf(command.bankCode()),
                         accountNumber.substring(Math.max(0, accountNumber.length() - 4))))

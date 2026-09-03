@@ -212,6 +212,7 @@ class TransferIdempotencyConcurrencyIntegrationTest {
                     .nickname("엄마")
                     .bankCode("088")
                     .accountNum(sensitiveDataCrypto.encrypt("110123456789"))
+                    .accountNumHash(sensitiveDataCrypto.hash("110123456789"))
                     .holderName("김영희")
                     .build();
             entityManager.persist(recipient);

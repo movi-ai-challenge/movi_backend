@@ -21,7 +21,9 @@ import lombok.NoArgsConstructor;
  * 자주 쓰는 수취인.
  *
  * <p>{@code nickname}이 음성 호출명이다. "엄마한테 5만원 보내줘"를 해석하려면 별칭↔계좌 매핑이
- * 필요하다. 사용자당 별칭은 유일하므로 "엄마"가 두 명일 수 없다.
+ * 필요하다. 사용자당 별칭은 유일하므로 "엄마"가 두 명일 수 없다. 같은 이유로 사용자당 계좌도
+ * 유일하다 — 같은 계좌를 "엄마"·"어머니"로 각각 등록하면 {@code transfer_count}가 이름별로
+ * 쪼개져 FDS의 "처음 보내는 상대" 판단이 흐려진다.
  *
  * <p>{@code transferCount}는 FDS의 "처음 보내는 상대" 피처로 직접 쓰인다.
  * 이체 성공 시 {@link #recordTransfer(LocalDateTime)}로 증가시킨다.
@@ -51,6 +53,14 @@ public class TransferRecipient extends BaseCreatedEntity {
     @Column(name = "account_num", nullable = false, length = 255)
     private String accountNum;
 
+    /**
+     * 계좌번호 중복 확인용 HMAC-SHA256. {@code account_num}은 무작위 IV로 암호화돼 같은
+     * 계좌라도 매번 다른 암호문이 나와 직접 비교할 수 없다 — {@code users.phone_hash}와
+     * 같은 패턴이다.
+     */
+    @Column(name = "account_num_hash", nullable = false, length = 64)
+    private String accountNumHash;
+
     @Column(name = "holder_name", nullable = false, length = 50)
     private String holderName;
 
@@ -66,12 +76,14 @@ public class TransferRecipient extends BaseCreatedEntity {
             final String nickname,
             final String bankCode,
             final String accountNum,
+            final String accountNumHash,
             final String holderName
     ) {
         this.user = user;
         this.nickname = nickname;
         this.bankCode = bankCode;
         this.accountNum = accountNum;
+        this.accountNumHash = accountNumHash;
         this.holderName = holderName;
         this.transferCount = 0;
     }
@@ -88,5 +100,16 @@ public class TransferRecipient extends BaseCreatedEntity {
 
     public void changeNickname(final String nickname) {
         this.nickname = nickname;
+    }
+
+    /**
+     * {@code account_num_hash}가 없던 시절에 저장된 행을 채운다.
+     *
+     * <p>일회성 마이그레이션({@code docs/migrations/20260903_add_recipient_account_num_hash.sql})
+     * 전용이다. 계좌는 등록 후 바뀌지 않으므로 평소에는 이 값을 고칠 일이 없다. 모든 환경의
+     * 백필이 끝나면 {@code RecipientAccountHashBackfill}과 함께 지운다.
+     */
+    public void backfillAccountNumHash(final String accountNumHash) {
+        this.accountNumHash = accountNumHash;
     }
 }

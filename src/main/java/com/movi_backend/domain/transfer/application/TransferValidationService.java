@@ -29,6 +29,9 @@ public class TransferValidationService {
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
     private static final String AMOUNT_QUESTION = "얼마를 보내시겠어요?";
 
+    /** 같은 별칭이 이만큼 쌓이면 사용자가 구분하지 못한다. 그 전에 멈춘다. */
+    private static final int MAXIMUM_NICKNAME_SUFFIX = 20;
+
     private final TransferRecipientRepository transferRecipientRepository;
     private final TransferProperties transferProperties;
     private final UserRepository userRepository;
@@ -133,10 +136,12 @@ public class TransferValidationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
         return transferRecipientRepository.save(TransferRecipient.builder()
                 .user(user)
-                .nickname(generateNickname(command.bankCode(), accountNumber))
+                .nickname(generateNickname(userId, command.bankCode(), accountNumber))
                 .bankCode(command.bankCode())
                 .accountNum(sensitiveDataCrypto.encrypt(accountNumber))
-                .holderName(generateNickname(command.bankCode(), accountNumber))
+                .holderName("%s %s".formatted(
+                        bankDirectory.displayNameOf(command.bankCode()),
+                        accountNumber.substring(Math.max(0, accountNumber.length() - 4))))
                 .build());
     }
 
@@ -145,11 +150,29 @@ public class TransferValidationService {
      *
      * <p>예금주명을 받을 방법이 없다. 목록에서 사용자가 알아볼 수 있어야 하므로 은행과 뒤
      * 네 자리로 만든다 — TTS 로 읽어도 구분된다.
+     *
+     * <p><b>겹치면 뒤에 번호를 붙인다.</b> 같은 은행에서 뒤 네 자리가 같은 계좌는 실제로
+     * 생긴다. {@code (user_id, nickname)} 이 유니크라 그대로 저장하면 이체가 서버 오류로
+     * 끝난다 — 사용자는 왜 실패했는지 알 수 없다.
      */
-    private String generateNickname(final String bankCode, final String accountNumber) {
+    private String generateNickname(
+            final Long userId,
+            final String bankCode,
+            final String accountNumber
+    ) {
         final String tail = accountNumber.substring(
                 Math.max(0, accountNumber.length() - 4));
-        return "%s %s".formatted(bankDirectory.displayNameOf(bankCode), tail);
+        final String base = "%s %s".formatted(bankDirectory.displayNameOf(bankCode), tail);
+        if (!transferRecipientRepository.existsByUserIdAndNickname(userId, base)) {
+            return base;
+        }
+        for (int suffix = 2; suffix <= MAXIMUM_NICKNAME_SUFFIX; suffix++) {
+            final String candidate = "%s (%d)".formatted(base, suffix);
+            if (!transferRecipientRepository.existsByUserIdAndNickname(userId, candidate)) {
+                return candidate;
+            }
+        }
+        throw new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND, "수취인 별칭을 만들지 못했습니다.");
     }
 
     private String decryptOrNull(final String encrypted) {

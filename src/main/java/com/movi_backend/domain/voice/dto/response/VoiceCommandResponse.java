@@ -35,7 +35,17 @@ public record VoiceCommandResponse(
         History history,
         BalanceResponse balance,
         /** FDS 가 짚은 근거. 위험도가 LOW 여도 알려 줄 값어치가 있다. */
-        List<String> riskReasons
+        List<String> riskReasons,
+
+        /**
+         * 확인 단계에서 읽어 줄 계좌번호. 자리마다 띄어 둔 문자열이다.
+         *
+         * <p>등록해 둔 이름으로 보낼 때는 {@code null} 이다. 계좌번호를 말해서 보내는
+         * 경우에만 채운다 — 사용자가 잘못 들은 번호를 잡을 유일한 수단이라 뒤 네 자리가
+         * 아니라 <b>전체</b>를 읽어 준다. TTS 가 "삼십오억..."으로 읽지 않도록 이미
+         * 한 자리씩 끊어 둔 값이 온다.
+         */
+        String spokenAccountDigits
 ) {
 
     private static final String RECIPIENT_QUESTION = "누구에게 보내시겠어요?";
@@ -72,7 +82,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                List.of()
+                List.of(),
+                null
         );
     }
 
@@ -83,6 +94,24 @@ public record VoiceCommandResponse(
             final TransferRecipient transferRecipient,
             final long amount,
             final String transcript
+    ) {
+        return awaitingConfirmation(
+                session, confirmationId, account, transferRecipient, amount, transcript, null);
+    }
+
+    /**
+     * 계좌번호를 말해서 보내는 경우까지 포함해 만든다.
+     *
+     * <p>{@code spokenAccountDigits} 가 있으면 확인 문구가 계좌번호를 자리마다 읽어 준다.
+     */
+    public static VoiceCommandResponse awaitingConfirmation(
+            final VoiceSession session,
+            final String confirmationId,
+            final Account account,
+            final TransferRecipient transferRecipient,
+            final long amount,
+            final String transcript,
+            final String spokenAccountDigits
     ) {
         return new VoiceCommandResponse(
                 session.getId(),
@@ -101,7 +130,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                List.of()
+                List.of(),
+                spokenAccountDigits
         );
     }
 
@@ -126,7 +156,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 null,
-                List.of()
+                List.of(),
+                null
         );
     }
 
@@ -153,7 +184,8 @@ public record VoiceCommandResponse(
                 null,
                 history,
                 null,
-                List.of()
+                List.of(),
+                null
         );
     }
 
@@ -182,7 +214,8 @@ public record VoiceCommandResponse(
                 result.completedAt(),
                 null,
                 null,
-                result.riskReasons()
+                result.riskReasons(),
+                null
         );
     }
 
@@ -209,7 +242,8 @@ public record VoiceCommandResponse(
                 null,
                 null,
                 balance,
-                List.of()
+                List.of(),
+                null
         );
     }
 
@@ -257,6 +291,19 @@ public record VoiceCommandResponse(
         }
         final String accountName = this.fromAccount.toVoiceName();
         final String formattedAmount = KoreanMoneyFormatter.format(this.amount);
+        if (this.spokenAccountDigits != null && !this.spokenAccountDigits.isBlank()) {
+            /*
+             * 계좌번호를 말해서 보내는 경우다. 등록해 둔 상대가 아니라 사용자가 방금 부른
+             * 번호로 나가므로, 뒤 네 자리만 읽으면 가운데를 잘못 들은 것을 잡지 못한다.
+             * 화면을 볼 수 없는 사용자에게는 이 복창이 유일한 확인 수단이다.
+             */
+            return "%s에서 %s 계좌 %s으로 %s을 보낼까요?".formatted(
+                    accountName,
+                    this.recipient.holderName(),
+                    this.spokenAccountDigits,
+                    formattedAmount
+            );
+        }
         return "%s에서 %s 님에게 %s을 보낼까요?".formatted(
                 accountName,
                 this.recipient.holderName(),

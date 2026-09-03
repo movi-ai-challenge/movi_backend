@@ -175,16 +175,27 @@ public class VoiceCommandService {
             final LocalDateTime now
     ) {
         final String transcript = SensitiveTextMasker.mask(analysis.transcript());
+        PendingTransferSlots slots = previousSlots;
         if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
-            return processConfirmationResponse(
-                    session,
-                    analysis,
-                    transcript,
-                    previousSlots,
-                    confirmationId,
-                    idempotencyKey,
-                    now
-            );
+            if (isConfirmationAnswer(analysis.intent())) {
+                return processConfirmationResponse(
+                        session,
+                        analysis,
+                        transcript,
+                        previousSlots,
+                        confirmationId,
+                        idempotencyKey,
+                        now
+                );
+            }
+            /*
+             * "보낼까요?"에 답이 아니라 새 명령이 왔다. 안내를 못 들었거나 마음을 바꾼
+             * 것이다. 오류로 막으면 -- 화면을 보지 않는 사용자는 같은 말을 반복할 수밖에
+             * 없으므로 -- 반복할수록 계속 막힌다. 앞선 확인은 포기하고 새 명령으로 받는다.
+             * 옛 슬롯을 남기면 뒤이은 발화가 병합돼 엉뚱한 이체가 된다.
+             */
+            session.resumeActive(now);
+            slots = null;   // 슬롯 없음. readPendingSlots 가 쓰는 표현과 같다.
         }
         if (analysis.intent() == VoiceIntent.HISTORY) {
             return queryHistory(session, analysis, transcript, now);
@@ -196,7 +207,7 @@ public class VoiceCommandService {
 
         final TransferCommandRequest commandRequest = createCommandRequest(
                 analysis,
-                previousSlots
+                slots
         );
         final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
         final TransferValidationResult validationResult = transferValidationService.validate(
@@ -416,6 +427,11 @@ public class VoiceCommandService {
         voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
         voiceCommandRepository.save(voiceCommand);
         return response;
+    }
+
+    /** "네"·"아니오" 처럼 확인 질문에 대한 답인지. 그 외는 새 명령으로 본다. */
+    private boolean isConfirmationAnswer(final VoiceIntent intent) {
+        return intent == VoiceIntent.CONFIRM || intent == VoiceIntent.CANCEL;
     }
 
     private VoiceCommandResponse processConfirmationResponse(

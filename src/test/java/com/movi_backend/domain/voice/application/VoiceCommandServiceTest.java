@@ -70,6 +70,10 @@ import tools.jackson.databind.ObjectMapper;
 @ExtendWith(MockitoExtension.class)
 class VoiceCommandServiceTest {
 
+    /** 확인 질문 끝에 붙는 답변 안내. 본문과 같은 값을 쓴다. */
+    private static final String ANSWER_GUIDE =
+            " 맞으면 \"네 맞아요\", 아니면 \"아니요 취소할게요\"라고 말씀해 주세요.";
+
     private static final Long USER_ID = 3L;
     private static final Long SESSION_ID = 15L;
     private static final BigDecimal HIGH_CONFIDENCE = new BigDecimal("0.95");
@@ -235,7 +239,7 @@ class VoiceCommandServiceTest {
         assertThat(response.amount()).isEqualTo(50_000L);
         assertThat(response.confirmationId()).isNotBlank();
         assertThat(response.toVoiceMessage())
-                .isEqualTo("생활비 통장에서 엄마 님에게 5만원을 보낼까요?");
+                .isEqualTo("생활비 통장에서 엄마 님에게 5만원을 보낼까요?" + ANSWER_GUIDE);
         assertThat(session.getPendingSlots()).contains("\"recipientNickname\":\"엄마\"");
 
         final ArgumentCaptor<VoiceAnalysisRequest> analysisRequestCaptor =
@@ -389,6 +393,73 @@ class VoiceCommandServiceTest {
         assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
         assertThat(session.getPendingSlots()).isNull();
         then(transferExecutionService).should().execute(any(ConfirmedTransferCommand.class));
+    }
+
+    @Test
+    @DisplayName("AI 가 의도를 못 잡아도 네 라고 답했으면 승인으로 본다")
+    void 네_라고_답하면_승인으로_본다() throws Exception {
+        // given -- STT 나 GPT 가 흔들려 UNKNOWN 으로 왔지만 사용자는 승인한 상황이다.
+        final VoiceSession session = createAwaitingConfirmationSession();
+        final String idempotencyKey = UUID.randomUUID().toString();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(transferExecutionService.findCompletedResult(USER_ID, idempotencyKey))
+                .willReturn(Optional.empty());
+        given(accountRepository.findById(12L)).willReturn(Optional.of(account));
+        given(account.getUser()).willReturn(session.getUser());
+        given(account.isActive()).willReturn(true);
+        given(transferRecipientRepository.findById(8L)).willReturn(Optional.of(recipient));
+        given(recipient.getUser()).willReturn(session.getUser());
+        given(voiceCommandRepository.saveAndFlush(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        given(transferExecutionService.execute(any(ConfirmedTransferCommand.class)))
+                .willReturn(new TransferExecutionResult(
+                        101L,
+                        TransferStatus.COMPLETED,
+                        RiskLevel.LOW,
+                        50_000L,
+                        "김영희",
+                        LocalDateTime.now(),
+                        List.of()
+                ));
+        final VoiceCommandService service = createService();
+
+        // when
+        service.processAnalyzed(
+                USER_ID,
+                SESSION_ID,
+                createUnknownAnalysis("네 맞아요"),
+                "confirmation-123",
+                idempotencyKey
+        );
+
+        // then
+        then(transferExecutionService).should().execute(any(ConfirmedTransferCommand.class));
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("아니요 가 아니네요 로 잘못 적혀도 승인이 아니라 취소로 본다")
+    void 부정을_먼저_읽는다() throws Exception {
+        /*
+         * 부정 안에 "네" 가 들어 있는 경우다. 승인을 먼저 보면 취소하려던 송금이 나간다.
+         * 잘못 읽어서 생기는 손해가 한쪽으로만 크므로 취소 쪽으로 기울어야 한다.
+         */
+        final VoiceSession session = createAwaitingConfirmationSession();
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        final VoiceCommandService service = createService();
+
+        // when
+        service.processAnalyzed(
+                USER_ID,
+                SESSION_ID,
+                createUnknownAnalysis("아니네요"),
+                null,
+                null
+        );
+
+        // then
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.CANCELED);
+        then(transferExecutionService).should(never()).execute(any());
     }
 
     @Test
@@ -1000,6 +1071,22 @@ class VoiceCommandServiceTest {
                 LocalDateTime.now()
         );
         return session;
+    }
+
+    /** AI 가 의도를 잡지 못한 응답. 말 자체로 확인 답을 읽어야 하는 상황을 만든다. */
+    private VoiceAnalysisResponse createUnknownAnalysis(final String transcript) {
+        return VoiceAnalysisResponse.of(
+                "voice-unknown",
+                SESSION_ID,
+                transcript,
+                HIGH_CONFIDENCE,
+                VoiceIntent.UNKNOWN,
+                HIGH_CONFIDENCE,
+                VoiceEntities.transfer(null, null, null),
+                VoiceEntityConfidences.transfer(null, null, null),
+                List.of(),
+                75
+        );
     }
 
     private VoiceAnalysisResponse createConfirmationAnalysis() {

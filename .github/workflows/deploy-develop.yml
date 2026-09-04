@@ -482,18 +482,29 @@ jobs:
               sudo docker pull "$IMAGE_REFERENCE" >/dev/null
               sudo docker network create movi-net >/dev/null 2>&1 || true
               sudo docker rm --force "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+              # 백필은 평소와 같은 웹 애플리케이션으로 띄운다.
+              # SPRING_MAIN_WEB_APPLICATION_TYPE=none 은 일을 마친 컨테이너가 스스로 끝나
+              # 편해 보였지만, 이 애플리케이션은 그 모드로 기동하지 못한다 --
+              # JwtAuthenticationFilter 가 HandlerExceptionResolver 를 받는데 웹 컨텍스트가
+              # 없으면 그 빈이 없다. 대신 폴링이 끝나면 우리가 멈춘다.
+              #
+              # 메모리는 따로 묶는다. 운영 컨테이너가 이미 떠 있는 1GB 호스트에 JVM 을 하나 더
+              # 올리는 것이라, 제한이 없으면 MaxRAMPercentage 가 호스트 전체를 기준으로 잡아
+              # 운영 쪽이 밀려난다.
               sudo docker run --name "$MIGRATION_CONTAINER" --detach \
+                --memory 512m \
+                --memory-swap 1g \
                 --network movi-net \
                 --env TZ=Asia/Seoul \
                 --env SPRING_PROFILES_ACTIVE=prod \
-                --env SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+                --env JAVA_OPTS="-Xmx320m -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom" \
                 --env MOVI_MIGRATION_RECIPIENT_ACCOUNT_HASH_ENABLED=true \
                 --env MOVI_NOTIFICATION_RETRY_ENABLED=false \
                 --volume "${CONFIG_PATH}:/app/config/application-prod.yml:ro" \
                 "$IMAGE_REFERENCE" >/dev/null
 
               attempt=1
-              while [ "$attempt" -le 24 ]; do
+              while [ "$attempt" -le 36 ]; do
                 sleep 5
                 NULL_COUNT="$(mysql_query -e \
                   "SELECT COUNT(*) FROM transfer_recipients WHERE account_num_hash IS NULL")"
@@ -509,6 +520,11 @@ jobs:
                 fi
                 attempt=$((attempt + 1))
               done
+              # 다 돌고도 남아 있으면 백필이 조용히 실패한 것이다. 컨테이너를 멈추면
+              # 로그를 볼 수 없게 되므로 멈추기 전에 남긴다.
+              if [ "$NULL_COUNT" != "0" ]; then
+                sudo docker logs --tail 100 "$MIGRATION_CONTAINER" || true
+              fi
               sudo docker stop "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
             fi
 

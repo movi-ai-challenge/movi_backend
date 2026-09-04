@@ -2,7 +2,7 @@
 
 버전: `v2.0`
 
-갱신일: `2026-08-28`
+갱신일: `2026-09-04`
 
 마감: `2026-08-31`
 
@@ -46,7 +46,7 @@
 |---|---|---|
 | AI Voice·FDS 실 연동 | 대기 | staging URL과 계약 정합 — [#104](https://github.com/movi-ai-challenge/movi_backend/issues/104), [movi_ai#1](https://github.com/movi-ai-challenge/movi_ai/issues/1) |
 | 오픈뱅킹 Sandbox 종단 검증 | 미검증 | 실 테스트베드 이체 1건 |
-| 실제 SMS 발송 | 미연동 | 국내 provider 선정 |
+| 실제 SMS 발송 | Solapi 연동 완료·도착 미검증 | 실수신 번호로 종단 확인 |
 | staging E2E | 미수행 | 배포 서버에 시드 적용 (`movi.seed.enabled=true`) |
 
 배포·시드·E2E는 백엔드 3인 공통 작업이다. **공통 작업도 시작 전에 한 명을 Driver로 지정한다.**
@@ -108,8 +108,11 @@ MVP 범위에서 제외했다. 남은 시간에 다시 꺼내지 않는다.
 - Google TTS 서버 연동
 - SHAP·시각화
 - FDS 대안 모델 실험, 카드거래 모델
-- 보호자 사전 승인, 계좌 추가 연결·해제
-- Voice WebSocket Streaming 전환, 음성 일회용 코드, 거래 바인딩 재인증
+- 보호자 사전 승인
+- 음성 일회용 코드, 거래 바인딩 재인증
+
+계좌 추가 연결·해제와 Voice WebSocket Streaming은 현재 구현 범위에 포함됐다. 기능을
+되돌리지 않으며, 계좌 재연결·후속 발화·스트리밍 종료 조건을 회귀 테스트 대상으로 둔다.
 
 **AI staging이 준비되지 않으면** Mock으로 시연하되 화면과 음성에 Sandbox·시연임을 표시한다.
 **오픈뱅킹 승인이 늦으면** Mock 이체로 시연하되 같은 표시를 한다.

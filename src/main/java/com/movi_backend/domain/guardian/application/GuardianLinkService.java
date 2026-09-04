@@ -69,6 +69,19 @@ public class GuardianLinkService {
         return GuardianLinkRegisterResponse.from(guardianLinkRepository.save(guardianLink));
     }
 
+    @Transactional(readOnly = true)
+    public List<GuardianLinkRegisterResponse> findActiveLinks(final Long protecteeUserId) {
+        findActiveUser(protecteeUserId);
+        return guardianLinkRepository
+                .findAllByProtecteeUserIdAndStatus(
+                        protecteeUserId,
+                        GuardianLinkStatus.ACTIVE
+                )
+                .stream()
+                .map(GuardianLinkRegisterResponse::from)
+                .toList();
+    }
+
     /**
      * 자기 자신을 보호자로 등록하려는 요청을 막는다.
      *

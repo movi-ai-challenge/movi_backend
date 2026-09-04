@@ -76,6 +76,9 @@ public enum ErrorCode {
     ACCOUNT_HAS_PENDING_TRANSFER(HttpStatus.BAD_REQUEST, "ACCOUNT_4005",
             "진행 중인 이체가 있어 계좌 연결을 해제할 수 없습니다.",
             "보내는 중인 돈이 있어요. 끝난 뒤에 다시 해제해 주세요."),
+    ACCOUNT_SELECTION_REQUIRED(HttpStatus.BAD_REQUEST, "ACCOUNT_4006",
+            "조회할 계좌를 특정할 수 없습니다.",
+            "같은 은행 계좌가 여러 개예요. 계좌 별칭을 말씀해 주세요."),
     ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "ACCOUNT_4040", "계좌를 찾을 수 없습니다.",
             "말씀하신 계좌를 찾을 수 없어요."),
 

@@ -29,6 +29,11 @@ public class BalanceInquiryService {
     @Transactional
     public BalanceResponse inquire(final Long userId, final String accountAlias) {
         final Account account = findAccount(userId, accountAlias);
+        return inquireAccount(userId, account);
+    }
+
+    @Transactional
+    public BalanceResponse inquireAccount(final Long userId, final Account account) {
         final BalanceSnapshot balanceSnapshot = refresh(userId, account);
         return BalanceResponse.of(account, balanceSnapshot);
     }

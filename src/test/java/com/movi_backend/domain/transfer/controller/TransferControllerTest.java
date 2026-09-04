@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.movi_backend.domain.fds.type.RiskLevel;
 import com.movi_backend.domain.transfer.application.DirectTransferService;
 import com.movi_backend.domain.transfer.application.TransferQueryService;
+import com.movi_backend.domain.transfer.application.BankDirectory;
 import com.movi_backend.domain.transfer.application.TransferRecipientCommandService;
 import com.movi_backend.domain.transfer.application.TransferRecipientQueryService;
 import com.movi_backend.domain.transfer.dto.response.TransferResultResponse;
@@ -130,7 +131,8 @@ class TransferControllerTest {
                         transferQueryService,
                         transferRecipientQueryService,
                         transferRecipientCommandService,
-                        directTransferService
+                        directTransferService,
+                        new BankDirectory()
                 ))
                 .setCustomArgumentResolvers(new CurrentUserArgumentResolver(
                         new AuthProperties(true, 1L)

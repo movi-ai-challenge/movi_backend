@@ -1,6 +1,7 @@
 package com.movi_backend.global.seed;
 
 import com.movi_backend.domain.account.entity.Account;
+import com.movi_backend.domain.account.infrastructure.DemoAccountDirectory;
 import com.movi_backend.domain.account.entity.OpenbankingConnection;
 import com.movi_backend.domain.account.repository.AccountRepository;
 import com.movi_backend.domain.account.repository.OpenbankingConnectionRepository;
@@ -52,14 +53,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 @ConditionalOnProperty(prefix = "movi.seed", name = "enabled", havingValue = "true")
 public class DemoDataSeeder implements ApplicationRunner {
 
-    /** {@code MockOpenBankingClient}가 잔액 53만원으로 들고 있는 계좌 */
-    private static final String PRIMARY_FINTECH_NUM = "199000000000000000000001";
-
-    /** 같은 Mock의 120만원 계좌. 70만원 이상인 HIGH 시연은 이 계좌에서 나가야 한다 */
-    private static final String SAVING_FINTECH_NUM = "199000000000000000000002";
-
-    /** Mock이 모르는 번호. 두 번째 사용자는 이체 시연 대상이 아니라 소유권 거부 확인용이다 */
-    private static final String OTHER_FINTECH_NUM = "199000000000000000000901";
+    /*
+     * 계좌 정보는 DemoAccountDirectory 한 곳에서 가져온다.
+     *
+     * 예금주조회 대역이 그 명부로 답하므로, 시드가 따로 적어 두면 조회는 되는데 시드된
+     * 계좌와 다른 번호가 되거나 그 반대가 된다. 시연에서 "계좌를 확인하지 못했어요"만
+     * 반복되고 원인은 코드 두 곳을 비교해야 보인다.
+     */
+    private static final DemoAccountDirectory.DemoAccount PRIMARY_ACCOUNT =
+            DemoAccountDirectory.DEMO_USER_CHECKING;
+    private static final DemoAccountDirectory.DemoAccount SAVING_ACCOUNT =
+            DemoAccountDirectory.DEMO_USER_SAVING;
+    private static final DemoAccountDirectory.DemoAccount OTHER_ACCOUNT =
+            DemoAccountDirectory.OTHER_USER_CHECKING;
 
     private static final String DEMO_PHONE = "01012345678";
     private static final String OTHER_PHONE = "01099998888";
@@ -169,14 +175,15 @@ public class DemoDataSeeder implements ApplicationRunner {
 
         final OpenbankingConnection connection = connect(user, "1100000001");
         savePrimaryAccount(user, connection);
-        saveAccount(user, connection, SAVING_FINTECH_NUM, "088", "신한은행",
+        saveAccount(user, connection,
+                SAVING_ACCOUNT.fintechUseNum(), SAVING_ACCOUNT.bankCode(), "신한은행",
                 "110-***-****22", "비상금 통장", AccountType.SAVING);
 
         // 거래 이력이 있는 상대 — LOW 시연용
-        saveRecipient(user, "엄마", "088", "110123456789", "이영자", 5);
-        saveRecipient(user, "아들", "004", "004987654321", "김민수", 2);
+        saveRecipient(user, "엄마", DemoAccountDirectory.RECIPIENT_MOTHER, 5);
+        saveRecipient(user, "아들", DemoAccountDirectory.RECIPIENT_SON, 2);
         // 처음 보내는 상대 — MEDIUM 시연용
-        saveRecipient(user, "김영희", "020", "020112233445", "김영희", 0);
+        saveRecipient(user, "김영희", DemoAccountDirectory.RECIPIENT_FIRST_TIME, 0);
 
         saveEstablishedProfile(user);
         linkGuardian(user);
@@ -206,8 +213,8 @@ public class DemoDataSeeder implements ApplicationRunner {
         final Account account = Account.builder()
                 .user(user)
                 .connection(connection)
-                .fintechUseNum(OTHER_FINTECH_NUM)
-                .bankCode("011")
+                .fintechUseNum(OTHER_ACCOUNT.fintechUseNum())
+                .bankCode(OTHER_ACCOUNT.bankCode())
                 .bankName("농협은행")
                 .accountNumMasked("352-****-**99")
                 .alias("생활비 통장")
@@ -216,11 +223,12 @@ public class DemoDataSeeder implements ApplicationRunner {
         account.designateAsPrimary();
         accountRepository.save(account);
 
-        saveRecipient(user, "딸", "004", "004555666777", "이미영", 1);
+        saveRecipient(user, "딸", DemoAccountDirectory.RECIPIENT_DAUGHTER, 1);
     }
 
     private void savePrimaryAccount(final User user, final OpenbankingConnection connection) {
-        final Account account = saveAccount(user, connection, PRIMARY_FINTECH_NUM, "004",
+        final Account account = saveAccount(user, connection,
+                PRIMARY_ACCOUNT.fintechUseNum(), PRIMARY_ACCOUNT.bankCode(),
                 "국민은행", "123456-**-*****1", "생활비 통장", AccountType.DEPOSIT);
         account.designateAsPrimary();
     }
@@ -283,21 +291,28 @@ public class DemoDataSeeder implements ApplicationRunner {
         deviceRepository.save(device);
     }
 
+    /**
+     * 주소록 수취인을 만든다.
+     *
+     * <p>계좌 정보는 {@link DemoAccountDirectory} 에서 온다. 예금주조회 대역이 같은 명부로
+     * 답하므로 시드된 수취인은 처음부터 확인된 상태다 — 시연에서 저장된 이름으로 보낼 때
+     * 계좌 확인이 다시 붙지 않는다.
+     */
     private void saveRecipient(
             final User user,
             final String nickname,
-            final String bankCode,
-            final String accountNum,
-            final String holderName,
+            final DemoAccountDirectory.DemoAccount account,
             final int transferCount
     ) {
         final TransferRecipient recipient = TransferRecipient.builder()
                 .user(user)
                 .nickname(nickname)
-                .bankCode(bankCode)
-                .accountNum(encrypt(accountNum))
-                .accountNumHash(hash(accountNum))
-                .holderName(holderName)
+                .bankCode(account.bankCode())
+                .accountNum(encrypt(account.accountNumber()))
+                .accountNumHash(hash(account.accountNumber()))
+                .holderName(account.holderName())
+                .addressBook(true)
+                .verifiedAt(LocalDateTime.now())
                 .build();
         for (int count = 0; count < transferCount; count++) {
             recipient.recordTransfer(LocalDateTime.now().minusDays(transferCount - count));

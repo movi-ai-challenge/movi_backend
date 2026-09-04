@@ -3,6 +3,7 @@ package com.movi_backend.domain.transfer.controller.docs;
 import com.movi_backend.domain.transfer.dto.request.RecipientRegisterRequest;
 import com.movi_backend.domain.transfer.dto.request.TransferExecuteRequest;
 import com.movi_backend.domain.transfer.dto.request.TransferReviewRequest;
+import com.movi_backend.domain.transfer.dto.response.BankListResponse;
 import com.movi_backend.domain.transfer.dto.response.RecipientListResponse;
 import com.movi_backend.domain.transfer.dto.response.RecipientResponse;
 import com.movi_backend.domain.transfer.dto.response.TransferResultResponse;
@@ -33,11 +34,14 @@ public interface TransferApiDocs {
     @Operation(
             summary = "등록 수취인 목록",
             description = """
-                    직접 입력 송금에서 고를 수 있는 수취인 전부입니다.
+                    사용자가 **이름을 지어 등록한** 상대 전부입니다.
 
-                    **여기 없는 사람에게는 보낼 수 없습니다.** 이름이나 계좌번호를 직접 입력해
-                    보내는 기능은 MVP 범위가 아닙니다 — 화면을 보지 못하는 사용자가 오타를
-                    확인할 방법이 없기 때문입니다.
+                    등록하지 않은 계좌로 한 번 보낼 때 만들어지는 거래 상대 신원 행은
+                    이 목록에 넣지 않습니다. 사용자가 짓지 않은 이름이라 읽어 줄 말이 없고,
+                    보낸 적도 없는 상대가 쌓이면 고를 수가 없습니다.
+
+                    여기 없는 사람에게도 **은행과 계좌번호를 말하면 보낼 수 있습니다.**
+                    이름으로 부르려면 등록이 필요합니다.
 
                     계좌번호는 뒤 네 자리만 남긴 `maskedAccountNumber`로 내려갑니다.
                     """
@@ -50,24 +54,49 @@ public interface TransferApiDocs {
     );
 
     @Operation(
+            summary = "은행 목록",
+            description = """
+                    상대방을 등록할 때 고를 수 있는 은행입니다. 이름순입니다.
+
+                    화면이 목록을 따로 들고 있으면 백엔드에서 코드를 고쳤을 때 옛 코드를
+                    그대로 보내게 됩니다. 계좌번호 앞자리로 은행을 추정하지 않기로 한 이상,
+                    사용자가 고를 목록은 백엔드가 줍니다.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공")
+    })
+    com.movi_backend.global.response.ApiResponse<BankListResponse> getBanks();
+
+    @Operation(
             summary = "상대방 등록",
             description = """
                     음성으로 이름만 불러 송금하려면 이름과 계좌가 미리 묶여 있어야 합니다.
                     이 API 가 그 묶음을 만듭니다.
 
-                    받는 값은 **이름과 계좌번호뿐**입니다. 은행코드와 예금주는 사용자가 적는
-                    값이 아니라, 우리 서비스에 연결된 계좌에서 찾아 채웁니다. 사람이 옮겨
-                    적으면 틀리고, 틀린 은행으로 저장되면 음성 송금이 엉뚱한 곳으로 갑니다.
+                    받는 값은 **이름·은행코드·계좌번호**입니다. 은행은 `GET /api/transfers/banks`
+                    에서 고른 코드를 그대로 보냅니다 — 계좌번호 앞자리로 은행을 추정하지
+                    않습니다. 앞자리가 같은 다른 은행 계좌가 걸립니다.
 
-                    연결된 계좌에서 찾지 못한 계좌번호는 등록할 수 없습니다.
+                    **예금주는 받지 않습니다.** 예금주조회로 확인된 이름만 씁니다. 사용자가
+                    적은 이름을 그대로 쓰면 틀린 이름이 확인 복창에서 읽히고, 사용자는 맞는
+                    사람에게 보내는 것으로 듣습니다.
+
+                    확인되지 않은 계좌는 등록되지 않습니다(`TRANSFER_4011`).
+
+                    이미 그 계좌로 보낸 적이 있으면 **그때 만들어진 행에 이름이 붙습니다.**
+                    새 행을 만들면 이체 횟수가 쪼개져 FDS 가 여러 번 보낸 상대를 처음 보는
+                    상대로 봅니다.
                     """
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "등록 성공"),
             @ApiResponse(responseCode = "400",
-                    description = "계좌번호가 여러 계좌와 맞거나(TRANSFER_4008), 본인 계좌(TRANSFER_4009)"),
-            @ApiResponse(responseCode = "404", description = "연결된 계좌에 없는 계좌번호 (TRANSFER_4043)"),
-            @ApiResponse(responseCode = "409", description = "이미 쓰고 있는 이름 (TRANSFER_4091)")
+                    description = "계좌번호 형식 오류(TRANSFER_4008), 은행 누락(TRANSFER_4010), "
+                            + "예금주를 확인하지 못함(TRANSFER_4011), 본인 계좌(TRANSFER_4009)"),
+            @ApiResponse(responseCode = "409",
+                    description = "이미 쓰고 있는 이름(TRANSFER_4091), "
+                            + "이미 등록된 계좌(TRANSFER_4092)")
     })
     com.movi_backend.global.response.ApiResponse<RecipientResponse> registerRecipient(
             @Parameter(hidden = true) AuthUser authUser,

@@ -1,11 +1,13 @@
 package com.movi_backend.domain.transfer.application;
 
+import com.movi_backend.domain.account.application.port.dto.VerifiedAccountHolder;
 import com.movi_backend.domain.account.entity.Account;
 import com.movi_backend.domain.auth.application.DeviceRegistrationService;
 import com.movi_backend.domain.auth.entity.Device;
 import com.movi_backend.domain.auth.entity.User;
 import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
+import com.movi_backend.domain.transfer.application.model.VerifiedTransferTarget;
 import com.movi_backend.domain.transfer.application.model.TransferConfirmation;
 import com.movi_backend.domain.transfer.application.model.TransferExecutionResult;
 import com.movi_backend.domain.transfer.dto.request.TransferExecuteRequest;
@@ -63,19 +65,25 @@ public class DirectTransferService {
     private final UserRepository userRepository;
     private final DeviceRegistrationService deviceRegistrationService;
     private final TransferTargetResolver transferTargetResolver;
+    private final TransferTargetVerifier transferTargetVerifier;
+    private final TransferRecipientRegistrar transferRecipientRegistrar;
+    private final BankDirectory bankDirectory;
     private final TransferValidationService transferValidationService;
     private final TransferConfirmationStore transferConfirmationStore;
     private final TransferExecutionService transferExecutionService;
     private final SensitiveDataCrypto sensitiveDataCrypto;
 
-    /** 보낼 내용을 검증하고 확인 ID를 발급한다. 돈은 아직 움직이지 않는다. */
-    @Transactional(readOnly = true)
+    /**
+     * 보낼 내용을 검증하고 확인 ID를 발급한다. 돈은 아직 움직이지 않는다.
+     *
+     * <p>확인 스냅샷을 새로 발급하면 <b>같은 사용자의 이전 확인은 버려진다</b>
+     * ({@link TransferConfirmationStore}). 대상이나 금액을 고쳐 다시 검토했는데 앞의 확인이
+     * 살아 있으면, 사용자가 고치기 전 내용이 그대로 나갈 수 있다.
+     */
+    @Transactional
     public TransferReviewResponse review(final Long userId, final TransferReviewRequest request) {
         final Account fromAccount = resolveFromAccount(userId, request.fromAccountId());
-        final TransferRecipient recipient = transferTargetResolver.resolveOwnedRecipient(
-                userId,
-                request.recipientId()
-        );
+        final TransferRecipient recipient = resolveReviewRecipient(userId, request);
         transferValidationService.validateAmountRange(request.amount());
 
         final TransferConfirmation confirmation = transferConfirmationStore.issue(
@@ -90,8 +98,84 @@ public class DirectTransferService {
                 fromAccount,
                 recipient.getHolderName(),
                 recipient.getNickname(),
+                bankDirectory.displayNameOf(recipient.getBankCode()),
                 maskAccountNum(recipient)
         );
+    }
+
+    /**
+     * 검토할 수취인을 정한다.
+     *
+     * <p>주소록에서 고른 경우와 계좌번호를 직접 넣은 경우를 모두 받는다. 어느 쪽이든
+     * <b>예금주조회로 확인된 계좌</b>여야 하고, 확인되지 않으면 검토가 끝나지 않는다.
+     */
+    private TransferRecipient resolveReviewRecipient(
+            final Long userId,
+            final TransferReviewRequest request
+    ) {
+        if (request.hasRegisteredRecipient() && request.hasOneTimeAccount()) {
+            throw new BusinessException(
+                    ErrorCode.BAD_REQUEST,
+                    "받는 분과 계좌번호 중 하나만 보내 주세요."
+            );
+        }
+        if (request.hasOneTimeAccount()) {
+            return resolveOneTimeRecipient(userId, request);
+        }
+        if (!request.hasRegisteredRecipient()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "받는 분을 지정해 주세요.");
+        }
+        return requireVerified(
+                transferTargetResolver.resolveOwnedRecipient(userId, request.recipientId())
+        );
+    }
+
+    /** 등록하지 않은 계좌. 확인한 뒤 주소록이 아닌 거래 상대 신원 행으로 남긴다. */
+    private TransferRecipient resolveOneTimeRecipient(
+            final Long userId,
+            final TransferReviewRequest request
+    ) {
+        final VerifiedTransferTarget target = transferTargetVerifier.verifyForTransfer(
+                userId,
+                request.bankCode(),
+                request.accountNumber()
+        );
+        final User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        return transferRecipientRegistrar.resolveTransferTarget(
+                user,
+                target,
+                LocalDateTime.now()
+        );
+    }
+
+    /**
+     * 검증 없이 저장되던 시절의 수취인으로는 보내지 않는다.
+     *
+     * <p>은행에 다시 물어 확인되면 그 사실을 남기고 진행한다. 확인되지 않으면 안내하고
+     * 멈춘다 — 별칭 모양이나 이체 횟수로는 그 계좌가 맞는지 알 수 없다.
+     */
+    private TransferRecipient requireVerified(final TransferRecipient recipient) {
+        if (recipient.isVerified()) {
+            return recipient;
+        }
+        final Optional<VerifiedAccountHolder> holder = transferTargetVerifier.reverify(
+                recipient.getBankCode(),
+                decryptOrNull(recipient.getAccountNum())
+        );
+        if (holder.isEmpty()) {
+            throw new BusinessException(ErrorCode.RECIPIENT_UNVERIFIED);
+        }
+        recipient.verify(holder.get().holderName(), LocalDateTime.now());
+        return recipient;
+    }
+
+    private String decryptOrNull(final String encrypted) {
+        try {
+            return sensitiveDataCrypto.decrypt(encrypted);
+        } catch (final RuntimeException exception) {
+            return null;
+        }
     }
 
     /**
@@ -151,9 +235,8 @@ public class DirectTransferService {
                 userId,
                 confirmation.fromAccountId()
         );
-        final TransferRecipient recipient = transferTargetResolver.resolveOwnedRecipient(
-                userId,
-                confirmation.recipientId()
+        final TransferRecipient recipient = requireVerified(
+                transferTargetResolver.resolveOwnedRecipient(userId, confirmation.recipientId())
         );
         final Device device = deviceRegistrationService.findOwnedDevice(userId, deviceUuid);
         return ConfirmedTransferCommand.of(

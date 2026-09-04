@@ -1,8 +1,11 @@
 package com.movi_backend.domain.transfer.application;
 
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 
 /**
@@ -42,6 +45,9 @@ public class BankDirectory {
         CODE_BY_SPOKEN_NAME.put("씨티", "027");
     }
 
+    /** 목록에서는 빼는 코드. 사용자가 이름으로 구분할 수 없다. */
+    private static final Set<String> HIDDEN_FROM_SELECTION = Set.of("012");
+
     private static final Map<String, String> DISPLAY_NAME_BY_CODE = Map.ofEntries(
             Map.entry("004", "국민은행"),
             Map.entry("088", "신한은행"),
@@ -79,5 +85,31 @@ public class BankDirectory {
             return "";
         }
         return DISPLAY_NAME_BY_CODE.getOrDefault(bankCode, bankCode);
+    }
+
+    /**
+     * 고를 수 있는 은행 전부. 이름순으로 준다.
+     *
+     * <p>상대방을 등록할 때 은행을 함께 받아야 하는데, 그 목록을 프런트가 따로 적어 두면
+     * 여기서 코드를 하나 고쳤을 때 화면은 옛 코드를 그대로 보낸다. 계좌번호 앞자리로
+     * 은행을 추정하지 않기로 한 이상, 사용자가 고를 목록은 백엔드가 준다.
+     *
+     * <p>{@code 012}(농협중앙회)는 빼놓는다. 사용자에게는 {@code 011}(농협은행)과 똑같이
+     * "농협"으로 들려 둘 중 무엇을 고를지 정할 수 없다. 확인 복창에서 이름을 읽을 때만 쓴다.
+     */
+    public List<Bank> findAll() {
+        return DISPLAY_NAME_BY_CODE.entrySet().stream()
+                .filter(entry -> !HIDDEN_FROM_SELECTION.contains(entry.getKey()))
+                .map(entry -> Bank.of(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparing(Bank::name))
+                .toList();
+    }
+
+    /** 고를 수 있는 은행 하나. */
+    public record Bank(String code, String name) {
+
+        public static Bank of(final String code, final String name) {
+            return new Bank(code, name);
+        }
     }
 }

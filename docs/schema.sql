@@ -212,17 +212,21 @@ CREATE TABLE transactions (
 CREATE TABLE transfer_recipients (
     recipient_id        BIGINT       NOT NULL AUTO_INCREMENT,
     user_id             BIGINT       NOT NULL,
-    nickname            VARCHAR(50)  NOT NULL COMMENT '음성 호출명 (예: 엄마)',
+    nickname            VARCHAR(50)  NULL COMMENT '음성 호출명 (예: 엄마). 주소록 항목에만 있다',
     bank_code           VARCHAR(10)  NOT NULL,
     account_num         VARCHAR(255) NOT NULL COMMENT 'AES 암호화',
     account_num_hash    VARCHAR(64)  NOT NULL COMMENT '계좌번호 중복 확인용 HMAC-SHA256',
-    holder_name         VARCHAR(50)  NOT NULL,
+    holder_name         VARCHAR(50)  NOT NULL COMMENT '예금주조회로 확인된 이름',
+    address_book        BOOLEAN      NOT NULL DEFAULT FALSE
+                        COMMENT '사용자가 이름을 지어 등록한 주소록 항목인지',
+    verified_at         DATETIME     NULL
+                        COMMENT '예금주조회로 계좌를 확인한 시각. NULL 이면 이체 대상이 아니다',
     transfer_count      INT          NOT NULL DEFAULT 0,
     last_transferred_at DATETIME     NULL,
     created_at          DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (recipient_id),
     UNIQUE KEY uk_recipient_user_nick (user_id, nickname),
-    UNIQUE KEY uk_recipient_user_account (user_id, account_num_hash),
+    UNIQUE KEY uk_recipient_user_bank_account (user_id, bank_code, account_num_hash),
     CONSTRAINT fk_recipient_user FOREIGN KEY (user_id) REFERENCES users (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

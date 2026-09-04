@@ -257,6 +257,8 @@ class MviE2eScenarioTest {
                 .accountNum(sensitiveDataCrypto.encrypt("110123456789"))
                 .accountNumHash(sensitiveDataCrypto.hash("110123456789"))
                 .holderName("이영자")
+                .addressBook(true)
+                .verifiedAt(java.time.LocalDateTime.now())
                 .build());
     }
 

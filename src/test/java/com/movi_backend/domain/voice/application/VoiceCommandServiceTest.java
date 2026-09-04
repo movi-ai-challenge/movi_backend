@@ -25,6 +25,7 @@ import com.movi_backend.domain.transfer.application.model.ValidatedTransferComma
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
+import com.movi_backend.global.security.SensitiveDataCrypto;
 import com.movi_backend.domain.transfer.application.BankDirectory;
 import com.movi_backend.domain.transfer.application.SpokenAccountNumberParser;
 import com.movi_backend.domain.transfer.application.TransferTargetResolver;
@@ -107,6 +108,9 @@ class VoiceCommandServiceTest {
 
     @Mock
     private AudioDurationValidator audioDurationValidator;
+
+    @Mock
+    private SensitiveDataCrypto sensitiveDataCrypto;
 
     @Mock
     private Account account;
@@ -206,6 +210,8 @@ class VoiceCommandServiceTest {
         given(account.getBankName()).willReturn("국민은행");
         given(recipient.getId()).willReturn(8L);
         given(recipient.getNickname()).willReturn("엄마");
+        // 슬롯에는 사용자가 부른 이름이 남는다. 일회성 대상이면 확인된 예금주가 대신 들어간다.
+        given(recipient.displayName()).willReturn("엄마");
         given(recipient.getHolderName()).willReturn("김영희");
         given(recipient.getBankCode()).willReturn("088");
         given(voiceCommandRepository.save(any(VoiceCommand.class)))
@@ -222,6 +228,7 @@ class VoiceCommandServiceTest {
                 new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 new SpokenAccountNumberParser(),
                 new BankDirectory(),
+                sensitiveDataCrypto,
                 objectMapper,
                 audioDurationValidator
         );
@@ -239,7 +246,7 @@ class VoiceCommandServiceTest {
         assertThat(response.amount()).isEqualTo(50_000L);
         assertThat(response.confirmationId()).isNotBlank();
         assertThat(response.toVoiceMessage())
-                .isEqualTo("생활비 통장에서 엄마 님에게 5만원을 보낼까요?" + ANSWER_GUIDE);
+                .isEqualTo("생활비 통장에서 엄마, 신한은행 김영희 님에게 5만원을 보낼까요?" + ANSWER_GUIDE);
         assertThat(session.getPendingSlots()).contains("\"recipientNickname\":\"엄마\"");
 
         final ArgumentCaptor<VoiceAnalysisRequest> analysisRequestCaptor =
@@ -1047,6 +1054,7 @@ class VoiceCommandServiceTest {
                 new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 new SpokenAccountNumberParser(),
                 new BankDirectory(),
+                sensitiveDataCrypto,
                 new ObjectMapper(),
                 audioDurationValidator
         );

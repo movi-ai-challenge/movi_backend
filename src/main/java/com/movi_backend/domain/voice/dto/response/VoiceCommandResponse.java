@@ -130,10 +130,21 @@ public record VoiceCommandResponse(
             final Account account,
             final TransferRecipient transferRecipient,
             final long amount,
-            final String transcript
+            final String transcript,
+            final String bankName,
+            final String accountTail
     ) {
         return awaitingConfirmation(
-                session, confirmationId, account, transferRecipient, amount, transcript, null);
+                session,
+                confirmationId,
+                account,
+                transferRecipient,
+                amount,
+                transcript,
+                bankName,
+                accountTail,
+                null
+        );
     }
 
     /**
@@ -148,6 +159,8 @@ public record VoiceCommandResponse(
             final TransferRecipient transferRecipient,
             final long amount,
             final String transcript,
+            final String bankName,
+            final String accountTail,
             final String spokenAccountDigits
     ) {
         return new VoiceCommandResponse(
@@ -158,7 +171,7 @@ public record VoiceCommandResponse(
                 List.of(),
                 confirmationId,
                 FromAccount.from(account),
-                Recipient.from(transferRecipient),
+                Recipient.of(transferRecipient, bankName, accountTail),
                 amount,
                 session.getExpiresAt(),
                 null,
@@ -349,15 +362,28 @@ public record VoiceCommandResponse(
              */
             return "%s에서 %s 계좌 %s으로 %s을 보낼까요? %s".formatted(
                     accountName,
-                    this.recipient.voiceName(),
+                    this.recipient.voiceIntroduction(),
                     this.spokenAccountDigits,
                     formattedAmount,
                     ANSWER_GUIDE
             );
         }
-        return "%s에서 %s 님에게 %s을 보낼까요? %s".formatted(
+        /*
+         * 등록해 둔 상대다. 이름만 읽으면 같은 이름으로 저장한 다른 계좌를 구분할 수 없어,
+         * 확인된 예금주와 계좌 끝자리를 함께 읽는다.
+         */
+        if (this.recipient.accountTail() != null && !this.recipient.accountTail().isBlank()) {
+            return "%s에서 %s, 끝자리 %s번 계좌로 %s을 보낼까요? %s".formatted(
+                    accountName,
+                    this.recipient.voiceIntroduction(),
+                    this.recipient.accountTail(),
+                    formattedAmount,
+                    ANSWER_GUIDE
+            );
+        }
+        return "%s에서 %s에게 %s을 보낼까요? %s".formatted(
                 accountName,
-                this.recipient.voiceName(),
+                this.recipient.voiceIntroduction(),
                 formattedAmount,
                 ANSWER_GUIDE
         );
@@ -491,19 +517,42 @@ public record VoiceCommandResponse(
     }
 
     /** 암호화된 계좌번호는 복호화·마스킹 계층이 준비되기 전까지 공개하지 않는다. */
-    public record Recipient(Long recipientId, String holderName, String nickname, String bankCode) {
+    /**
+     * 확인 복창에 쓸 수취인.
+     *
+     * <p>{@code holderName}은 <b>예금주조회로 확인된</b> 이름이다. 사용자가 부른 이름이
+     * 아니다. {@code nickname}은 주소록에 등록해 둔 경우에만 있다.
+     *
+     * <p>{@code bankName}과 {@code accountTail}까지 함께 읽어 준다. 이름만 읽으면 같은
+     * 이름의 다른 계좌를 구분할 수 없고, 화면을 볼 수 없는 사용자에게는 이 복창이 유일한
+     * 확인 수단이다.
+     */
+    public record Recipient(
+            Long recipientId,
+            String holderName,
+            String nickname,
+            String bankCode,
+            String bankName,
+            String accountTail
+    ) {
 
-        public static Recipient from(final TransferRecipient recipient) {
+        public static Recipient of(
+                final TransferRecipient recipient,
+                final String bankName,
+                final String accountTail
+        ) {
             return new Recipient(
                     recipient.getId(),
                     recipient.getHolderName(),
                     recipient.getNickname(),
-                    recipient.getBankCode()
+                    recipient.getBankCode(),
+                    bankName,
+                    accountTail
             );
         }
 
         public static Recipient named(final String holderName) {
-            return new Recipient(null, holderName, null, null);
+            return new Recipient(null, holderName, null, null, null, null);
         }
 
         private String voiceName() {
@@ -511,6 +560,22 @@ public record VoiceCommandResponse(
                 return this.nickname;
             }
             return this.holderName;
+        }
+
+        /**
+         * 확인 복창에서 상대를 가리키는 말.
+         *
+         * <p>주소록에 등록된 상대면 사용자가 지은 이름을 먼저 말하고, 확인된 예금주를
+         * 뒤에 붙인다. 자기가 부른 이름으로 시작해야 무엇을 확인하는지 알아듣는다.
+         */
+        private String voiceIntroduction() {
+            if (this.bankName == null || this.bankName.isBlank()) {
+                return "%s 님".formatted(voiceName());
+            }
+            if (this.nickname == null || this.nickname.isBlank()) {
+                return "%s %s 님".formatted(this.bankName, this.holderName);
+            }
+            return "%s, %s %s 님".formatted(this.nickname, this.bankName, this.holderName);
         }
     }
 }

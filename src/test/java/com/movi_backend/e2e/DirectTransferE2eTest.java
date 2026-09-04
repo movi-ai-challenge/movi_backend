@@ -89,6 +89,14 @@ class DirectTransferE2eTest {
 
     private static final String RECIPIENT_ACCOUNT_NUM = "110123456789";
 
+    /**
+     * 주소록에 없는 계좌. DemoAccountDirectory 가 예금주 "김영희"로 답한다.
+     *
+     * <p>등록하지 않은 상대에게도 은행과 계좌번호를 말해 보낼 수 있어야 한다. 대신
+     * 예금주조회로 확인된 계좌여야 하고, 확인됐다고 주소록에 올라가지는 않는다.
+     */
+    private static final String UNREGISTERED_ACCOUNT_NUM = "020112233445";
+
     @Autowired
     private WebApplicationContext webApplicationContext;
 
@@ -352,7 +360,104 @@ class DirectTransferE2eTest {
         assertThat(executeBody).doesNotContain(RECIPIENT_ACCOUNT_NUM);
     }
 
+    // ---------------------------------------------------------------- 10
+
+    @Test
+    @DisplayName("10. 등록하지 않은 계좌도 예금주가 확인되면 보낼 수 있고 주소록은 그대로다")
+    void 미등록_계좌로_보내도_주소록은_그대로다() throws Exception {
+        makeLowRiskContext();
+
+        final MvcResult reviewResult = mockMvc
+                .perform(oneTimeReviewRequest("020", UNREGISTERED_ACCOUNT_NUM, 30_000L))
+                .andReturn();
+        final String reviewBody = reviewResult.getResponse().getContentAsString();
+        assertThat(reviewResult.getResponse().getStatus())
+                .withFailMessage("검토 실패: %s", reviewBody)
+                .isEqualTo(200);
+
+        final MvcResult executed = executeTransfer(
+                readConfirmationId(reviewBody), UUID.randomUUID().toString());
+
+        // 확인 문장은 사용자가 적은 이름이 아니라 조회로 확인된 예금주를 읽는다
+        assertThat(reviewBody).contains("김영희");
+        assertThat(executed.getResponse().getContentAsString()).contains("COMPLETED");
+        assertThat(currentBalance(PRIMARY_FINTECH_NUM)).isEqualTo(PRIMARY_BALANCE - 30_000L);
+
+        // 주소록은 늘지 않는다 — 이름은 사용자가 등록 흐름에서 직접 지을 때만 붙는다
+        assertThat(addressBookCount()).isEqualTo(1);
+    }
+
+    // ---------------------------------------------------------------- 11
+
+    @Test
+    @DisplayName("11. 확인하지 않고 두면 주소록도 잔액도 그대로다")
+    void 확인하지_않으면_주소록도_잔액도_그대로다() throws Exception {
+        makeLowRiskContext();
+
+        mockMvc.perform(oneTimeReviewRequest("020", UNREGISTERED_ACCOUNT_NUM, 30_000L))
+                .andExpect(status().isOk());
+
+        assertThat(transferRepository.findAll()).isEmpty();
+        assertThat(currentBalance(PRIMARY_FINTECH_NUM)).isEqualTo(PRIMARY_BALANCE);
+        assertThat(addressBookCount()).isEqualTo(1);
+    }
+
+    // ---------------------------------------------------------------- 12
+
+    @Test
+    @DisplayName("12. 확인되지 않는 계좌로는 검토조차 되지 않는다")
+    void 확인되지_않는_계좌로는_검토되지_않는다() throws Exception {
+        // given - 앞자리는 등록 계좌와 같지만 뒷자리가 다른 번호
+        final MvcResult result = mockMvc
+                .perform(oneTimeReviewRequest("020", "020112230000", 30_000L))
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString()).contains("TRANSFER_4011");
+        assertThat(transferRepository.findAll()).isEmpty();
+        assertThat(addressBookCount()).isEqualTo(1);
+    }
+
+    // ---------------------------------------------------------------- 13
+
+    @Test
+    @DisplayName("13. 금액을 고쳐 다시 검토하면 이전 확인으로는 실행되지 않는다")
+    void 금액을_고치면_이전_확인으로는_실행되지_않는다() throws Exception {
+        makeLowRiskContext();
+        final String staleConfirmationId = review(primaryAccount, 50_000L);
+
+        // 사용자가 금액을 고쳐 다시 검토했다
+        review(primaryAccount, 30_000L);
+
+        final MvcResult result = executeTransfer(
+                staleConfirmationId, UUID.randomUUID().toString());
+
+        assertThat(result.getResponse().getContentAsString()).contains("TRANSFER_4007");
+        assertThat(transferRepository.findAll()).isEmpty();
+        assertThat(currentBalance(PRIMARY_FINTECH_NUM)).isEqualTo(PRIMARY_BALANCE);
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    /** 주소록에 보이는 수취인 수. 일회성 송금 대상은 세지 않는다. */
+    private long addressBookCount() {
+        return recipientRepository
+                .findAllByUserIdAndAddressBookTrueOrderByNicknameAsc(user.getId())
+                .size();
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
+            oneTimeReviewRequest(
+                    final String bankCode,
+                    final String accountNumber,
+                    final long amount
+            ) {
+        return post("/api/transfers/review")
+                .header("X-Dev-User-Id", user.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"bankCode":"%s","accountNumber":"%s","amount":%d,"fromAccountId":null}
+                        """.formatted(bankCode, accountNumber, amount));
+    }
 
     private String review(final Account fromAccount, final long amount) throws Exception {
         final MvcResult result = mockMvc
@@ -521,6 +626,8 @@ class DirectTransferE2eTest {
                 .accountNum(sensitiveDataCrypto.encrypt(accountNum))
                 .accountNumHash(sensitiveDataCrypto.hash(accountNum))
                 .holderName(holderName)
+                .addressBook(true)
+                .verifiedAt(java.time.LocalDateTime.now())
                 .build());
     }
 

@@ -1,8 +1,12 @@
 package com.movi_backend.domain.transfer.application;
 
+import com.movi_backend.domain.account.application.port.dto.VerifiedAccountHolder;
+import com.movi_backend.domain.auth.entity.User;
+import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.domain.transfer.application.model.TransferClarification;
 import com.movi_backend.domain.transfer.application.model.TransferValidationResult;
 import com.movi_backend.domain.transfer.application.model.ValidatedTransferCommand;
+import com.movi_backend.domain.transfer.application.model.VerifiedTransferTarget;
 import com.movi_backend.domain.transfer.config.TransferProperties;
 import com.movi_backend.domain.transfer.dto.request.TransferCommandRequest;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
@@ -10,17 +14,36 @@ import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransferSlot;
 import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
-import com.movi_backend.domain.auth.entity.User;
-import com.movi_backend.domain.auth.repository.UserRepository;
 import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 발화에서 뽑아 온 이체 명령을 <b>실행 가능한 대상</b>으로 바꾼다.
+ *
+ * <p>대상을 정하는 방법은 둘뿐이다.
+ *
+ * <ul>
+ *   <li><b>주소록 이름</b> — 사용자가 직접 등록해 둔 이름과 정확히 같아야 한다</li>
+ *   <li><b>은행 + 전체 계좌번호</b> — 예금주조회로 확인된 계좌여야 한다</li>
+ * </ul>
+ *
+ * <p><b>추측하지 않는다.</b> 예전에는 자모 편집거리 1 이내면 가장 가까운 이름을 골랐는데,
+ * 자동 생성 별칭 "국민은행 6789"와 "국민은행 6788"이 거리 1이라 한 자리 다른 계좌가 유일
+ * 후보로 선택될 수 있었다. 짧은 사람 이름도 마찬가지다("형"과 "혁"). 잘못 고르는 것보다
+ * 다시 묻는 편이 안전하다.
+ *
+ * <p><b>주소록을 늘리지 않는다.</b> 계좌번호로 보낼 때 만드는 행은 거래 상대의 신원일 뿐
+ * 주소록 항목이 아니다({@link TransferRecipientRegistrar}). 이름은 사용자가 등록 흐름에서
+ * 직접 지을 때만 붙는다.
+ */
 @Service
 @RequiredArgsConstructor
 public class TransferValidationService {
@@ -40,24 +63,29 @@ public class TransferValidationService {
             "계좌번호를 말씀해 주세요.";
     private static final String UNKNOWN_RECIPIENT_QUESTION =
             "%s 님은 저장돼 있지 않아요. 받는 분의 은행과 계좌번호를 말씀해 주세요.";
-    private static final String AMBIGUOUS_RECIPIENT_QUESTION =
-            "%s 님과 비슷한 이름이 여러 개 저장돼 있어요. 받는 분의 계좌번호를 말씀해 주세요.";
 
-    /** 같은 별칭이 이만큼 쌓이면 사용자가 구분하지 못한다. 그 전에 멈춘다. */
-    private static final int MAXIMUM_NICKNAME_SUFFIX = 20;
+    /**
+     * 이름과 계좌가 서로 다른 상대를 가리킬 때.
+     *
+     * <p>어느 쪽도 고르지 않는다. 저장된 상대에게 보내려던 것인지 새 계좌로 보내려던
+     * 것인지는 사용자만 안다. 임의로 골라 보내면 되돌릴 수 없다.
+     */
+    private static final String RECIPIENT_ACCOUNT_CONFLICT_QUESTION =
+            "%s 님으로 저장된 계좌와 다른 계좌예요. 저장된 분께 보내시려면 이름만, "
+                    + "새 계좌로 보내시려면 은행과 계좌번호만 말씀해 주세요.";
 
     private final TransferRecipientRepository transferRecipientRepository;
     private final TransferProperties transferProperties;
     private final UserRepository userRepository;
     private final SensitiveDataCrypto sensitiveDataCrypto;
-    private final BankDirectory bankDirectory;
+    private final TransferTargetVerifier transferTargetVerifier;
+    private final TransferRecipientRegistrar transferRecipientRegistrar;
 
     /**
-     * 계좌번호로 받은 수취인을 이 자리에서 저장하므로 읽기 전용이 아니다.
+     * 계좌번호로 보낼 때 거래 상대의 신원 행을 남기므로 읽기 전용이 아니다.
      *
-     * <p>이체 실행은 {@code TransferRecipient} 엔티티를 요구하고 FDS 의 수취인 피처(재이체
-     * 횟수·첫 거래 여부)도 거기 달려 있다. 저장하지 않고 임시 객체로 넘기면 그 피처가 매번
-     * 비어 사용자가 늘 보내던 계좌인데도 신규로 평가된다.
+     * <p>이체 실행과 FDS 수취인 피처(재이체 횟수·첫 거래 여부)가 그 행에 달려 있다. 다만
+     * <b>주소록에는 올리지 않는다</b> — 확인을 취소해도 사용자의 수취인 목록은 그대로다.
      */
     @Transactional
     public TransferValidationResult validate(
@@ -73,56 +101,120 @@ public class TransferValidationService {
 
         validateAmountRange(command.amount());
 
+        final Optional<TransferRecipient> namedRecipient = findAddressBookEntry(userId, command);
+        if (command.hasSpokenAccount()) {
+            return resolveBySpokenAccount(userId, command, namedRecipient);
+        }
+        return resolveByName(command, namedRecipient);
+    }
+
+    /**
+     * 은행과 계좌번호를 말한 경우.
+     *
+     * <p>주소록에 등록돼 있지 않아도 보낼 수 있다. 대신 <b>예금주조회로 확인한 뒤에만</b>
+     * 진행하고, 확인 단계에서 계좌번호를 한 자리씩 읽어 준다.
+     */
+    private TransferValidationResult resolveBySpokenAccount(
+            final Long userId,
+            final TransferCommandRequest command,
+            final Optional<TransferRecipient> namedRecipient
+    ) {
+        final VerifiedTransferTarget target = transferTargetVerifier.verifyForTransfer(
+                userId,
+                command.bankCode(),
+                command.accountNumber()
+        );
+
         /*
-         * 이름으로 부른 상대를 못 찾는 것은 오류가 아니라 되물을 일이다. 예외로 끝내면
-         * "저장된 분이 없어요"에서 대화가 끊겨, 사용자는 계좌번호를 말하면 보낼 수 있다는
-         * 것을 알 수 없다.
+         * 이름은 별칭일 수도 예금주명일 수도 있다. 저장된 별칭과 다른 계좌를 함께 말한
+         * 경우에만 되묻는다 — 예금주명을 말한 것이라면 저장된 별칭에 걸리지 않는다.
          */
-        if (!command.hasSpokenAccount()) {
-            final Optional<TransferRecipient> found = findRecipient(userId, command.recipient());
-            if (found.isEmpty()) {
-                return clarifyUnresolvedRecipient(userId, command.recipient());
-            }
-            return ValidatedTransferCommand.of(
-                    command.amount(),
-                    found.get(),
-                    normalizeOptional(command.sourceAccountAlias())
+        if (namedRecipient.isPresent() && !pointsToSameAccount(namedRecipient.get(), target)) {
+            return TransferClarification.of(
+                    List.of(TransferSlot.RECIPIENT),
+                    RECIPIENT_ACCOUNT_CONFLICT_QUESTION.formatted(command.recipient().trim())
             );
         }
 
+        final User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        final TransferRecipient recipient = transferRecipientRegistrar.resolveTransferTarget(
+                user,
+                target,
+                LocalDateTime.now()
+        );
         return ValidatedTransferCommand.of(
                 command.amount(),
-                findOrCreateByAccount(userId, command),
+                recipient,
                 normalizeOptional(command.sourceAccountAlias())
         );
     }
 
     /**
-     * 이름을 못 찾았을 때 무엇을 되물을지 정한다.
+     * 이름만 말한 경우. 주소록에 <b>정확히 같은 이름</b>이 있어야 한다.
      *
-     * <p>저장된 게 아예 없는 것과, 비슷한 이름이 여럿이라 고르지 못한 것은 사용자에게 다른
-     * 상황이다. 후자에 "저장된 분이 없어요"라고 하면 사실과 다르고, 사용자는 등록을 다시
-     * 하려 든다. 둘 다 계좌번호로 풀리므로 그것을 요청하되 문장을 구분한다.
+     * <p>없으면 오류로 끝내지 않고 되묻는다. 저장된 분이 없다는 말에서 대화가 끊기면
+     * 사용자는 은행과 계좌번호를 말하면 보낼 수 있다는 것을 알 수 없다.
      */
-    private TransferClarification clarifyUnresolvedRecipient(
-            final Long userId,
-            final String spokenName
+    private TransferValidationResult resolveByName(
+            final TransferCommandRequest command,
+            final Optional<TransferRecipient> namedRecipient
     ) {
-        final String name = spokenName.trim();
-        final boolean hasSimilar = RecipientNicknameMatcher.hasAnyCloseMatch(
-                name,
-                transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)
-        );
-        if (hasSimilar) {
+        if (namedRecipient.isEmpty()) {
             return TransferClarification.of(
                     List.of(TransferSlot.RECIPIENT),
-                    AMBIGUOUS_RECIPIENT_QUESTION.formatted(name)
+                    UNKNOWN_RECIPIENT_QUESTION.formatted(command.recipient().trim())
             );
         }
-        return TransferClarification.of(
-                List.of(TransferSlot.RECIPIENT),
-                UNKNOWN_RECIPIENT_QUESTION.formatted(name)
+        return ValidatedTransferCommand.of(
+                command.amount(),
+                requireVerified(namedRecipient.get()),
+                normalizeOptional(command.sourceAccountAlias())
         );
+    }
+
+    /**
+     * 저장된 수취인의 계좌를 이체 직전에 다시 확인한다.
+     *
+     * <p>검증 없이 접두어만 맞춰 저장되던 시절의 행이 남아 있다. 별칭 모양이나
+     * {@code transferCount}로는 그것이 확인된 계좌인지 알 수 없으므로 은행에 다시 묻는다.
+     * 확인되면 행에 남겨 다음부터는 되묻지 않는다.
+     */
+    private TransferRecipient requireVerified(final TransferRecipient recipient) {
+        if (recipient.isVerified()) {
+            return recipient;
+        }
+        final Optional<VerifiedAccountHolder> holder = transferTargetVerifier.reverify(
+                recipient.getBankCode(),
+                decryptOrNull(recipient.getAccountNum())
+        );
+        if (holder.isEmpty()) {
+            throw new BusinessException(ErrorCode.RECIPIENT_UNVERIFIED);
+        }
+        recipient.verify(holder.get().holderName(), LocalDateTime.now());
+        return recipient;
+    }
+
+    /** 주소록에서 정확히 같은 이름을 찾는다. 비슷한 이름으로 넓히지 않는다. */
+    private Optional<TransferRecipient> findAddressBookEntry(
+            final Long userId,
+            final TransferCommandRequest command
+    ) {
+        if (isBlank(command.recipient()) || !isTrusted(command.recipientConfidence())) {
+            return Optional.empty();
+        }
+        return transferRecipientRepository.findByUserIdAndAddressBookTrueAndNickname(
+                userId,
+                command.recipient().trim()
+        );
+    }
+
+    private boolean pointsToSameAccount(
+            final TransferRecipient recipient,
+            final VerifiedTransferTarget target
+    ) {
+        return Objects.equals(recipient.getBankCode(), target.bankCode())
+                && Objects.equals(recipient.getAccountNumHash(), target.accountNumHash());
     }
 
     private void validateOverallConfidence(final TransferCommandRequest command) {
@@ -156,75 +248,6 @@ public class TransferValidationService {
         return !isBlank(command.recipient()) && isTrusted(command.recipientConfidence());
     }
 
-    /**
-     * 계좌번호로 수취인을 찾고, 없으면 만들어 둔다.
-     *
-     * <p>사용자는 등록 절차를 겪지 않는다 — 계좌번호를 말하면 그걸로 끝이다. 다만 내부적으로는
-     * 남겨야 이체 실행과 FDS 가 같은 수취인으로 인식하고, 다음에 같은 계좌로 보낼 때 재이체로
-     * 평가된다.
-     *
-     * <p>암호문끼리는 비교할 수 없다. AES 가 무작위 IV 를 써서 같은 계좌번호도 암호문이 매번
-     * 다르다. 한 사람의 수취인은 많아야 수십 명이므로 복호화해 비교한다.
-     */
-    private TransferRecipient findOrCreateByAccount(
-            final Long userId,
-            final TransferCommandRequest command
-    ) {
-        final String accountNumber = command.accountNumber();
-        for (final TransferRecipient existing
-                : transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)) {
-            if (!command.bankCode().equals(existing.getBankCode())) {
-                continue;
-            }
-            if (accountNumber.equals(decryptOrNull(existing.getAccountNum()))) {
-                return existing;
-            }
-        }
-
-        final User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        return transferRecipientRepository.save(TransferRecipient.builder()
-                .user(user)
-                .nickname(generateNickname(userId, command.bankCode(), accountNumber))
-                .bankCode(command.bankCode())
-                .accountNum(sensitiveDataCrypto.encrypt(accountNumber))
-                .accountNumHash(sensitiveDataCrypto.hash(accountNumber))
-                .holderName("%s %s".formatted(
-                        bankDirectory.displayNameOf(command.bankCode()),
-                        accountNumber.substring(Math.max(0, accountNumber.length() - 4))))
-                .build());
-    }
-
-    /**
-     * 이름을 모르는 수취인의 별칭.
-     *
-     * <p>예금주명을 받을 방법이 없다. 목록에서 사용자가 알아볼 수 있어야 하므로 은행과 뒤
-     * 네 자리로 만든다 — TTS 로 읽어도 구분된다.
-     *
-     * <p><b>겹치면 뒤에 번호를 붙인다.</b> 같은 은행에서 뒤 네 자리가 같은 계좌는 실제로
-     * 생긴다. {@code (user_id, nickname)} 이 유니크라 그대로 저장하면 이체가 서버 오류로
-     * 끝난다 — 사용자는 왜 실패했는지 알 수 없다.
-     */
-    private String generateNickname(
-            final Long userId,
-            final String bankCode,
-            final String accountNumber
-    ) {
-        final String tail = accountNumber.substring(
-                Math.max(0, accountNumber.length() - 4));
-        final String base = "%s %s".formatted(bankDirectory.displayNameOf(bankCode), tail);
-        if (!transferRecipientRepository.existsByUserIdAndNickname(userId, base)) {
-            return base;
-        }
-        for (int suffix = 2; suffix <= MAXIMUM_NICKNAME_SUFFIX; suffix++) {
-            final String candidate = "%s (%d)".formatted(base, suffix);
-            if (!transferRecipientRepository.existsByUserIdAndNickname(userId, candidate)) {
-                return candidate;
-            }
-        }
-        throw new BusinessException(ErrorCode.RECIPIENT_NOT_FOUND, "수취인 별칭을 만들지 못했습니다.");
-    }
-
     private String decryptOrNull(final String encrypted) {
         try {
             return sensitiveDataCrypto.decrypt(encrypted);
@@ -236,9 +259,9 @@ public class TransferValidationService {
     /**
      * 되물을 문장을 고른다.
      *
-     * <p>수취인이 비었다고 늘 "누구에게 보내시겠어요?"를 되물으면 안 된다. 계좌번호는
-     * 말했는데 은행만 빠진 사용자에게 그 문장은 답이 없는 질문이다 — 이미 누구에게
-     * 보낼지는 말했기 때문이다. 무엇을 말해야 하는지 콕 집어 준다.
+     * <p>수취인이 비었다고 늘 누구에게 보낼지만 되물으면 안 된다. 계좌번호는 말했는데
+     * 은행만 빠진 사용자에게 그 문장은 답이 없는 질문이다 — 이미 누구에게 보낼지는
+     * 말했기 때문이다. 무엇을 말해야 하는지 콕 집어 준다.
      */
     private TransferClarification createClarification(
             final TransferCommandRequest command,
@@ -279,18 +302,6 @@ public class TransferValidationService {
         if (amount > transferProperties.perTransferLimit()) {
             throw new BusinessException(ErrorCode.AMOUNT_LIMIT_EXCEEDED);
         }
-    }
-
-    private Optional<TransferRecipient> findRecipient(
-            final Long userId,
-            final String recipientNickname
-    ) {
-        final String normalizedNickname = recipientNickname.trim();
-        return transferRecipientRepository.findByUserIdAndNickname(userId, normalizedNickname)
-                .or(() -> RecipientNicknameMatcher.findUniqueClosest(
-                        normalizedNickname,
-                        transferRecipientRepository.findAllByUserIdOrderByNicknameAsc(userId)
-                ));
     }
 
     private boolean isTrusted(final BigDecimal confidence) {

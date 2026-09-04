@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
@@ -75,6 +76,12 @@ class DirectTransferServiceTest {
     private TransferConfirmationStore transferConfirmationStore;
     private DirectTransferService directTransferService;
 
+    @Mock
+    private TransferTargetVerifier transferTargetVerifier;
+
+    @Mock
+    private TransferRecipientRegistrar transferRecipientRegistrar;
+
     @BeforeEach
     void setUp() {
         final TransferProperties properties =
@@ -84,9 +91,12 @@ class DirectTransferServiceTest {
                 userRepository,
                 deviceRegistrationService,
                 transferTargetResolver,
+                transferTargetVerifier,
+                transferRecipientRegistrar,
+                new BankDirectory(),
                 new TransferValidationService(
                         null, properties, userRepository, sensitiveDataCrypto,
-                        new BankDirectory()),
+                        transferTargetVerifier, transferRecipientRegistrar),
                 transferConfirmationStore,
                 transferExecutionService,
                 sensitiveDataCrypto
@@ -99,6 +109,12 @@ class DirectTransferServiceTest {
         given(recipient.getNickname()).willReturn("엄마");
         given(recipient.getHolderName()).willReturn("김영희");
         given(recipient.getAccountNum()).willReturn("encrypted");
+        /*
+         * 확인된 계좌라야 이체가 진행된다. 검증 없이 저장되던 시절의 행은 은행에 다시
+         * 물어야 하고, 확인되지 않으면 TRANSFER_4012 로 멈춘다.
+         */
+        lenient().when(recipient.isVerified()).thenReturn(true);
+        lenient().when(recipient.getBankCode()).thenReturn("004");
         given(sensitiveDataCrypto.decrypt("encrypted")).willReturn("110123456789");
         given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
         given(transferTargetResolver.resolveSourceAccount(USER_ID, null)).willReturn(account);
@@ -118,7 +134,7 @@ class DirectTransferServiceTest {
         assertThat(response.amount()).isEqualTo(50_000L);
         assertThat(response.recipient().maskedAccountNumber()).isEqualTo("***6789");
         assertThat(response.toVoiceMessage())
-                .isEqualTo("생활비 통장에서 엄마 님에게 5만원을 보낼까요?");
+                .isEqualTo("생활비 통장에서 엄마, 국민은행 김영희 님에게 5만원을 보낼까요?");
         then(transferExecutionService).should(never()).execute(any());
     }
 
@@ -314,7 +330,7 @@ class DirectTransferServiceTest {
     private TransferReviewResponse review(final long amount) {
         return directTransferService.review(
                 USER_ID,
-                new TransferReviewRequest(RECIPIENT_ID, amount, null)
+                new TransferReviewRequest(RECIPIENT_ID, null, null, amount, null)
         );
     }
 

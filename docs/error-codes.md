@@ -132,13 +132,15 @@
 | TRANSFER_4005 | `SELF_TRANSFER_NOT_ALLOWED` | 400 | 본인 계좌로는 이체할 수 없습니다. | 같은 계좌로는 보낼 수 없어요. |
 | TRANSFER_4006 | `INVALID_STATUS_TRANSITION` | 400 | 처리할 수 없는 이체 상태입니다. | 이미 처리된 송금이에요. |
 | TRANSFER_4007 | `CONFIRMATION_INVALID` | 400 | 송금 확인 정보가 유효하지 않습니다. | 확인 시간이 지났어요. 보낼 내용을 다시 확인해 주세요. |
-| TRANSFER_4008 | `RECIPIENT_ACCOUNT_AMBIGUOUS` | 400 | 계좌번호가 여러 계좌와 일치합니다. | 계좌번호가 여러 곳과 맞아요. 앞자리까지 모두 알려 주세요. |
+| TRANSFER_4008 | `INVALID_ACCOUNT_NUMBER` | 400 | 계좌번호 형식이 올바르지 않습니다. | 계좌번호를 숫자로 다시 말씀해 주세요. |
+| TRANSFER_4010 | `BANK_CODE_MISSING` | 400 | 은행을 알 수 없습니다. | 어느 은행 계좌인가요? 은행 이름을 말씀해 주세요. |
+| TRANSFER_4011 | `RECIPIENT_ACCOUNT_UNVERIFIED` | 400 | 예금주를 확인하지 못한 계좌입니다. | 그 계좌를 확인하지 못했어요. 은행과 계좌번호를 다시 말씀해 주세요. |
+| TRANSFER_4012 | `RECIPIENT_UNVERIFIED` | 400 | 계좌 확인이 끝나지 않은 수취인입니다. | 저장된 계좌를 확인하지 못했어요. 계좌번호를 다시 등록해 주세요. |
 | TRANSFER_4009 | `SELF_RECIPIENT_NOT_ALLOWED` | 400 | 본인 계좌는 상대방으로 등록할 수 없습니다. | 본인 계좌예요. 다른 분의 계좌번호를 알려 주세요. |
 | TRANSFER_4031 | `TRANSFER_BLOCKED` | 403 | 위험 거래로 차단된 이체입니다. | 안전을 위해 이번 송금을 멈췄어요. 보호자에게 알려 드렸어요. |
 | TRANSFER_4040 | `TRANSFER_NOT_FOUND` | 404 | 이체 내역을 찾을 수 없습니다. | 송금 내역을 찾을 수 없어요. |
 | TRANSFER_4041 | `RECIPIENT_NOT_FOUND` | 404 | 등록된 수취인을 찾을 수 없습니다. | 그런 이름으로 저장된 분이 없어요. 다시 말씀해 주세요. |
 | TRANSFER_4042 | `TRANSACTION_NOT_FOUND` | 404 | 거래내역을 찾을 수 없습니다. | 그 거래를 찾지 못했어요. 다시 말씀해 주세요. |
-| TRANSFER_4043 | `RECIPIENT_ACCOUNT_NOT_FOUND` | 404 | 등록된 계좌에서 찾을 수 없는 계좌번호입니다. | 그 계좌번호를 찾지 못했어요. 계좌번호를 다시 확인해 주세요. |
 | TRANSFER_4090 | `DUPLICATE_TRANSFER` | 409 | 이미 처리 중인 이체 요청입니다. | 방금 같은 송금을 요청하셨어요. 잠시만 기다려 주세요. |
 | TRANSFER_4091 | `RECIPIENT_NICKNAME_DUPLICATED` | 409 | 이미 등록된 이름입니다. | 그 이름은 이미 등록돼 있어요. 다른 이름으로 저장해 주세요. |
 | TRANSFER_4092 | `RECIPIENT_ACCOUNT_DUPLICATED` | 409 | 이미 다른 이름으로 등록된 계좌입니다. | 그 계좌는 이미 다른 이름으로 등록돼 있어요. |

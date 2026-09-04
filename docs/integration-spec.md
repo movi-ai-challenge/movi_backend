@@ -282,8 +282,52 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-여기 없는 사람에게는 보낼 수 없다. 프론트는 이름이나 계좌번호로 수취인을 만들어 내지 않는다 —
-음성으로 새 계좌번호를 부르는 것을 막는 것과 같은 이유다.
+**사용자가 이름을 지어 등록한 상대만 나온다.** 등록하지 않은 계좌로 한 번 보낼 때 서버가
+만드는 거래 상대 신원 행은 이 목록에 넣지 않는다 — 사용자가 짓지 않은 이름이라 읽어 줄 말이
+없고, 보낸 적도 없는 상대가 쌓이면 고를 수가 없다.
+
+여기 없는 사람에게도 **은행과 계좌번호로 보낼 수 있다**(5.6.2). 이름으로 부르려면 등록이
+필요하다.
+
+#### 5.6.1-1 은행 목록
+
+```http
+GET /api/transfers/banks
+Authorization: Bearer {accessToken}
+```
+
+```json
+{
+  "code": "SUCCESS",
+  "message": "요청이 정상 처리되었습니다.",
+  "voiceMessage": "보내실 곳의 은행을 골라 주세요.",
+  "data": {
+    "totalCount": 14,
+    "banks": [{ "code": "004", "name": "국민은행" }]
+  }
+}
+```
+
+상대방을 등록할 때 고를 은행이다. **계좌번호 앞자리로 은행을 추정하지 않는다** — 앞자리가
+같은 다른 은행 계좌가 걸린다. 프론트가 목록을 따로 들고 있으면 백엔드에서 코드를 고쳤을 때
+옛 코드를 그대로 보내므로, 선택지는 백엔드가 준다.
+
+#### 5.6.1-2 상대방 등록
+
+```http
+POST /api/transfers/recipients
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{ "name": "엄마", "bankCode": "088", "accountNumber": "110123456789" }
+```
+
+`bankCode`는 5.6.1-1 에서 고른 코드를 그대로 보낸다. **예금주는 보내지 않는다** — 서버가
+예금주조회로 확인한 이름만 쓴다. 사람이 옮겨 적은 이름이 확인 복창에서 읽히면 사용자는 맞는
+사람에게 보내는 것으로 듣는다.
+
+확인되지 않은 계좌는 등록되지 않는다(`TRANSFER_4011`). 이미 그 계좌로 보낸 적이 있으면 그때
+만들어진 행에 이름이 붙어 이체 횟수가 그대로 유지된다.
 
 #### 5.6.2 검토
 
@@ -295,11 +339,20 @@ Content-Type: application/json
 { "recipientId": 8, "amount": 50000, "fromAccountId": null }
 ```
 
+등록하지 않은 상대에게 보낼 때는 `recipientId` 대신 은행과 계좌번호를 보낸다. **둘 중
+하나만** 채운다.
+
+```json
+{ "bankCode": "088", "accountNumber": "110123456789", "amount": 50000, "fromAccountId": null }
+```
+
+어느 쪽이든 예금주조회를 거친다. 확인되지 않으면 검토 자체가 실패한다(`TRANSFER_4011`).
+
 ```json
 {
   "code": "SUCCESS",
   "message": "요청이 정상 처리되었습니다.",
-  "voiceMessage": "생활비 통장에서 엄마 님에게 5만원을 보낼까요?",
+  "voiceMessage": "생활비 통장에서 엄마, 신한은행 김영희 님에게 5만원을 보낼까요?",
   "data": {
     "confirmationId": "c14c5b4d-a394-4d67-8788-bc716e5a60b6",
     "fromAccount": { "accountId": 12, "alias": "생활비 통장", "bankName": "국민은행" },
@@ -307,6 +360,7 @@ Content-Type: application/json
       "recipientId": 8,
       "nickname": "엄마",
       "holderName": "김영희",
+      "bankName": "신한은행",
       "maskedAccountNumber": "***6789"
     },
     "amount": 50000,
@@ -317,6 +371,13 @@ Content-Type: application/json
 
 `fromAccountId`를 비우면 기본 계좌에서 나간다. 이 응답 시점에는 돈이 움직이지 않는다.
 프론트는 `confirmationId`를 보관하고 UUID `idempotencyKey`를 **하나** 만든다.
+
+`holderName`은 조회로 확인된 예금주다. `nickname`은 등록한 상대에게만 있고, 등록하지 않은
+계좌로 보낼 때는 비어 있다.
+
+**검토를 다시 하면 앞의 확인은 버려진다.** 금액이나 대상을 고쳐 다시 검토했는데 이전
+`confirmationId`로 실행하면 `TRANSFER_4007`로 거부된다 — 사용자가 고치기 전 내용이 나가면
+안 된다. 한 사용자에게 살아 있는 확인은 언제나 하나다.
 
 #### 5.6.3 실행
 

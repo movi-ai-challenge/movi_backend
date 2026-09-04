@@ -237,9 +237,14 @@ public record VoiceCommandResponse(
             final TransferExecutionResult result,
             final String transcript
     ) {
+        VoiceSessionStatus responseState = VoiceSessionStatus.COMPLETED;
+        if (result.status() == TransferStatus.PENDING
+                || result.status() == TransferStatus.RISK_REVIEW) {
+            responseState = VoiceSessionStatus.PROCESSING;
+        }
         return new VoiceCommandResponse(
                 null,
-                VoiceSessionStatus.COMPLETED,
+                responseState,
                 VoiceIntent.CONFIRM,
                 transcript,
                 List.of(),
@@ -324,6 +329,10 @@ public record VoiceCommandResponse(
         }
         if (this.status == TransferStatus.FAILED) {
             return ErrorCode.TRANSFER_EXECUTION_FAILED.getVoiceMessage();
+        }
+        if (this.status == TransferStatus.PENDING
+                || this.status == TransferStatus.RISK_REVIEW) {
+            return "은행의 송금 결과를 확인하고 있어요. 다시 송금하지 마세요.";
         }
         if (this.state == VoiceSessionStatus.CLARIFYING) {
             /*

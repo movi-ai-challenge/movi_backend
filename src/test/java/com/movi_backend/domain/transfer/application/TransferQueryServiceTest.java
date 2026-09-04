@@ -80,7 +80,8 @@ class TransferQueryServiceTest {
         // then
         assertThat(response.status()).isEqualTo(TransferStatus.RISK_REVIEW);
         assertThat(response.riskLevel()).isNull();
-        assertThat(response.toVoiceMessage()).isEqualTo("송금을 안전하게 확인하고 있어요.");
+        assertThat(response.toVoiceMessage())
+                .isEqualTo("은행의 송금 결과를 확인하고 있어요. 다시 송금하지 마세요.");
     }
 
     @Test

@@ -66,6 +66,6 @@ public record TransferResultResponse(
         if (this.status == TransferStatus.FAILED) {
             return ErrorCode.TRANSFER_EXECUTION_FAILED.getVoiceMessage();
         }
-        return "송금을 안전하게 확인하고 있어요.";
+        return "은행의 송금 결과를 확인하고 있어요. 다시 송금하지 마세요.";
     }
 }

@@ -130,12 +130,18 @@ public class OpenBankingApiClient implements OpenBankingClient {
                     .body(request)
                     .retrieve()
                     .body(Map.class);
+            if (body == null) {
+                throw new BusinessException(
+                        ErrorCode.OPENBANK_COMMUNICATION_ERROR,
+                        "empty response"
+                );
+            }
             return verify(body, failureCode);
         } catch (final BusinessException exception) {
             throw exception;
         } catch (final RuntimeException exception) {
             log.error("오픈뱅킹 호출 실패 path={}", path, exception);
-            throw new BusinessException(failureCode);
+            throw new BusinessException(ErrorCode.OPENBANK_COMMUNICATION_ERROR);
         }
     }
 

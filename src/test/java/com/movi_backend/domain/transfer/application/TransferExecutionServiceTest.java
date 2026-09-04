@@ -474,6 +474,29 @@ class TransferExecutionServiceTest {
     }
 
     @Test
+    @DisplayName("오픈뱅킹 응답을 받지 못하면 이체를 미확정 상태로 남긴다")
+    void 오픈뱅킹_응답_유실은_이체를_실패로_확정하지_않는다() {
+        // given
+        final ConfirmedTransferCommand command = givenCommand(50_000L);
+        givenFdsResponse(RiskLevel.LOW);
+        givenAssessmentSaved();
+        givenOpenBankingConnection();
+        willThrow(new BusinessException(ErrorCode.OPENBANK_COMMUNICATION_ERROR))
+                .given(openBankingTransferPort)
+                .transfer(any(OpenBankingTransferCommand.class), eq(ACCESS_TOKEN));
+        final TransferExecutionService service = createService();
+
+        // when
+        final TransferExecutionResult result = service.execute(command);
+
+        // then
+        assertThat(result.status()).isEqualTo(TransferStatus.RISK_REVIEW);
+        assertThat(result.completedAt()).isNull();
+        then(recipient).should(never()).recordTransfer(any());
+        then(transactionRepository).should(never()).save(any());
+    }
+
+    @Test
     @DisplayName("수취 계좌번호 복호화가 실패하면 외부 이체 API를 호출하지 않는다")
     void 수취_계좌번호_복호화_실패_시_외부_API를_호출하지_않는다() {
         final ConfirmedTransferCommand command = givenCommand(50_000L);

@@ -1,0 +1,30 @@
+[
+  {
+    "mode": "normal-stop",
+    "requestCount": 1,
+    "calls": [
+      {
+        "voiceSessionId": "1",
+        "confirmationId": "original-confirmation"
+      }
+    ],
+    "settled": {
+      "state": "AWAITING_CONFIRMATION",
+      "confirmationId": "replacement-confirmation"
+    }
+  },
+  {
+    "mode": "unmount",
+    "requestCount": 1,
+    "calls": [
+      {
+        "voiceSessionId": "1",
+        "confirmationId": "original-confirmation"
+      }
+    ],
+    "settled": {
+      "state": "AWAITING_CONFIRMATION",
+      "confirmationId": "replacement-confirmation"
+    }
+  }
+]

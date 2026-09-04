@@ -1,0 +1,41 @@
+{
+  "confirmation_actual_java_methods": [
+    "UNKNOWN | 어느 은행이야? => CONFIRM",
+    "UNKNOWN | 다시 읽어줘 => CONFIRM",
+    "UNKNOWN | 얼마 보내는 거야? => CONFIRM",
+    "UNKNOWN | 잠깐 확인해볼게 => CONFIRM",
+    "UNKNOWN | 네 맞아요 => CONFIRM",
+    "UNKNOWN | 아니요 취소할게요 => CANCEL",
+    "CONFIRM | 아니요 취소할게요 => CONFIRM"
+  ],
+  "stream_actual_class": [
+    {
+      "phrase": "오만 원",
+      "activated": false,
+      "command": ""
+    },
+    {
+      "phrase": "모비야 오만 원",
+      "activated": true,
+      "command": "오만 원"
+    },
+    {
+      "phrase": "취소해줘",
+      "activated": false,
+      "command": ""
+    }
+  ],
+  "followup_actual_function_with_unsuccessful_slot_parser": {
+    "utterance": "취소해줘",
+    "result": [
+      "TRANSFER",
+      0.3,
+      {},
+      {}
+    ]
+  },
+  "css_contrast": {
+    "muted_on_background": 4.71,
+    "muted_on_surface": 4.409
+  }
+}

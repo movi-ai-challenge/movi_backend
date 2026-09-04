@@ -40,7 +40,7 @@ public record TransferStatusResponse(
     public String toVoiceMessage() {
         if (this.status == TransferStatus.PENDING
                 || this.status == TransferStatus.RISK_REVIEW) {
-            return "송금을 안전하게 확인하고 있어요.";
+            return "은행의 송금 결과를 확인하고 있어요. 다시 송금하지 마세요.";
         }
         if (this.status == TransferStatus.COMPLETED) {
             return "%s 님에게 %s을 보냈어요.".formatted(

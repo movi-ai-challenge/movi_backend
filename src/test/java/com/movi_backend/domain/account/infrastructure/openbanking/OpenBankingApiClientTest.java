@@ -148,8 +148,8 @@ class OpenBankingApiClientTest {
     }
 
     @Test
-    @DisplayName("오픈뱅킹이 5xx로 응답하면 원시 예외를 흘리지 않고 이체 실패로 변환한다")
-    void 오픈뱅킹이_5xx로_응답하면_원시_예외를_흘리지_않고_이체_실패로_변환한다() {
+    @DisplayName("오픈뱅킹이 5xx로 응답하면 이체 결과를 통신 오류로 남긴다")
+    void 오픈뱅킹이_5xx로_응답하면_통신_오류로_변환한다() {
         // given
         respondWith(500, "{\"error\":\"internal\"}");
 
@@ -157,7 +157,7 @@ class OpenBankingApiClientTest {
         assertThatThrownBy(() -> createClient().transfer(transferCommand(), "access-token-abc"))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.TRANSFER_EXECUTION_FAILED);
+                .isEqualTo(ErrorCode.OPENBANK_COMMUNICATION_ERROR);
     }
 
     @Test

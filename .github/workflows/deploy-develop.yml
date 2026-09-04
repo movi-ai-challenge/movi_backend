@@ -5,6 +5,19 @@ on:
     branches:
       - develop
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation to run
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - migrate-recipient-account-hash
+      target_image_sha:
+        description: Existing backend image SHA used for the one-time backfill
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -24,6 +37,7 @@ env:
 
 jobs:
   build-and-push-docker:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.operation != 'migrate-recipient-account-hash' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -185,6 +199,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy-to-ec2:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.operation != 'migrate-recipient-account-hash' }}
     needs: build-and-push-docker
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -300,3 +315,217 @@ jobs:
             sudo docker logs --tail 100 "$CONTAINER_NAME" || true
             restore_previous_container
             exit 1
+
+  migrate-recipient-account-hash:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'migrate-recipient-account-hash' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Prepare protected database connection values
+        env:
+          APPLICATION_PROD_YML: ${{ secrets.DEV_APPLICATION }}
+        run: |
+          set -eu
+          if [ -z "$APPLICATION_PROD_YML" ]; then
+            echo "DEV_APPLICATION 시크릿이 비어 있습니다." >&2
+            exit 1
+          fi
+
+          DB_URL="$(printf '%s' "$APPLICATION_PROD_YML" | ruby -e \
+            'require "yaml"; config = YAML.safe_load(STDIN.read, aliases: true); print config.dig("spring", "datasource", "url")')"
+          DB_USERNAME="$(printf '%s' "$APPLICATION_PROD_YML" | ruby -e \
+            'require "yaml"; config = YAML.safe_load(STDIN.read, aliases: true); print config.dig("spring", "datasource", "username")')"
+          DB_PASSWORD="$(printf '%s' "$APPLICATION_PROD_YML" | ruby -e \
+            'require "yaml"; config = YAML.safe_load(STDIN.read, aliases: true); print config.dig("spring", "datasource", "password")')"
+
+          if [ -z "$DB_URL" ] || [ -z "$DB_USERNAME" ] || [ -z "$DB_PASSWORD" ]; then
+            echo "운영 DB 접속 설정을 읽지 못했습니다." >&2
+            exit 1
+          fi
+
+          for value in "$DB_URL" "$DB_USERNAME" "$DB_PASSWORD"; do
+            echo "::add-mask::$value"
+          done
+          echo "DB_URL_B64=$(printf '%s' "$DB_URL" | base64 -w0)" >> "$GITHUB_ENV"
+          echo "DB_USERNAME_B64=$(printf '%s' "$DB_USERNAME" | base64 -w0)" >> "$GITHUB_ENV"
+          echo "DB_PASSWORD_B64=$(printf '%s' "$DB_PASSWORD" | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: Back up and migrate production database
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          DB_PASSWORD_B64: ${{ env.DB_PASSWORD_B64 }}
+          DB_URL_B64: ${{ env.DB_URL_B64 }}
+          DB_USERNAME_B64: ${{ env.DB_USERNAME_B64 }}
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+          DOCKER_IMAGE_NAME: ${{ env.DOCKER_IMAGE_NAME }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          EC2_DEPLOY_PATH: ${{ env.EC2_DEPLOY_PATH }}
+          TARGET_IMAGE_SHA: ${{ inputs.target_image_sha }}
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_SSH_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          envs: CONTAINER_NAME,DB_PASSWORD_B64,DB_URL_B64,DB_USERNAME_B64,DOCKER_HUB_TOKEN,DOCKER_IMAGE_NAME,DOCKER_USERNAME,EC2_DEPLOY_PATH,TARGET_IMAGE_SHA
+          command_timeout: 15m
+          script: |
+            set -eu
+
+            if [ -z "$TARGET_IMAGE_SHA" ]; then
+              echo "백필에 사용할 이미지 SHA가 필요합니다." >&2
+              exit 1
+            fi
+
+            DB_URL="$(printf '%s' "$DB_URL_B64" | base64 -d)"
+            DB_USERNAME="$(printf '%s' "$DB_USERNAME_B64" | base64 -d)"
+            DB_PASSWORD="$(printf '%s' "$DB_PASSWORD_B64" | base64 -d)"
+            JDBC_TARGET="${DB_URL#jdbc:mysql://}"
+            if [ "$JDBC_TARGET" = "$DB_URL" ]; then
+              echo "지원하지 않는 운영 DB URL입니다." >&2
+              exit 1
+            fi
+
+            DB_AUTHORITY="${JDBC_TARGET%%/*}"
+            DB_DATABASE="${JDBC_TARGET#*/}"
+            DB_DATABASE="${DB_DATABASE%%\?*}"
+            DB_HOST="${DB_AUTHORITY%%:*}"
+            DB_PORT="3306"
+            if [ "${DB_AUTHORITY#*:}" != "$DB_AUTHORITY" ]; then
+              DB_PORT="${DB_AUTHORITY##*:}"
+            fi
+
+            case "$DB_DATABASE" in
+              ''|*[!A-Za-z0-9_]*)
+                echo "운영 DB 이름을 안전하게 해석하지 못했습니다." >&2
+                exit 1
+                ;;
+            esac
+            case "$DB_PORT" in
+              ''|*[!0-9]*)
+                echo "운영 DB 포트를 안전하게 해석하지 못했습니다." >&2
+                exit 1
+                ;;
+            esac
+
+            WORK_DIRECTORY="$(mktemp -d)"
+            MYSQL_CONFIG="$WORK_DIRECTORY/mysql.cnf"
+            MIGRATION_CONTAINER="${CONTAINER_NAME}-recipient-hash-migration"
+            cleanup() {
+              sudo docker rm --force "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+              rm -rf "$WORK_DIRECTORY"
+            }
+            trap cleanup EXIT
+
+            umask 077
+            {
+              echo '[client]'
+              printf 'user=%s\n' "$DB_USERNAME"
+              printf 'password=%s\n' "$DB_PASSWORD"
+              printf 'host=%s\n' "$DB_HOST"
+              printf 'port=%s\n' "$DB_PORT"
+              echo 'protocol=tcp'
+            } > "$MYSQL_CONFIG"
+
+            mysql_query() {
+              sudo docker run --rm --network movi-net \
+                --volume "$MYSQL_CONFIG:/root/.my.cnf:ro" \
+                mysql:8.4 \
+                mysql --defaults-extra-file=/root/.my.cnf \
+                --batch --skip-column-names "$DB_DATABASE" "$@"
+            }
+
+            BACKUP_DIRECTORY="${EC2_DEPLOY_PATH}/backups"
+            BACKUP_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+            BACKUP_PATH="${BACKUP_DIRECTORY}/before-recipient-account-hash-${BACKUP_TIMESTAMP}.sql"
+            sudo mkdir -p "$BACKUP_DIRECTORY"
+            sudo chown "$(id -u):$(id -g)" "$BACKUP_DIRECTORY"
+            chmod 700 "$BACKUP_DIRECTORY"
+            sudo docker network create movi-net >/dev/null 2>&1 || true
+
+            echo "운영 DB 백업을 시작합니다."
+            sudo docker run --rm --network movi-net \
+              --volume "$MYSQL_CONFIG:/root/.my.cnf:ro" \
+              mysql:8.4 \
+              mysqldump --defaults-extra-file=/root/.my.cnf \
+              --single-transaction --quick --routines --triggers --no-tablespaces \
+              "$DB_DATABASE" > "$BACKUP_PATH"
+            test -s "$BACKUP_PATH"
+            gzip "$BACKUP_PATH"
+            chmod 600 "${BACKUP_PATH}.gz"
+            echo "운영 DB 백업을 완료했습니다: ${BACKUP_PATH}.gz"
+
+            COLUMN_EXISTS="$(mysql_query -e \
+              "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'transfer_recipients' AND column_name = 'account_num_hash'")"
+            if [ "$COLUMN_EXISTS" = "0" ]; then
+              mysql_query -e "ALTER TABLE transfer_recipients ADD COLUMN account_num_hash VARCHAR(64) NULL COMMENT '계좌번호 중복 확인용 HMAC-SHA256' AFTER account_num"
+              echo "account_num_hash nullable 컬럼을 추가했습니다."
+            else
+              echo "account_num_hash 컬럼이 이미 있어 추가를 건너뜁니다."
+            fi
+
+            NULL_COUNT="$(mysql_query -e \
+              "SELECT COUNT(*) FROM transfer_recipients WHERE account_num_hash IS NULL")"
+            if [ "$NULL_COUNT" != "0" ]; then
+              CONFIG_PATH="${EC2_DEPLOY_PATH}/config/application-prod.yml"
+              sudo test -s "$CONFIG_PATH"
+              echo "$DOCKER_HUB_TOKEN" | sudo docker login \
+                --username "$DOCKER_USERNAME" --password-stdin >/dev/null
+              IMAGE_REFERENCE="${DOCKER_IMAGE_NAME}:${TARGET_IMAGE_SHA}"
+              sudo docker pull "$IMAGE_REFERENCE" >/dev/null
+              sudo docker network create movi-net >/dev/null 2>&1 || true
+              sudo docker rm --force "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+              sudo docker run --name "$MIGRATION_CONTAINER" --detach \
+                --network movi-net \
+                --env TZ=Asia/Seoul \
+                --env SPRING_PROFILES_ACTIVE=prod \
+                --env SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+                --env MOVI_MIGRATION_RECIPIENT_ACCOUNT_HASH_ENABLED=true \
+                --env MOVI_NOTIFICATION_RETRY_ENABLED=false \
+                --volume "${CONFIG_PATH}:/app/config/application-prod.yml:ro" \
+                "$IMAGE_REFERENCE" >/dev/null
+
+              attempt=1
+              while [ "$attempt" -le 24 ]; do
+                sleep 5
+                NULL_COUNT="$(mysql_query -e \
+                  "SELECT COUNT(*) FROM transfer_recipients WHERE account_num_hash IS NULL")"
+                if [ "$NULL_COUNT" = "0" ]; then
+                  break
+                fi
+                RUNNING="$(sudo docker inspect --format='{{.State.Running}}' \
+                  "$MIGRATION_CONTAINER" 2>/dev/null || true)"
+                if [ "$RUNNING" != "true" ]; then
+                  sudo docker logs --tail 100 "$MIGRATION_CONTAINER" || true
+                  echo "백필 컨테이너가 완료 전에 종료됐습니다." >&2
+                  exit 1
+                fi
+                attempt=$((attempt + 1))
+              done
+              sudo docker stop "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+            fi
+
+            NULL_COUNT="$(mysql_query -e \
+              "SELECT COUNT(*) FROM transfer_recipients WHERE account_num_hash IS NULL")"
+            if [ "$NULL_COUNT" != "0" ]; then
+              echo "해시가 비어 있는 수취인 ${NULL_COUNT}건이 남아 제약 적용을 중단합니다." >&2
+              exit 1
+            fi
+
+            DUPLICATE_GROUP_COUNT="$(mysql_query -e \
+              "SELECT COUNT(*) FROM (SELECT user_id, account_num_hash FROM transfer_recipients GROUP BY user_id, account_num_hash HAVING COUNT(*) > 1) duplicated")"
+            if [ "$DUPLICATE_GROUP_COUNT" != "0" ]; then
+              echo "중복 계좌 그룹 ${DUPLICATE_GROUP_COUNT}건이 있어 자동 정리하지 않고 중단합니다." >&2
+              exit 1
+            fi
+
+            mysql_query -e \
+              "ALTER TABLE transfer_recipients MODIFY COLUMN account_num_hash VARCHAR(64) NOT NULL COMMENT '계좌번호 중복 확인용 HMAC-SHA256'"
+            INDEX_EXISTS="$(mysql_query -e \
+              "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'transfer_recipients' AND index_name = 'uk_recipient_user_account'")"
+            if [ "$INDEX_EXISTS" = "0" ]; then
+              mysql_query -e \
+                "ALTER TABLE transfer_recipients ADD UNIQUE KEY uk_recipient_user_account (user_id, account_num_hash)"
+            fi
+
+            echo "수취인 계좌 해시 마이그레이션과 제약 검증을 완료했습니다."

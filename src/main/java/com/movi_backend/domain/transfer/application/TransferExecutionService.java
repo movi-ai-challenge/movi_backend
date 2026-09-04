@@ -459,8 +459,10 @@ public class TransferExecutionService {
     }
 
     private Optional<OpenBankingTransferResult> executeTransfer(final Transfer transfer) {
+        final OpenBankingTransferCommand command;
+        final String accessToken;
         try {
-            final OpenBankingTransferCommand command = OpenBankingTransferCommand.of(
+            command = OpenBankingTransferCommand.of(
                     transfer.getIdempotencyKey(),
                     transfer.getFromAccount().getFintechUseNum(),
                     transfer.getToBankCode(),
@@ -468,18 +470,33 @@ public class TransferExecutionService {
                     transfer.getToHolderName(),
                     transfer.getAmount()
             );
+            accessToken = sensitiveDataCrypto.decrypt(
+                    transfer.getFromAccount().getConnection().getAccessToken()
+            );
+        } catch (final RuntimeException exception) {
+            transfer.fail("오픈뱅킹 이체 요청 준비 실패");
+            return Optional.empty();
+        }
+
+        try {
             final OpenBankingTransferResult result = openBankingTransferPort.transfer(
                     command,
-                    sensitiveDataCrypto.decrypt(
-                            transfer.getFromAccount().getConnection().getAccessToken()
-                    )
+                    accessToken
             );
             if (result == null) {
-                throw new BusinessException(ErrorCode.TRANSFER_EXECUTION_FAILED);
+                log.warn("오픈뱅킹 응답을 확인하지 못했습니다. transferId={}", transfer.getId());
+                return Optional.empty();
             }
             return Optional.of(result);
+        } catch (final BusinessException exception) {
+            if (exception.getErrorCode() == ErrorCode.TRANSFER_EXECUTION_FAILED) {
+                transfer.fail("오픈뱅킹 이체 거절");
+                return Optional.empty();
+            }
+            log.warn("오픈뱅킹 이체 결과가 미확정입니다. transferId={}", transfer.getId());
+            return Optional.empty();
         } catch (final RuntimeException exception) {
-            transfer.fail("오픈뱅킹 이체 실패");
+            log.warn("오픈뱅킹 이체 응답을 받지 못했습니다. transferId={}", transfer.getId());
             return Optional.empty();
         }
     }

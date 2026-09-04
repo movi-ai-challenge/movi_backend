@@ -8,6 +8,7 @@ import com.movi_backend.domain.transfer.application.TransferTargetResolver;
 import com.movi_backend.domain.transfer.application.TransferValidationService;
 import com.movi_backend.domain.transfer.application.BankDirectory;
 import com.movi_backend.domain.transfer.application.SpokenAccountNumberParser;
+import com.movi_backend.domain.transfer.application.SpokenAmountParser;
 import com.movi_backend.domain.transfer.application.TransferExecutionService;
 import com.movi_backend.domain.transfer.application.model.ConfirmedTransferCommand;
 import com.movi_backend.domain.transfer.application.model.TransferClarification;
@@ -97,6 +98,7 @@ public class VoiceCommandService {
     private final BalanceInquiryService balanceInquiryService;
     private final TransferTargetResolver transferTargetResolver;
     private final SpokenAccountNumberParser spokenAccountNumberParser;
+    private final SpokenAmountParser spokenAmountParser;
     private final BankDirectory bankDirectory;
     private final ObjectMapper objectMapper;
     private final AudioDurationValidator audioDurationValidator;
@@ -653,30 +655,32 @@ public class VoiceCommandService {
         final VoiceEntities entities = analysis.entities();
         final VoiceEntityConfidences confidences = analysis.entityConfidences();
         validateSourceAccountConfidence(entities, confidences);
+        final ResolvedAmount resolvedAmount = resolveAmount(analysis);
 
         if (previousSlots == null) {
             return TransferCommandRequest.of(
-                    entities.amount(),
+                    resolvedAmount.value(),
                     entities.recipient(),
                     spokenAccountNumberOf(analysis),
                     spokenBankCodeOf(analysis),
                     entities.sourceAccountAlias(),
                     analysis.sttConfidence(),
                     analysis.intentConfidence(),
-                    confidences.amount(),
+                    resolvedAmount.confidence(),
                     confidences.recipient()
             );
         }
-        return mergeCommandRequest(analysis, previousSlots);
+        return mergeCommandRequest(analysis, previousSlots, resolvedAmount);
     }
 
     private TransferCommandRequest mergeCommandRequest(
             final VoiceAnalysisResponse analysis,
-            final PendingTransferSlots previousSlots
+            final PendingTransferSlots previousSlots,
+            final ResolvedAmount resolvedAmount
     ) {
         final VoiceEntities entities = analysis.entities();
         final VoiceEntityConfidences confidences = analysis.entityConfidences();
-        final Long amount = chooseValue(entities.amount(), previousSlots.amount());
+        final Long amount = chooseValue(resolvedAmount.value(), previousSlots.amount());
         final String recipient = chooseValue(
                 entities.recipient(),
                 previousSlots.recipientNickname()
@@ -693,7 +697,11 @@ public class VoiceCommandService {
                 sourceAccountAlias,
                 analysis.sttConfidence(),
                 analysis.intentConfidence(),
-                chooseConfidence(entities.amount(), confidences.amount(), previousSlots.amount()),
+                chooseConfidence(
+                        resolvedAmount.value(),
+                        resolvedAmount.confidence(),
+                        previousSlots.amount()
+                ),
                 chooseConfidence(
                         entities.recipient(),
                         confidences.recipient(),
@@ -710,6 +718,40 @@ public class VoiceCommandService {
      */
     private String spokenAccountNumberOf(final VoiceAnalysisResponse analysis) {
         return spokenAccountNumberParser.parse(analysis.transcript()).orElse(null);
+    }
+
+    /** 발화 원문 대조까지 마친 금액과 그 신뢰도. */
+    private record ResolvedAmount(Long value, BigDecimal confidence) {
+    }
+
+    /**
+     * 보낼 금액을 정한다. <b>발화 원문에서 읽어낸 값이 있으면 그것을 쓴다.</b>
+     *
+     * <p>모델이 한국어 복합 금액에서 무너진다. 운영 실측으로 "십만 이천원"은 4회 중 4회
+     * 120,000으로 왔다 — 102,000이 아니다. 확인 문구가 그 값을 읽어 주므로 사용자가 잡을
+     * 자리는 있지만, 화면을 보지 않는 사용자가 매번 걸러 낼 것이라고 가정하지 않는다.
+     *
+     * <p>원문에서 읽어낸 금액은 <b>모델 신뢰도와 무관하게</b> 확실하다. 사용자가 말한
+     * 글자를 그대로 푼 값이라 추정이 섞이지 않는다. 그래서 신뢰도를 1로 둔다 — 그러지
+     * 않으면 모델이 낮게 매긴 신뢰도 때문에 옳은 금액을 두고 다시 묻게 된다.
+     *
+     * <p>못 읽으면 모델 값을 그대로 쓴다. 대신하는 것이지 막는 것이 아니다.
+     */
+    private ResolvedAmount resolveAmount(final VoiceAnalysisResponse analysis) {
+        final Long modelAmount = analysis.entities().amount();
+        final Long spokenAmount = spokenAmountParser.parse(analysis.transcript()).orElse(null);
+        if (spokenAmount == null) {
+            return new ResolvedAmount(modelAmount, analysis.entityConfidences().amount());
+        }
+        if (modelAmount != null && !spokenAmount.equals(modelAmount)) {
+            /*
+             * 이 로그가 쌓이는 표현이 곧 모델이 약한 자리다. AI 프롬프트를 고칠 때 근거가
+             * 된다. 금액 자체는 개인정보가 아니라 그대로 남긴다.
+             */
+            log.warn("[VOICE] 모델 금액과 발화 원문이 다릅니다. 원문을 씁니다. 모델={} 원문={} 발화=\"{}\"",
+                    modelAmount, spokenAmount, analysis.transcript());
+        }
+        return new ResolvedAmount(spokenAmount, BigDecimal.ONE);
     }
 
     private String spokenBankCodeOf(final VoiceAnalysisResponse analysis) {

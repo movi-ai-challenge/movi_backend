@@ -27,6 +27,7 @@ import com.movi_backend.domain.transfer.dto.response.TransactionResponse;
 import com.movi_backend.domain.transfer.entity.TransferRecipient;
 import com.movi_backend.domain.transfer.application.BankDirectory;
 import com.movi_backend.domain.transfer.application.SpokenAccountNumberParser;
+import com.movi_backend.domain.transfer.application.SpokenAmountParser;
 import com.movi_backend.domain.transfer.application.TransferTargetResolver;
 import com.movi_backend.domain.transfer.repository.TransferRecipientRepository;
 import com.movi_backend.domain.transfer.type.TransactionType;
@@ -168,6 +169,99 @@ class VoiceCommandServiceTest {
         assertThat(commandCaptor.getValue().getSttText()).doesNotContain("110-123-123456");
     }
 
+    // ========================================================================
+    // 금액은 모델보다 발화 원문을 믿는다
+    //
+    // 운영 실측: gpt-4o-mini 는 "십만 이천원"을 4회 중 4회 120,000 으로 읽었다.
+    // 확인 문구가 그 값을 읽어 주긴 하지만, 화면을 보지 않는 사용자가 매번 걸러 낼
+    // 것이라고 가정하지 않는다.
+    // ========================================================================
+
+    @Test
+    @DisplayName("모델이 복합 금액을 잘못 읽으면 발화 원문에서 읽은 금액을 쓴다")
+    void 모델이_복합_금액을_잘못_읽으면_발화_원문에서_읽은_금액을_쓴다() {
+        // given
+        final VoiceSession session = createSession();
+        final VoiceAnalysisResponse analysis = VoiceAnalysisResponse.of(
+                "voice-131",
+                SESSION_ID,
+                "주혁에게 십만 이천원 보내줘",
+                HIGH_CONFIDENCE,
+                VoiceIntent.TRANSFER,
+                HIGH_CONFIDENCE,
+                VoiceEntities.transfer(120_000L, "주혁", null),
+                VoiceEntityConfidences.transfer(HIGH_CONFIDENCE, HIGH_CONFIDENCE, null),
+                List.of(),
+                90
+        );
+        stubConfirmedTransfer(session, analysis, 102_000L);
+        final VoiceCommandService service = createService();
+
+        // when
+        service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(capturedCommand().amount()).isEqualTo(102_000L);
+    }
+
+    @Test
+    @DisplayName("발화에서 금액을 읽지 못하면 모델 값을 그대로 쓴다 - 대신하는 것이지 막는 게 아니다")
+    void 발화에서_금액을_읽지_못하면_모델_값을_그대로_쓴다() {
+        // given
+        final VoiceSession session = createSession();
+        final VoiceAnalysisResponse analysis = VoiceAnalysisResponse.of(
+                "voice-132",
+                SESSION_ID,
+                "주혁에게 아까 그만큼 보내줘",
+                HIGH_CONFIDENCE,
+                VoiceIntent.TRANSFER,
+                HIGH_CONFIDENCE,
+                VoiceEntities.transfer(50_000L, "주혁", null),
+                VoiceEntityConfidences.transfer(HIGH_CONFIDENCE, HIGH_CONFIDENCE, null),
+                List.of(),
+                90
+        );
+        stubConfirmedTransfer(session, analysis, 50_000L);
+        final VoiceCommandService service = createService();
+
+        // when
+        service.process(USER_ID, SESSION_ID, createAudio());
+
+        // then
+        assertThat(capturedCommand().amount()).isEqualTo(50_000L);
+    }
+
+    private void stubConfirmedTransfer(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final Long validatedAmount
+    ) {
+        given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
+        given(voiceAnalysisClient.analyze(any(VoiceAnalysisRequest.class))).willReturn(analysis);
+        given(transferValidationService.validate(any(), any()))
+                .willReturn(ValidatedTransferCommand.of(validatedAmount, recipient, null));
+        given(accountRepository.findByUserIdAndPrimaryTrue(USER_ID))
+                .willReturn(Optional.of(account));
+        given(account.isActive()).willReturn(true);
+        given(account.getId()).willReturn(12L);
+        given(account.getAlias()).willReturn("생활비 통장");
+        given(account.getBankName()).willReturn("국민은행");
+        given(recipient.getId()).willReturn(8L);
+        given(recipient.getNickname()).willReturn("주혁");
+        given(recipient.getHolderName()).willReturn("김주혁");
+        given(recipient.getBankCode()).willReturn("011");
+        given(voiceCommandRepository.save(any(VoiceCommand.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    /** 검증 서비스로 넘어간 명령. 여기 담긴 금액이 실제로 보낼 금액이다. */
+    private TransferCommandRequest capturedCommand() {
+        final ArgumentCaptor<TransferCommandRequest> captor =
+                ArgumentCaptor.forClass(TransferCommandRequest.class);
+        then(transferValidationService).should().validate(any(), captor.capture());
+        return captor.getValue();
+    }
+
     @Test
     @DisplayName("금액 후속 발화를 처리하면 기존 수취인과 병합해 확인을 요청한다")
     void 금액_후속_발화를_처리하면_기존_수취인과_병합해_확인을_요청한다()
@@ -221,6 +315,7 @@ class VoiceCommandServiceTest {
                 balanceInquiryService,
                 new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 new SpokenAccountNumberParser(),
+                new SpokenAmountParser(),
                 new BankDirectory(),
                 objectMapper,
                 audioDurationValidator
@@ -1037,6 +1132,7 @@ class VoiceCommandServiceTest {
                 balanceInquiryService,
                 new TransferTargetResolver(accountRepository, transferRecipientRepository),
                 new SpokenAccountNumberParser(),
+                new SpokenAmountParser(),
                 new BankDirectory(),
                 new ObjectMapper(),
                 audioDurationValidator

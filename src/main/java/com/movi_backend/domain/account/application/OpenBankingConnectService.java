@@ -16,6 +16,7 @@ import com.movi_backend.global.error.BusinessException;
 import com.movi_backend.global.error.ErrorCode;
 import com.movi_backend.global.security.SensitiveDataCrypto;
 import java.util.List;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -124,7 +125,23 @@ public class OpenBankingConnectService {
     ) {
         int registered = 0;
         for (final OpenBankingAccount source : accounts) {
-            if (accountRepository.findByFintechUseNum(source.fintechUseNum()).isPresent()) {
+            final java.util.Optional<Account> existing =
+                    accountRepository.findByFintechUseNum(source.fintechUseNum());
+            if (existing.isPresent()) {
+                final Account savedAccount = existing.get();
+                if (!Objects.equals(savedAccount.getUser().getId(), user.getId())) {
+                    throw new BusinessException(ErrorCode.ACCOUNT_ALREADY_REGISTERED);
+                }
+                if (!savedAccount.isActive()) {
+                    savedAccount.reactivate(
+                            connection,
+                            source.bankCode(),
+                            source.bankName(),
+                            source.accountNumMasked(),
+                            source.accountType()
+                    );
+                    registered++;
+                }
                 continue;
             }
             accountRepository.save(toAccount(user, connection, source));

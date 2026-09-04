@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 
 /**
  * 보호자 등록 API 문서.
@@ -25,6 +26,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
                 """
 )
 public interface GuardianLinkApiDocs {
+
+    @Operation(summary = "내 보호자 연결 조회")
+    com.movi_backend.global.response.ApiResponse<List<GuardianLinkRegisterResponse>> findActiveLinks(
+            @Parameter(hidden = true) AuthUser authUser
+    );
 
     @Operation(
             summary = "보호자 등록",

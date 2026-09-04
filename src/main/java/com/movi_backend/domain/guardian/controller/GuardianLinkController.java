@@ -8,7 +8,9 @@ import com.movi_backend.global.response.ApiResponse;
 import com.movi_backend.global.security.AuthUser;
 import com.movi_backend.global.security.CurrentUser;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +28,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class GuardianLinkController implements GuardianLinkApiDocs {
 
     private final GuardianLinkService guardianLinkService;
+
+    @GetMapping
+    public ApiResponse<List<GuardianLinkRegisterResponse>> findActiveLinks(
+            @CurrentUser final AuthUser authUser
+    ) {
+        return ApiResponse.success(guardianLinkService.findActiveLinks(authUser.userId()));
+    }
 
     @PostMapping
     public ApiResponse<GuardianLinkRegisterResponse> register(

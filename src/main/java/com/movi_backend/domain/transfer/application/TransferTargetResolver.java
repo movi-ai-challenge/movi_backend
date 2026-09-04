@@ -37,6 +37,33 @@ public class TransferTargetResolver {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND)));
     }
 
+    /** 조회 명령에서 별칭 또는 은행 이름으로 계좌를 고른다. */
+    @Transactional(readOnly = true)
+    public Account resolveQueryAccount(
+            final Long userId,
+            final String accountAlias,
+            final String bankName
+    ) {
+        if (accountAlias != null && !accountAlias.isBlank()) {
+            return resolveSourceAccount(userId, accountAlias);
+        }
+        if (bankName == null || bankName.isBlank()) {
+            return resolveSourceAccount(userId, null);
+        }
+        final java.util.List<Account> matched = accountRepository
+                .findAllByUserIdAndActiveTrueOrderByPrimaryDescIdAsc(userId)
+                .stream()
+                .filter(account -> bankName.trim().equals(account.getBankName()))
+                .toList();
+        if (matched.isEmpty()) {
+            throw new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND);
+        }
+        if (matched.size() > 1) {
+            throw new BusinessException(ErrorCode.ACCOUNT_SELECTION_REQUIRED);
+        }
+        return matched.getFirst();
+    }
+
     @Transactional(readOnly = true)
     public Account resolveOwnedAccount(final Long userId, final Long accountId) {
         final Account account = accountRepository.findById(accountId)

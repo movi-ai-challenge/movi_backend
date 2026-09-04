@@ -129,4 +129,20 @@ public class Account extends BaseCreatedEntity {
         this.active = false;
         this.primary = false;
     }
+
+    /** 같은 소유자가 오픈뱅킹에서 다시 연결한 계좌를 기존 이력과 함께 되살린다. */
+    public void reactivate(
+            final OpenbankingConnection connection,
+            final String bankCode,
+            final String bankName,
+            final String accountNumMasked,
+            final AccountType accountType
+    ) {
+        this.connection = connection;
+        this.bankCode = bankCode;
+        this.bankName = bankName;
+        this.accountNumMasked = accountNumMasked;
+        this.accountType = accountType;
+        this.active = true;
+    }
 }

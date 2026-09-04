@@ -396,9 +396,9 @@ class VoiceCommandServiceTest {
     }
 
     @Test
-    @DisplayName("AI 가 의도를 못 잡아도 네 라고 답했으면 승인으로 본다")
-    void 네_라고_답하면_승인으로_본다() throws Exception {
-        // given -- STT 나 GPT 가 흔들려 UNKNOWN 으로 왔지만 사용자는 승인한 상황이다.
+    @DisplayName("AI가 확인 의도를 못 잡으면 긍정처럼 들려도 송금을 다시 확인한다")
+    void 확인_의도가_아니면_긍정_발화도_송금을_실행하지_않는다() throws Exception {
+        // given
         final VoiceSession session = createAwaitingConfirmationSession();
         final String idempotencyKey = UUID.randomUUID().toString();
         given(voiceSessionRepository.findById(SESSION_ID)).willReturn(Optional.of(session));
@@ -407,24 +407,14 @@ class VoiceCommandServiceTest {
         given(accountRepository.findById(12L)).willReturn(Optional.of(account));
         given(account.getUser()).willReturn(session.getUser());
         given(account.isActive()).willReturn(true);
+        given(account.getBankName()).willReturn("국민은행");
         given(transferRecipientRepository.findById(8L)).willReturn(Optional.of(recipient));
         given(recipient.getUser()).willReturn(session.getUser());
-        given(voiceCommandRepository.saveAndFlush(any(VoiceCommand.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-        given(transferExecutionService.execute(any(ConfirmedTransferCommand.class)))
-                .willReturn(new TransferExecutionResult(
-                        101L,
-                        TransferStatus.COMPLETED,
-                        RiskLevel.LOW,
-                        50_000L,
-                        "김영희",
-                        LocalDateTime.now(),
-                        List.of()
-                ));
+        given(recipient.getNickname()).willReturn("엄마");
         final VoiceCommandService service = createService();
 
         // when
-        service.processAnalyzed(
+        final VoiceCommandResponse response = service.processAnalyzed(
                 USER_ID,
                 SESSION_ID,
                 createUnknownAnalysis("네 맞아요"),
@@ -433,8 +423,9 @@ class VoiceCommandServiceTest {
         );
 
         // then
-        then(transferExecutionService).should().execute(any(ConfirmedTransferCommand.class));
-        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.COMPLETED);
+        assertThat(response.state()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
+        then(transferExecutionService).should(never()).execute(any());
+        assertThat(session.getStatus()).isEqualTo(VoiceSessionStatus.AWAITING_CONFIRMATION);
     }
 
     @Test

@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,21 +61,14 @@ public class VoiceCommandService {
 
     private static final long MAXIMUM_AUDIO_SIZE = 5L * 1024L * 1024L;
     private static final BigDecimal MINIMUM_CONFIDENCE = new BigDecimal("0.80");
-
-    /**
-     * 확인 대기 중 취소로 읽는 말. 승인보다 <b>먼저</b> 본다.
-     *
-     * <p>승인을 먼저 보면 "아니네요"처럼 부정 안에 든 "네"를 승인으로 읽어, 취소하려던
-     * 송금이 나간다. 잘못 읽어서 생기는 손해가 한쪽으로만 크므로 취소 쪽으로 기운다.
-     */
-    private static final List<String> DENIAL_WORDS = List.of(
-            "아니", "취소", "그만", "싫", "말아", "마세요", "하지마", "안돼", "안해", "됐어"
+    private static final Set<String> EXPLICIT_CONFIRMATIONS = Set.of(
+            "네", "예", "응", "그래", "좋아", "맞아",
+            "보내줘", "보내주세요", "송금해줘", "송금해주세요",
+            "그대로보내줘", "그대로보내주세요", "네보내줘", "네보내주세요",
+            "응보내줘", "응보내", "응맞아", "맞아보내줘", "맞아요보내주세요"
     );
-
-    /** 확인 대기 중 승인으로 읽는 말. */
-    private static final List<String> APPROVAL_WORDS = List.of(
-            "네", "예", "응", "어", "맞아", "맞습니", "맞어", "보내", "해줘", "해주세요",
-            "확인", "좋아", "그래", "오케이", "옙", "넵"
+    private static final List<String> CANCELLATION_PHRASES = List.of(
+            "취소", "그만", "보내지마", "송금하지마", "안보내", "아니"
     );
 
     /**
@@ -195,12 +189,14 @@ public class VoiceCommandService {
         final String transcript = SensitiveTextMasker.mask(analysis.transcript());
         PendingTransferSlots slots = previousSlots;
         if (session.getStatus() == VoiceSessionStatus.AWAITING_CONFIRMATION) {
-            final VoiceIntent answer = resolveConfirmationAnswer(analysis);
-            if (answer != null) {
+            if (analysis.intent() == VoiceIntent.BALANCE
+                    || analysis.intent() == VoiceIntent.HISTORY) {
+                session.resumeActive(now);
+                slots = null;
+            } else {
                 return processConfirmationResponse(
                         session,
                         analysis,
-                        answer,
                         transcript,
                         previousSlots,
                         confirmationId,
@@ -208,25 +204,6 @@ public class VoiceCommandService {
                         now
                 );
             }
-            /*
-             * 확인 답으로도, 알아들을 수 있는 말로도 읽히지 않았다. 무엇을 들었는지
-             * 남긴다 -- 이 자리는 실패해도 명령이 저장되지 않아, 로그가 없으면 사용자가
-             * 무슨 말을 했고 무엇으로 들렸는지 알 방법이 없다.
-             */
-            log.info(
-                    "확인 대기 중에 확인 답이 아닌 발화가 왔습니다: intent={}, sttConfidence={}, transcript={}",
-                    analysis.intent(),
-                    analysis.sttConfidence(),
-                    transcript
-            );
-            /*
-             * "보낼까요?"에 답이 아니라 새 명령이 왔다. 안내를 못 들었거나 마음을 바꾼
-             * 것이다. 오류로 막으면 -- 화면을 보지 않는 사용자는 같은 말을 반복할 수밖에
-             * 없으므로 -- 반복할수록 계속 막힌다. 앞선 확인은 포기하고 새 명령으로 받는다.
-             * 옛 슬롯을 남기면 뒤이은 발화가 병합돼 엉뚱한 이체가 된다.
-             */
-            session.resumeActive(now);
-            slots = null;   // 슬롯 없음. readPendingSlots 가 쓰는 표현과 같다.
         }
         if (analysis.intent() == VoiceIntent.HISTORY) {
             return queryHistory(session, analysis, transcript, now);
@@ -460,66 +437,20 @@ public class VoiceCommandService {
         return response;
     }
 
-    /**
-     * 확인 대기 중인 발화가 승인인지 취소인지 정한다.
-     *
-     * <p>AI 가 낸 intent 를 먼저 믿는다. 그것이 확인 답이 아니면 말 자체를 본다 --
-     * 확인 질문에 답하는 자리에서 "네 맞아요"를 새 명령으로 읽을 이유가 없고, STT 가
-     * 한 음절을 흘리거나 GPT 가 흔들려도 사용자는 같은 말을 반복할 뿐이다. 화면을 보지
-     * 않는 사용자에게는 그 반복이 유일한 수단이라 계속 막히면 빠져나올 길이 없다.
-     *
-     * <p><b>부정을 먼저 본다.</b> "아니요"가 "아니네요"로 잘못 적히면 그 안에 "네"가
-     * 들어 있다. 긍정을 먼저 보면 취소하려던 송금이 나간다.
-     *
-     * <p>이 판정은 확인 대기 상태에서만 쓴다. 다른 상태에서 같은 말이 오면 평소대로
-     * AI 의 intent 를 따른다.
-     *
-     * @return 승인도 취소도 아니면 {@code null}
-     */
-    private VoiceIntent resolveConfirmationAnswer(final VoiceAnalysisResponse analysis) {
-        if (analysis.intent() == VoiceIntent.CANCEL) {
-            return VoiceIntent.CANCEL;
-        }
-        if (analysis.intent() == VoiceIntent.CONFIRM) {
-            return VoiceIntent.CONFIRM;
-        }
-        final String transcript = analysis.transcript();
-        if (transcript == null || transcript.isBlank()) {
-            return null;
-        }
-        final String spoken = transcript.replace(" ", "");
-        if (containsAny(spoken, DENIAL_WORDS)) {
-            return VoiceIntent.CANCEL;
-        }
-        if (containsAny(spoken, APPROVAL_WORDS)) {
-            return VoiceIntent.CONFIRM;
-        }
-        return null;
-    }
-
-    private boolean containsAny(final String spoken, final List<String> words) {
-        for (final String word : words) {
-            if (spoken.contains(word)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private VoiceCommandResponse processConfirmationResponse(
             final VoiceSession session,
             final VoiceAnalysisResponse analysis,
-            final VoiceIntent answer,
             final String transcript,
             final PendingTransferSlots pendingSlots,
             final String confirmationId,
             final String idempotencyKey,
             final LocalDateTime now
     ) {
-        if (answer == VoiceIntent.CANCEL) {
+        final String normalizedTranscript = normalizeConfirmationTranscript(analysis.transcript());
+        if (isCancellation(analysis.intent(), normalizedTranscript)) {
             return cancel(session, analysis, transcript, now);
         }
-        if (answer == VoiceIntent.CONFIRM) {
+        if (isExplicitConfirmation(analysis, normalizedTranscript)) {
             return confirm(
                     session,
                     analysis,
@@ -530,7 +461,74 @@ public class VoiceCommandService {
                     now
             );
         }
-        throw new BusinessException(ErrorCode.INVALID_SESSION_STATE);
+        return repeatConfirmation(session, analysis, transcript, pendingSlots);
+    }
+
+    private VoiceCommandResponse repeatConfirmation(
+            final VoiceSession session,
+            final VoiceAnalysisResponse analysis,
+            final String transcript,
+            final PendingTransferSlots pendingSlots
+    ) {
+        validateConfirmationSlots(pendingSlots);
+        final Account account = findOwnedAccount(
+                session.getUser().getId(),
+                pendingSlots.fromAccountId()
+        );
+        final TransferRecipient recipient = findOwnedRecipient(
+                session.getUser().getId(),
+                pendingSlots.recipientId()
+        );
+        final VoiceCommandResponse response = VoiceCommandResponse.awaitingConfirmation(
+                session,
+                pendingSlots.confirmationId(),
+                account,
+                recipient,
+                pendingSlots.amount(),
+                transcript
+        );
+        final VoiceCommand voiceCommand = createVoiceCommand(session, analysis);
+        voiceCommand.completeWith(response.toVoiceMessage(), analysis.processingMs());
+        voiceCommandRepository.save(voiceCommand);
+        return response;
+    }
+
+    private boolean isExplicitConfirmation(
+            final VoiceAnalysisResponse analysis,
+            final String normalizedTranscript
+    ) {
+        if (analysis.intent() != VoiceIntent.CONFIRM) {
+            return false;
+        }
+        if (!hasMinimumConfidence(analysis.sttConfidence())
+                || !hasMinimumConfidence(analysis.intentConfidence())) {
+            return false;
+        }
+        return EXPLICIT_CONFIRMATIONS.contains(normalizedTranscript);
+    }
+
+    private boolean isCancellation(
+            final VoiceIntent intent,
+            final String normalizedTranscript
+    ) {
+        if (intent == VoiceIntent.CANCEL) {
+            return true;
+        }
+        return CANCELLATION_PHRASES.stream().anyMatch(normalizedTranscript::contains);
+    }
+
+    private boolean hasMinimumConfidence(final BigDecimal confidence) {
+        return confidence != null && confidence.compareTo(MINIMUM_CONFIDENCE) >= 0;
+    }
+
+    private String normalizeConfirmationTranscript(final String transcript) {
+        if (transcript == null) {
+            return "";
+        }
+        return transcript
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s.,!?~]+", "")
+                .trim();
     }
 
     private VoiceCommandResponse cancel(

@@ -411,8 +411,13 @@ jobs:
             WORK_DIRECTORY="$(mktemp -d)"
             MYSQL_CONFIG="$WORK_DIRECTORY/mysql.cnf"
             MIGRATION_CONTAINER="${CONTAINER_NAME}-recipient-hash-migration"
+            BACKUP_PATH=""
+            BACKUP_COMPLETE=false
             cleanup() {
               sudo docker rm --force "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+              if [ "$BACKUP_COMPLETE" != "true" ] && [ -n "$BACKUP_PATH" ]; then
+                rm -f "$BACKUP_PATH" "${BACKUP_PATH}.gz"
+              fi
               rm -rf "$WORK_DIRECTORY"
             }
             trap cleanup EXIT
@@ -449,10 +454,12 @@ jobs:
               mysql:8.4 \
               mysqldump --defaults-extra-file=/root/.my.cnf \
               --single-transaction --quick --routines --triggers --no-tablespaces \
+              --set-gtid-purged=OFF --skip-lock-tables \
               "$DB_DATABASE" > "$BACKUP_PATH"
             test -s "$BACKUP_PATH"
             gzip "$BACKUP_PATH"
             chmod 600 "${BACKUP_PATH}.gz"
+            BACKUP_COMPLETE=true
             echo "운영 DB 백업을 완료했습니다: ${BACKUP_PATH}.gz"
 
             COLUMN_EXISTS="$(mysql_query -e \
